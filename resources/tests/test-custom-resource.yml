@@ -1,0 +1,53 @@
+name: test-custom-resource
+description: submit custom resource
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    count: 1
+    grv:
+      group: example.com
+      version: v1
+      resource: myobjects
+    template: "resources/templates/example.yml"
+    overrides:
+      name: 1
+      instance: lnx2000
+      command: "sleep infinity"
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      teamName: teamName
+      orgName: orgName
+      userName: tester
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 3s
+- id: submit
+  type: UpdateObj
+  params:
+    refTaskId: job
+    state:
+      spec:
+        template:
+          metadata:
+            annotations:
+              orgName: newTeam
+            labels:
+              priority: "high"
+              instance: null
+- id: submit
+  type: CheckObj
+  params:
+    refTaskId: job
+    state:
+      spec:
+        template:
+          metadata:
+            annotations:
+              orgName: newTeam
+            labels:
+              priority: "high"
+              instance: null
+    timeout: 30s

@@ -1,0 +1,38 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: "{{._NAME_}}"
+  namespace: ngcc-user
+spec:
+  minAvailable: {{.replicas}}
+  schedulerName: volcano
+  priorityClassName: {{.priorityClassName}}
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+  - replicas: {{.replicas}}
+    name: test
+    template:
+      metadata:
+        name: test
+      spec:
+        containers:
+        - name: job
+          image: {{.image}}
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: "{{.cpu}}"
+              memory: {{.memory}}
+              nvidia.com/gpu: "{{.gpu}}"
+            requests:
+              cpu: "{{.cpu}}"
+              memory: {{.memory}}
+      restartPolicy: OnFailure

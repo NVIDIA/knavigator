@@ -1,0 +1,51 @@
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet 
+metadata:
+  name: "{{._NAME_}}"
+  namespace: "{{.namespace}}"
+spec:
+# We want to declare our JobSet successful if workers finish.
+# If workers finish we should clean up the remaining replicatedJobs.
+  successPolicy:
+    operator: All
+    targetReplicatedJobs:
+    - workers
+  replicatedJobs:
+  - name: driver
+    replicas: 1
+    template:
+      spec:
+        # Set backoff limit to 0 so job will immediately fail if any pod fails.
+        backoffLimit: 0 
+        completions: 1
+        parallelism: 1
+        template:
+          spec:
+            containers:
+            - name: driver
+              image: {{.image}}
+  - name: workers
+    replicas: {{.replicas}} 
+    template:
+      spec:
+        backoffLimit: {{.backoffLimit}}
+        completions: {{.completions}} 
+        parallelism: {{.parallelism}}
+        completionMode: {{.completionMode}}
+        template:
+          spec:
+            priorityClassName: {{.priorityClassName}}
+            schedulerName: default-scheduler
+            containers:
+            - name: test
+              image: {{.image}}
+              imagePullPolicy: IfNotPresent
+              resources:
+                limits:
+                  cpu: "{{.cpu}}"
+                  memory: {{.memory}}
+                  nvidia.com/gpu: "{{.gpu}}"
+                requests:
+                  cpu: "{{.cpu}}"
+                  memory: {{.memory}}
+                  nvidia.com/gpu: "{{.gpu}}"

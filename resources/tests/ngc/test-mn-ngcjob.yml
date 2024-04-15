@@ -1,0 +1,63 @@
+name: test-ngcjob
+description: submit and manage ngcjob
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    count: 1
+    grv:
+      group: nvidia.com
+      version: v1
+      resource: ngcjobs
+    template: "resources/templates/ngc/ngcjob-mn.yml"
+    nameformat: "{{._ENUM_}}"
+    overrides:
+      totalRuntimeSeconds: 3600
+      aceId: 12345
+      replicas: 2
+      instance: dgxa100.40g.8.norm
+      command: "sleep infinity"
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 8
+      teamName: teamName
+      orgName:  orgName
+      userId:   '100'
+    pods:
+      range:
+        pattern: "j{{._NAME_}}-worker-{{._INDEX_}}"
+        ranges:  ["0-1"]
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 3s
+- id: update
+  type: UpdateObj
+  params:
+    refTaskId: job
+    state:
+      spec:
+        template:
+          metadata:
+            labels:
+              job_priority_order: "60"
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job
+    state:
+      spec:
+        template:
+          metadata:
+            labels:
+              job_priority_order: "60"
+              non_existing: null
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Running
+    nodeLabels:
+      nodeType: gpu
+    timeout: 5s

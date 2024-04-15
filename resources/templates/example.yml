@@ -1,0 +1,34 @@
+apiVersion: example.com/v1
+kind: MyObject
+metadata:
+  name: "{{._NAME_}}"
+  namespace: test
+spec:
+  runPolicy:
+    coScheduling: null
+  template:
+    metadata:
+      annotations:
+        orgName: {{or .orgName "my-org" }}
+        teamName: {{or .teamName "my-team" }}
+        userName: "{{or .userName "my-user"}}"
+      labels:
+        obj-name: test
+        instance: {{.instance}}
+    spec:
+      containers:
+      - name: test
+        args:
+        - -c
+        - {{.command}}
+        command:
+        - /bin/sh
+        image: {{.image}}
+        resources:
+          limits:
+            cpu: "{{.cpu}}"
+            memory: {{.memory}}
+            nvidia.com/gpu: "{{.gpu}}"
+          requests:
+            cpu: "{{.cpu}}"
+            memory: {{.memory}}
