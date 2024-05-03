@@ -29,6 +29,7 @@ const (
 	TaskSubmitObj   = "SubmitObj"
 	TaskUpdateObj   = "UpdateObj"
 	TaskCheckObj    = "CheckObj"
+	TaskDeleteObj   = "DeleteObj"
 	TaskCheckPod    = "CheckPod"
 	TaskUpdateNodes = "UpdateNodes"
 	TaskSleep       = "Sleep"
