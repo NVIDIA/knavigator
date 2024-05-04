@@ -122,6 +122,15 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
 		}
 		return task, nil
+	case TaskDeleteObj:
+		task, err := newDeleteObjTask(eng.log, eng.dynamicClient, eng, cfg)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := eng.objMap[task.RefTaskID]; !ok {
+			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
+		}
+		return task, nil
 	case TaskUpdateNodes:
 		return newUpdateNodesTask(eng.log, eng.k8sClient, cfg)
 	case TaskCheckPod:
