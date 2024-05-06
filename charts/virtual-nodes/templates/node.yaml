@@ -1,0 +1,196 @@
+# Iterate over node types
+{{- range $node := .Values.nodes }}
+
+# Default params that can be overridden by each node type as appropriate
+{{- $params := dict }}
+
+# The default set of resources for all node types
+{{- $defaultResources := dict }}
+{{- $defaultResources = set $defaultResources "hugepages-1Gi" 0   }}
+{{- $defaultResources = set $defaultResources "hugepages-2Mi" 0   }}
+{{- $defaultResources = set $defaultResources "pods"          110 }}
+
+# dgxa100.40g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+{{- if eq $node.type "dgxa100.40g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 256    }}
+  {{- $resources = set $resources "memory"              "1Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "15Ti" }}
+  {{- $params = set $params "resources" $resources }}
+  {{- $params = set $params "nodeInstance" "dgxa100.40g.8.norm" }}
+  {{- $params = set $params "nodeGroup"    "gpu" }}
+  {{- $params = set $params "nodeType"     "gpu" }}
+
+# dgxa100.80g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+{{- else if eq $node.type "dgxa100.80g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 256    }}
+  {{- $resources = set $resources "memory"              "2Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
+  {{- $params = set $params "resources" $resources }}
+  {{- $params = set $params "nodeInstance" "dgxa100.80g.8.norm" }}
+  {{- $params = set $params "nodeGroup"    "gpu" }}
+  {{- $params = set $params "nodeType"     "gpu" }}
+
+# dgxh100.80g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview
+{{- else if eq $node.type "dgxh100.80g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 224    }}
+  {{- $resources = set $resources "memory"              "2Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
+  {{- $params = set $params "resources" $resources }}
+  {{- $params = set $params "nodeInstance" "dgxh100.80g.8.norm" }}
+  {{- $params = set $params "nodeGroup"    "gpu" }}
+  {{- $params = set $params "nodeType"     "gpu" }}
+
+# cpu.x86
+{{- else if eq $node.type "cpu.x86" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"               48             }}
+  {{- $resources = set $resources "memory"            "196692052Ki"  }}
+  {{- $resources = set $resources "ephemeral-storage" "2537570228Ki" }}
+  {{- $params = set $params "resources" $resources }}
+  {{- $params = set $params "nodeGroup" "cpu" }}
+  {{- $params = set $params "nodeType"  "cpu" }}
+
+{{- else }}
+  {{- $error := printf "Unsupported node type '%s'" $node.type }}
+  {{- fail $error }}
+{{- end }}
+
+{{- $count := ($node.count | int) }}
+{{- range until $count }}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: virtual-{{ $node.type }}-{{.}}
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    gpu_affinity_capable: "true"
+    node-role.bcp.ngc.nvidia.com/role: user-workload
+    nodeGroup: {{ $params.nodeGroup }}
+    nodeType: {{ $params.nodeType }}
+    {{- if $params.nodeInstance }}
+    nodeInstance: {{ $params.nodeInstance }}
+    {{- end }}
+    pod_gpu_size.static: dynamic
+    preempt_upon_cordon: "true"
+    type: kwok
+  name: virtual-{{ $node.type }}-{{.}}
+status:
+  conditions:
+  - type: AggregatedNodeHealth
+    reason: NodeReady
+    status: "True"
+    message: Node is healthy
+  - message: Flannel is running on this node
+    reason: FlannelIsUp
+    status: "False"
+    type: NetworkUnavailable
+  - message: acs kernel module is disabled
+    reason: ACSModuleDisabled
+    status: "False"
+    type: ACSModuleCheck
+  - message: kernel has no deadlock
+    reason: KernelHasNoDeadlock
+    status: "False"
+    type: KernelDeadlock
+  - message: Filesystem is read-only
+    reason: FilesystemIsReadOnly
+    status: "False"
+    type: ReadonlyFilesystem
+  - message: Flannel is running on this node
+    reason: FlannelDeviceAvailable
+    status: "False"
+    type: FlannelNetworkDeviceProblem
+  - message: Dgx has /raid
+    reason: DgxRaidOk
+    status: "False"
+    type: DgxRaidProblem
+  - message: Node is in NW Topology CM or feature disabled
+    reason: NodeIsAdded
+    status: "False"
+    type: NodeNotInNWTopologyCM
+  - message: GPU has a DBE/MSBE problem
+    reason: GpuHasNoDbeMsbeProblem
+    status: "False"
+    type: GpuDbeMsbeProblem
+  - message: ceph client is backlisted resulting in hung mounts
+    reason: CephClientBlackListed
+    status: "False"
+    type: CephMountsHung
+  - message: nv_peer_mem is loaded and active
+    reason: NvPeerMemKernelModuleOK
+    status: "False"
+    type: NvPeerMemProblem
+  - message: RoCE interface(s) spoof check is OFF (OK)
+    reason: RoCESpoofCheck
+    status: "False"
+    type: RoCESpoofCheckProblem
+  - message: GPU has HW Slowdown in Active State
+    reason: GpuHWSlowDownNotActive
+    status: "False"
+    type: GpuHWSlowDown
+  - message: RoCE interface(s) are UP
+    reason: RoCECarrierSignal
+    status: "False"
+    type: RoCELinksProblem
+  - message: kubelet has sufficient memory available
+    reason: KubeletHasSufficientMemory
+    status: "False"
+    type: MemoryPressure
+  - message: kubelet has no disk pressure
+    reason: KubeletHasNoDiskPressure
+    status: "False"
+    type: DiskPressure
+  - message: kubelet has sufficient PID available
+    reason: KubeletHasSufficientPID
+    status: "False"
+    type: PIDPressure
+  - message: kubelet is posting ready status. AppArmor enabled
+    reason: KubeletReady
+    status: "True"
+    type: Ready
+  allocatable:
+    {{- range $key, $value := $params.resources }}
+      {{ $key }}: {{ $value }}
+    {{- end }}
+  capacity:
+    {{- range $key, $value := $params.resources }}
+      {{ $key }}: {{ $value }}
+    {{- end }}
+  nodeInfo:
+    architecture: amd64
+    bootID: ""
+    containerRuntimeVersion: ""
+    kernelVersion: ""
+    kubeProxyVersion: fake
+    kubeletVersion: fake
+    machineID: ""
+    operatingSystem: linux
+    osImage: ""
+    systemUUID: ""
+  phase: Running
+{{- end }}
+{{- end }}

@@ -36,7 +36,7 @@ Regardless of the configuration mode, Knavigator executes tasks sequentially. Ea
 
 ### Documentation
 
+- [Deployment](docs/deployment.md)
 - [Getting started](docs/getting_started.md)
 - [Task management](docs/task_management.md)
 - [Metrics and Dashboards](docs/metrics.md)
-- [Deployment](docs/deployment.md)
