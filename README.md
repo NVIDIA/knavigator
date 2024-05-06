@@ -1,68 +1,42 @@
- Knavigator
+# Knavigator
 
-Project `Knavigator` is a comprehensive framework designed to support developers and operations of Kubernetes-based cloud systems. It addresses various needs, including testing, troubleshooting, benchmarking, chaos engineering, performance analysis, and optimization. 
+## Overview
 
-`Knavigator` can run tests on real Kubernetes clusters, including those with GPU nodes, or it can use virtual nodes through [KWOK](https://kwok.sigs.k8s.io/). The latter allows for large-scale testing with limited resources.
+Knavigator is a project designed to analyze, optimize, and compare scheduling systems, with a focus on AI/ML workloads. It addresses various needs, including testing, troubleshooting, benchmarking, chaos engineering, performance analysis, and optimization. 
 
 The term "knavigator" is derived from "navigator," with a silent "k" prefix representing "kubernetes." Much like a navigator, this initiative assists in charting a secure route and steering clear of obstacles within the cluster.
 
-## Getting started
+Knavigator interfaces with Kubernetes clusters to manage tasks such as manupulating with Kubernetes objects, evaluating PromQL queries, as well as executing specific operations.
 
-Build Knavigator, run
-```shell
-$ make build
-```
+Knavigator can operate both outside and inside a Kubernetes cluster, leveraging the Kubernetes API for task management.
 
-## Running jobs
+To facilitate large-scale experiments without the overhead of running actual user workloads, Knavigator utilizes [KWOK](https://kwok.sigs.k8s.io/) for creating virtual nodes in extensive clusters.
 
-`Knavigator` currently provides templates for different batch jobs, including kubernetes native `job`, `jobset` and Volcano `job`. The templates for [run:ai workloads](https://docs.run.ai/v2.14/admin/workloads/workload-overview-admin/) is under development.
+## Architecture
 
-### Volcano
+![knavigator architecture](docs/assets/knavigator-design.png)
 
-Install [volcano](https://volcano.sh).
+### Components
 
-Using YAML files:
-```shell
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
-```
+- **K8S control plane**: a set of components that manage the state and configuration of a vanilla Kubernetes cluster.
+- **Scheduling Framework**: cloud-native job scheduling system for batch, HPC, AI/ML, and similar applications in a Kubernetes cluster.
+- **KWOK**: Allows for the rapid setup of simulated Kubernetes clusters with minimal resource usage.
+- **Knavigator**: Facilitates communication with the Kubernetes cluster via the Kubernetes API, enabling task management and data retrieval.
+- **Metrics & Dashboard**: Gathers and processes metrics from the cluster, focusing on scheduling performance and resource utilization.
 
-Using helm:
-```shell
-helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
-helm install volcano volcano-sh/volcano -n volcano-system --create-namespace
-```
-Please make sure `volcano-admission`, `volcano-controller` and `volcano-scheduler` all are running on real nodes, e.g., control-plane nodes.
+### Workflow
 
-Create a priority class if needed:
-```shell
-kubectl create priorityclass normal-priority --value=100000
-```
-Run a Volcano batch job with `volcano`:
-```shell
-$ ./bin/knavigator -tasks ./resources/tests/volcano/test-job.yml
-```
-### Native kubernetes
+Knavigator offers versatile configuration options, allowing it to function independently, serve as an HTTP/gRPC server, or seamlessly integrate as a package or library within other systems.
 
-Run a kubernetes job:
-```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-job.yml
-```
+In its standalone mode, Knavigator can be set up using a descriptive YAML file, where users specify the sequence of tasks to be executed. This mode is ideal for isolated testing scenarios where Knavigator operates independently.
 
-Install [JobSet](https://github.com/kubernetes-sigs/jobset) in your cluster:
-```shell
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.4.0/manifests.yaml
-```
-The controller runs in the `jobset-system` namespace. Make sure it is running on a real node, e.g., a control-plane node.
+Alternatively, in server or package configurations, Knavigator can receive a series of API calls to define the tasks to be performed. This mode facilitates integration with existing systems or frameworks, providing flexibility in how tasks are defined and managed.
 
-Create a priority class if needed:
-```shell
-kubectl create priorityclass normal-priority --value=100000
-```
-Run jobset with workers: 
-```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset.yml
-```
-Run a test jobset with a driver and workers:
-```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset-with-driver.yml
-```
+Regardless of the configuration mode, Knavigator executes tasks sequentially. Each task is dependent on the successful completion of the preceding one. Therefore, if any task fails during execution, the entire test is marked as failed. This ensures comprehensive testing and accurate reporting of results, maintaining the integrity of the testing process.
+
+### Documentation
+
+- [Getting started](docs/getting_started.md)
+- [Task management](docs/task_management.md)
+- [Metrics and Dashboards](docs/metrics.md)
+- [Deployment](docs/deployment.md)
