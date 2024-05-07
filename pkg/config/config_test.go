@@ -104,8 +104,8 @@ func TestConfigPaths(t *testing.T) {
 		},
 		{
 			name:  "Case 3: Valid input",
-			paths: "../../resources/tests/ngc,../../resources/tests/test-custom-resource.yml",
-			count: 3,
+			paths: "../../resources/tests/volcano,../../resources/tests/test-custom-resource.yml",
+			count: 2,
 		},
 	}
 	for _, tc := range testCases {
