@@ -21,9 +21,6 @@
   {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
   {{- $resources = set $resources "ephemeral-storage"   "15Ti" }}
   {{- $params = set $params "resources" $resources }}
-  {{- $params = set $params "nodeInstance" "dgxa100.40g.8.norm" }}
-  {{- $params = set $params "nodeGroup"    "gpu" }}
-  {{- $params = set $params "nodeType"     "gpu" }}
 
 # dgxa100.80g
 # Specs taken from here:
@@ -36,9 +33,6 @@
   {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
   {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
   {{- $params = set $params "resources" $resources }}
-  {{- $params = set $params "nodeInstance" "dgxa100.80g.8.norm" }}
-  {{- $params = set $params "nodeGroup"    "gpu" }}
-  {{- $params = set $params "nodeType"     "gpu" }}
 
 # dgxh100.80g
 # Specs taken from here:
@@ -51,9 +45,6 @@
   {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
   {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
   {{- $params = set $params "resources" $resources }}
-  {{- $params = set $params "nodeInstance" "dgxh100.80g.8.norm" }}
-  {{- $params = set $params "nodeGroup"    "gpu" }}
-  {{- $params = set $params "nodeType"     "gpu" }}
 
 # cpu.x86
 {{- else if eq $node.type "cpu.x86" }}
@@ -62,8 +53,6 @@
   {{- $resources = set $resources "memory"            "196692052Ki"  }}
   {{- $resources = set $resources "ephemeral-storage" "2537570228Ki" }}
   {{- $params = set $params "resources" $resources }}
-  {{- $params = set $params "nodeGroup" "cpu" }}
-  {{- $params = set $params "nodeType"  "cpu" }}
 
 {{- else }}
   {{- $error := printf "Unsupported node type '%s'" $node.type }}
@@ -79,6 +68,9 @@ metadata:
   annotations:
     node.alpha.kubernetes.io/ttl: "0"
     kwok.x-k8s.io/node: fake
+    {{- range $key, $value := $node.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
   labels:
     beta.kubernetes.io/arch: amd64
     beta.kubernetes.io/os: linux
@@ -87,75 +79,13 @@ metadata:
     kubernetes.io/os: linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
-    gpu_affinity_capable: "true"
-    node-role.bcp.ngc.nvidia.com/role: user-workload
-    nodeGroup: {{ $params.nodeGroup }}
-    nodeType: {{ $params.nodeType }}
-    {{- if $params.nodeInstance }}
-    nodeInstance: {{ $params.nodeInstance }}
+    {{- range $key, $value := $node.labels }}
+    {{ $key }}: {{ $value | quote }}
     {{- end }}
-    pod_gpu_size.static: dynamic
-    preempt_upon_cordon: "true"
     type: kwok
   name: virtual-{{ $node.type }}-{{.}}
 status:
   conditions:
-  - type: AggregatedNodeHealth
-    reason: NodeReady
-    status: "True"
-    message: Node is healthy
-  - message: Flannel is running on this node
-    reason: FlannelIsUp
-    status: "False"
-    type: NetworkUnavailable
-  - message: acs kernel module is disabled
-    reason: ACSModuleDisabled
-    status: "False"
-    type: ACSModuleCheck
-  - message: kernel has no deadlock
-    reason: KernelHasNoDeadlock
-    status: "False"
-    type: KernelDeadlock
-  - message: Filesystem is read-only
-    reason: FilesystemIsReadOnly
-    status: "False"
-    type: ReadonlyFilesystem
-  - message: Flannel is running on this node
-    reason: FlannelDeviceAvailable
-    status: "False"
-    type: FlannelNetworkDeviceProblem
-  - message: Dgx has /raid
-    reason: DgxRaidOk
-    status: "False"
-    type: DgxRaidProblem
-  - message: Node is in NW Topology CM or feature disabled
-    reason: NodeIsAdded
-    status: "False"
-    type: NodeNotInNWTopologyCM
-  - message: GPU has a DBE/MSBE problem
-    reason: GpuHasNoDbeMsbeProblem
-    status: "False"
-    type: GpuDbeMsbeProblem
-  - message: ceph client is backlisted resulting in hung mounts
-    reason: CephClientBlackListed
-    status: "False"
-    type: CephMountsHung
-  - message: nv_peer_mem is loaded and active
-    reason: NvPeerMemKernelModuleOK
-    status: "False"
-    type: NvPeerMemProblem
-  - message: RoCE interface(s) spoof check is OFF (OK)
-    reason: RoCESpoofCheck
-    status: "False"
-    type: RoCESpoofCheckProblem
-  - message: GPU has HW Slowdown in Active State
-    reason: GpuHWSlowDownNotActive
-    status: "False"
-    type: GpuHWSlowDown
-  - message: RoCE interface(s) are UP
-    reason: RoCECarrierSignal
-    status: "False"
-    type: RoCELinksProblem
   - message: kubelet has sufficient memory available
     reason: KubeletHasSufficientMemory
     status: "False"
@@ -172,6 +102,12 @@ status:
     reason: KubeletReady
     status: "True"
     type: Ready
+  {{- range $condition := $node.conditions }}
+  - message: {{ $condition.message }}
+    reason: {{ $condition.reason }}
+    status: {{ $condition.status | quote }}
+    type: {{ $condition.type }}
+  {{- end }}
   allocatable:
     {{- range $key, $value := $params.resources }}
       {{ $key }}: {{ $value }}

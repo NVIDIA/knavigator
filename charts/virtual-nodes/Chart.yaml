@@ -1,6 +1,6 @@
 apiVersion: v2
 name: virtual-nodes
-description: A Helm chart for Kubernetes
+description: A Helm chart for deploying virtual nodes in Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.
 #
