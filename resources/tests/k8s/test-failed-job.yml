@@ -1,0 +1,37 @@
+name: test-k8s-job
+description: submit and validate a k8s job
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    count: 1
+    grv:
+      group: batch
+      version: v1
+      resource: jobs
+    template: "resources/templates/k8s/failed-job.yml"
+    nameformat: "job{{._ENUM_}}"
+    overrides:
+      namespace: default
+      parallelism: 1
+      completions: 1
+      backoffLimit: 0
+      completionMode: NonIndexed
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 8
+      containerImage: ubuntu
+      initContainerImage: nccl
+      failureContainerName: nccl-test
+      failureReason: nccl-test-failed
+      failureMessage: "nccl test failed"
+      failureExitCode: 1
+      failureDelay: 1000
+      failureJitterDelay: 5000
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job 
+    status: Failed
+    timeout: 10s
