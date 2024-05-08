@@ -207,10 +207,8 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		}
 	}
 
-	task.setter.SetObjInfo(task.taskID,
+	return task.setter.SetObjInfo(task.taskID,
 		NewObjInfo([]string{task.obj[0].Metadata.Name}, task.obj[0].Metadata.Namespace, gvr, task.Pods.Names()...))
-
-	return nil
 }
 
 func (obj *GenericObject) UnmarshalYAML(unmarshal func(interface{}) error) error {

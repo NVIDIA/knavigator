@@ -89,7 +89,7 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 	done := make(chan struct{})
 	defer close(done)
 
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			task.log.V(4).Info("Informer added", "resource", info.GVR.Resource, "name", resource.GetName())
@@ -101,6 +101,9 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
 		},
 	})
+	if err != nil {
+		return err
+	}
 
 	stopCh := make(chan struct{})
 	go informer.Run(stopCh)
