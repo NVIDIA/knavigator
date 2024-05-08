@@ -34,6 +34,14 @@ Alternatively, in server or package configurations, Knavigator can receive a ser
 
 Regardless of the configuration mode, Knavigator executes tasks sequentially. Each task is dependent on the successful completion of the preceding one. Therefore, if any task fails during execution, the entire test is marked as failed. This ensures comprehensive testing and accurate reporting of results, maintaining the integrity of the testing process.
 
+### Demo
+
+Here's a demo showing how to install and configure `Knavigator`, and run an example test that deploys a k8s job in a `minikube` cluster.
+
+<p align="center">
+<img width="800" src="./demos/basic.svg">
+</p>
+
 ### Documentation
 
 - [Deployment](docs/deployment.md)

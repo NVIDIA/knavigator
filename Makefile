@@ -67,3 +67,18 @@ image-build: build
 .PHONY: image-push
 image-push: image-build
 	$(DOCKER_BIN) push $(IMAGE_REPO):$(IMAGE_TAG)
+
+.PRECIOUS: %.cast
+%.cast: %.demo
+	@WORK_DIR=$(shell dirname $<) \
+	./hack/democtl.sh "$<" "$@" \
+		--ps1='\033[1;96m~/nvidia/knavigator\033[1;94m$$\033[0m '
+
+.PRECIOUS: %.svg
+%.svg: %.cast
+	@./hack/democtl.sh "$<" "$@" \
+		--term xresources \
+	  	--profile ./.xresources
+
+%.mp4: %.cast
+	@./hack/democtl.sh "$<" "$@"
