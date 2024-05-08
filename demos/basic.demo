@@ -1,0 +1,35 @@
+# Demo: how to install, configure and use Knvavigator in a local k8s cluster, such as minikube or KinD
+
+# Show the cluster infomation
+kubectl cluster-info
+
+kubectl get nodes
+
+# Install KWOK node simulator 
+
+KWOK_REPO=kubernetes-sigs/kwok
+KWOK_LATEST_RELEASE="v0.5.2"
+kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwok.yaml"
+kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/stage-fast.yaml"
+kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
+kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
+
+# Add virtual nodes to the cluster
+helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
+kubectl get nodes
+
+# Build Knavigator
+make build
+
+# Run Knavigator with an example test
+kubectl create ns k8s-test 
+./bin/knavigator --tasks resources/tests/k8s/test-job.yml
+
+# Show the job running
+kubectl get job -n k8s-test
+
+# Clean up
+kubectl delete job job1 -n k8s-test
+kubectl delete ns k8s-test
+
+# That's it. Thank you!
