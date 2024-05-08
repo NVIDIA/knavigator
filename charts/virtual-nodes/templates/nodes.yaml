@@ -1,18 +1,26 @@
+{{/*
 # Iterate over node types
+*/}}
 {{- range $node := .Values.nodes }}
 
+{{/*
 # Default params that can be overridden by each node type as appropriate
+*/}}
 {{- $params := dict }}
 
+{{/*
 # The default set of resources for all node types
+*/}}
 {{- $defaultResources := dict }}
 {{- $defaultResources = set $defaultResources "hugepages-1Gi" 0   }}
 {{- $defaultResources = set $defaultResources "hugepages-2Mi" 0   }}
 {{- $defaultResources = set $defaultResources "pods"          110 }}
 
+{{/*
 # dgxa100.40g
 # Specs taken from here:
 # https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+*/}}
 {{- if eq $node.type "dgxa100.40g" }}
   {{- $resources := deepCopy $defaultResources }}
   {{- $resources = set $resources "cpu"                 256    }}
@@ -22,9 +30,11 @@
   {{- $resources = set $resources "ephemeral-storage"   "15Ti" }}
   {{- $params = set $params "resources" $resources }}
 
+{{/*
 # dgxa100.80g
 # Specs taken from here:
 # https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+*/}}
 {{- else if eq $node.type "dgxa100.80g" }}
   {{- $resources := deepCopy $defaultResources }}
   {{- $resources = set $resources "cpu"                 256    }}
@@ -34,9 +44,11 @@
   {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
   {{- $params = set $params "resources" $resources }}
 
+{{/*
 # dgxh100.80g
 # Specs taken from here:
 # https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview
+*/}}
 {{- else if eq $node.type "dgxh100.80g" }}
   {{- $resources := deepCopy $defaultResources }}
   {{- $resources = set $resources "cpu"                 224    }}
@@ -46,7 +58,9 @@
   {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
   {{- $params = set $params "resources" $resources }}
 
+{{/*
 # cpu.x86
+*/}}
 {{- else if eq $node.type "cpu.x86" }}
   {{- $resources := deepCopy $defaultResources }}
   {{- $resources = set $resources "cpu"               48             }}
