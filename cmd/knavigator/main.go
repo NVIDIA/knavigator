@@ -30,6 +30,14 @@ import (
 	"github.com/NVIDIA/knavigator/pkg/utils"
 )
 
+func usage() {
+	msg := `Usage: bin/knavigagor <--tasks... > [options...]
+            --kubeconfig  kubeconfig file path
+            --kubectx     kube context 
+            --tasks       comma-separated list of task config files and dirs`
+	fmt.Println(msg)
+}
+
 func mainInternal() error {
 	var kubeConfigPath, kubeCtx, taskConfigs string
 	flag.StringVar(&kubeConfigPath, "kubeconfig", "", "kubeconfig file path")
@@ -41,6 +49,7 @@ func mainInternal() error {
 
 	taskconfigs, err := config.NewFromPaths(taskConfigs)
 	if err != nil {
+		usage()
 		return err
 	}
 	if len(taskconfigs) == 0 {
