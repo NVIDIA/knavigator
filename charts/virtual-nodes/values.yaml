@@ -1,0 +1,13 @@
+# Default values for virtual-nodes.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+nodes: {}
+# - type: dgxa100.40g
+#   count: 2
+# - type: dgxa100.80g
+#   count: 2
+# - type: dgxh100.80g
+#   count: 2
+# - type: cpu.x86
+#   count: 2

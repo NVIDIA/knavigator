@@ -1,0 +1,132 @@
+# Iterate over node types
+{{- range $node := .Values.nodes }}
+
+# Default params that can be overridden by each node type as appropriate
+{{- $params := dict }}
+
+# The default set of resources for all node types
+{{- $defaultResources := dict }}
+{{- $defaultResources = set $defaultResources "hugepages-1Gi" 0   }}
+{{- $defaultResources = set $defaultResources "hugepages-2Mi" 0   }}
+{{- $defaultResources = set $defaultResources "pods"          110 }}
+
+# dgxa100.40g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+{{- if eq $node.type "dgxa100.40g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 256    }}
+  {{- $resources = set $resources "memory"              "1Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "15Ti" }}
+  {{- $params = set $params "resources" $resources }}
+
+# dgxa100.80g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview
+{{- else if eq $node.type "dgxa100.80g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 256    }}
+  {{- $resources = set $resources "memory"              "2Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
+  {{- $params = set $params "resources" $resources }}
+
+# dgxh100.80g
+# Specs taken from here:
+# https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview
+{{- else if eq $node.type "dgxh100.80g" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"                 224    }}
+  {{- $resources = set $resources "memory"              "2Ti"  }}
+  {{- $resources = set $resources "nvidia.com/gpu"      8      }}
+  {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
+  {{- $params = set $params "resources" $resources }}
+
+# cpu.x86
+{{- else if eq $node.type "cpu.x86" }}
+  {{- $resources := deepCopy $defaultResources }}
+  {{- $resources = set $resources "cpu"               48             }}
+  {{- $resources = set $resources "memory"            "196692052Ki"  }}
+  {{- $resources = set $resources "ephemeral-storage" "2537570228Ki" }}
+  {{- $params = set $params "resources" $resources }}
+
+{{- else }}
+  {{- $error := printf "Unsupported node type '%s'" $node.type }}
+  {{- fail $error }}
+{{- end }}
+
+{{- $count := ($node.count | int) }}
+{{- range until $count }}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+    {{- range $key, $value := $node.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: virtual-{{ $node.type }}-{{.}}
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    {{- range $key, $value := $node.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    type: kwok
+  name: virtual-{{ $node.type }}-{{.}}
+status:
+  conditions:
+  - message: kubelet has sufficient memory available
+    reason: KubeletHasSufficientMemory
+    status: "False"
+    type: MemoryPressure
+  - message: kubelet has no disk pressure
+    reason: KubeletHasNoDiskPressure
+    status: "False"
+    type: DiskPressure
+  - message: kubelet has sufficient PID available
+    reason: KubeletHasSufficientPID
+    status: "False"
+    type: PIDPressure
+  - message: kubelet is posting ready status. AppArmor enabled
+    reason: KubeletReady
+    status: "True"
+    type: Ready
+  {{- range $condition := $node.conditions }}
+  - message: {{ $condition.message }}
+    reason: {{ $condition.reason }}
+    status: {{ $condition.status | quote }}
+    type: {{ $condition.type }}
+  {{- end }}
+  allocatable:
+    {{- range $key, $value := $params.resources }}
+      {{ $key }}: {{ $value }}
+    {{- end }}
+  capacity:
+    {{- range $key, $value := $params.resources }}
+      {{ $key }}: {{ $value }}
+    {{- end }}
+  nodeInfo:
+    architecture: amd64
+    bootID: ""
+    containerRuntimeVersion: ""
+    kernelVersion: ""
+    kubeProxyVersion: fake
+    kubeletVersion: fake
+    machineID: ""
+    operatingSystem: linux
+    osImage: ""
+    systemUUID: ""
+  phase: Running
+{{- end }}
+{{- end }}
