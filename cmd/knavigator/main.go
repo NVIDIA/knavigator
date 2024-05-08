@@ -39,6 +39,11 @@ func mainInternal() error {
 	klog.InitFlags(nil)
 	flag.Parse()
 
+	if len(taskConfigs) == 0 {
+		flag.Usage()
+		return fmt.Errorf("missing task config")
+	}
+
 	taskconfigs, err := config.NewFromPaths(taskConfigs)
 	if err != nil {
 		return err
