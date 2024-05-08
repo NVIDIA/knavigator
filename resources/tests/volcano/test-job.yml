@@ -12,6 +12,7 @@ tasks:
     template: "resources/templates/volcano/job.yml"
     nameformat: "j{{._ENUM_}}"
     overrides:
+      namespace: default
       replicas: 2
       priorityClassName: normal-priority
       image: ubuntu
