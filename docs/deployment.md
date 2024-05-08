@@ -49,17 +49,17 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 
 For configuring virtual nodes, you need to provide the `values.yaml` file to define the type and quantity of nodes you wish to create. You also have the option to enhance node configurations by adding annotations, labels, and conditions. For guidance, refer to the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
 
-Currently, the system supports the following node types:
+Currently, the system includes the following node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxa100.80g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxh100.80g](https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview)
 - cpu.x86
 
-If you need to introduce additional node types, update the `values.yaml` file with the necessary node information (such as type and count) and include a parameters section in the [nodes.yaml](../charts/virtual-nodes/templates/nodes.yaml) file.
+If you need to introduce additional node types, update the values file used for node configuration with the node information (such as type and count), and include a parameters section in the [nodes.yaml](../charts/virtual-nodes/templates/nodes.yaml) file.
 
-To deploy these nodes, use the Helm command:
+To deploy the nodes in `values-example.yaml`, use the Helm command:
 ```bash
-helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values.yaml
+helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
 ```
 
 ## Running Knavigator
