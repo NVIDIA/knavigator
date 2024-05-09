@@ -22,6 +22,16 @@ IMAGE_REPO ?=docker.io/nvidia/knavigator
 GIT_REF =$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE_TAG ?=$(GIT_REF)
 
+## verify: Verify code
+.PHONY: verify
+verify:
+	@./hack/verify-all.sh
+
+## update: Update all the generated
+.PHONY: update
+update:
+	@./hack/update-all.sh
+
 .PHONY: build
 build:
 	@for target in $(TARGETS); do        \
