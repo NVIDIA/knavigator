@@ -22,3 +22,11 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Completed
+    nodeLabels:
+      nodeType: gpu
+    timeout: 5s
