@@ -1,3 +1,5 @@
+<p align="center"><a href="https://github.com/NVIDIA/knavigator" target="_blank"><img src="docs/assets/knavigator-logo.png" width="100" alt="Logo"></a></p>
+
 # Knavigator
 
 ## Overview
