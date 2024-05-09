@@ -2,6 +2,9 @@
 
 # Knavigator
 
+![Build Status](https://github.com/NVIDIA/knavigator/actions/workflows/go.yml/badge.svg)
+![Static Badge](https://img.shields.io/badge/license-Apache_2.0-green)
+
 ## Overview
 
 Knavigator is a project designed to analyze, optimize, and compare scheduling systems, with a focus on AI/ML workloads. It addresses various needs, including testing, troubleshooting, benchmarking, chaos engineering, performance analysis, and optimization. 
