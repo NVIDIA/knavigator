@@ -2,7 +2,7 @@
 
 Build Knavigator, run
 ```shell
-$ make build
+make build
 ```
 
 ## Running jobs
@@ -31,13 +31,13 @@ kubectl create priorityclass normal-priority --value=100000
 ```
 Run a Volcano batch job with `volcano`:
 ```shell
-$ ./bin/knavigator -tasks ./resources/tests/volcano/test-job.yml
+./bin/knavigator -tasks ./resources/tests/volcano/test-job.yml
 ```
 ### Native kubernetes
 
 Run a kubernetes job:
 ```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-job.yml
+./bin/knavigator -tasks ./resources/tests/k8s/test-job.yml
 ```
 
 Install [JobSet](https://github.com/kubernetes-sigs/jobset) in your cluster:
@@ -52,9 +52,9 @@ kubectl create priorityclass normal-priority --value=100000
 ```
 Run jobset with workers: 
 ```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset.yml
+./bin/knavigator -tasks ./resources/tests/k8s/test-jobset.yml
 ```
 Run a test jobset with a driver and workers:
 ```shell
-$ ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset-with-driver.yml
+./bin/knavigator -tasks ./resources/tests/k8s/test-jobset-with-driver.yml
 ```
