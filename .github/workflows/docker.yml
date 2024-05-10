@@ -6,7 +6,7 @@ name: Docker
 # documentation.
 
 on: workflow_dispatch
-  
+
 env:
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
@@ -27,7 +27,7 @@ jobs:
 
       - name: Build
         run: make build
-        
+
       # Login against a Docker registry except on PR
       # https://github.com/docker/login-action
       - name: Log into registry ${{ env.REGISTRY }}
