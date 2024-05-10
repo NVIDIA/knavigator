@@ -9,9 +9,9 @@ spec:
   template:
     metadata:
       annotations:
-        orgName: {{or .orgName "my-org" }}
-        teamName: {{or .teamName "my-team" }}
-        userName: "{{or .userName "my-user"}}"
+        orgName: {{or .orgName "my-org"}}
+        teamName: {{or .teamName "my-team"}}
+        userName: {{or .userName "my-user"}}
       labels:
         obj-name: test
         instance: {{.instance}}
