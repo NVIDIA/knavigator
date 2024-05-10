@@ -22,7 +22,7 @@ tasks:
     pods:
       range:
         pattern: "{{._NAME_}}-test-{{._INDEX_}}"
-        ranges:  ["0-1"]
+        ranges: ["0-1"]
 - id: status
   type: CheckPod
   params:

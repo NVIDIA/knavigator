@@ -1,11 +1,11 @@
 apiVersion: jobset.x-k8s.io/v1alpha2
-kind: JobSet 
+kind: JobSet
 metadata:
   name: "{{._NAME_}}"
   namespace: "{{.namespace}}"
 spec:
-# We want to declare our JobSet successful if workers finish.
-# If workers finish we should clean up the remaining replicatedJobs.
+  # We want to declare our JobSet successful if workers finish.
+  # If workers finish we should clean up the remaining replicatedJobs.
   successPolicy:
     operator: All
     targetReplicatedJobs:
@@ -16,7 +16,7 @@ spec:
     template:
       spec:
         # Set backoff limit to 0 so job will immediately fail if any pod fails.
-        backoffLimit: 0 
+        backoffLimit: 0
         completions: 1
         parallelism: 1
         template:
@@ -25,11 +25,11 @@ spec:
             - name: driver
               image: {{.image}}
   - name: workers
-    replicas: {{.replicas}} 
+    replicas: {{.replicas}}
     template:
       spec:
         backoffLimit: {{.backoffLimit}}
-        completions: {{.completions}} 
+        completions: {{.completions}}
         parallelism: {{.parallelism}}
         completionMode: {{.completionMode}}
         template:
