@@ -151,7 +151,7 @@ func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info
 	}
 }
 
-// checkState validates state conformance and removes object name from the map if succeded
+// checkState validates state conformance and removes object name from the map if succeeded
 func (task *CheckObjTask) checkState(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap) error {
 	cr, err := task.client.Resource(info.GVR).Namespace(info.Namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

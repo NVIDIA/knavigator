@@ -11,7 +11,7 @@ Knavigator is a project designed to analyze, optimize, and compare scheduling sy
 
 The term "knavigator" is derived from "navigator," with a silent "k" prefix representing "kubernetes." Much like a navigator, this initiative assists in charting a secure route and steering clear of obstacles within the cluster.
 
-Knavigator interfaces with Kubernetes clusters to manage tasks such as manupulating with Kubernetes objects, evaluating PromQL queries, as well as executing specific operations.
+Knavigator interfaces with Kubernetes clusters to manage tasks such as manipulating with Kubernetes objects, evaluating PromQL queries, as well as executing specific operations.
 
 Knavigator can operate both outside and inside a Kubernetes cluster, leveraging the Kubernetes API for task management.
 

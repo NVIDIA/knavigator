@@ -1,22 +1,22 @@
 apiVersion: jobset.x-k8s.io/v1alpha2
-kind: JobSet 
+kind: JobSet
 metadata:
   name: "{{._NAME_}}"
   namespace: "{{.namespace}}"
 spec:
-# We want to declare our JobSet successful if workers finish.
-# If workers finish we should clean up the remaining replicatedJobs.
+  # We want to declare our JobSet successful if workers finish.
+  # If workers finish we should clean up the remaining replicatedJobs.
   successPolicy:
     operator: All
     targetReplicatedJobs:
     - workers
   replicatedJobs:
   - name: workers
-    replicas: {{.replicas}} 
+    replicas: {{.replicas}}
     template:
       spec:
         backoffLimit: {{.backoffLimit}}
-        completions: {{.completions}} 
+        completions: {{.completions}}
         parallelism: {{.parallelism}}
         completionMode: {{.completionMode}}
         template:

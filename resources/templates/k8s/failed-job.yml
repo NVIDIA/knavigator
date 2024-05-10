@@ -1,11 +1,11 @@
 apiVersion: batch/v1
-kind: Job 
+kind: Job
 metadata:
   name: "{{._NAME_}}"
   namespace: "{{.namespace}}"
 spec:
   backoffLimit: {{.backoffLimit}}
-  completions: {{.completions}} 
+  completions: {{.completions}}
   parallelism: {{.parallelism}}
   completionMode: {{.completionMode}}
   template:

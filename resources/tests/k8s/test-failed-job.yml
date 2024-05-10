@@ -32,6 +32,6 @@ tasks:
 - id: status
   type: CheckPod
   params:
-    refTaskId: job 
+    refTaskId: job
     status: Failed
     timeout: 10s
