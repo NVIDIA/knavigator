@@ -1,0 +1,23 @@
+name: test-kueue-job
+description: submit and validate a kueue job
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    count: 1
+    grv:
+      group: batch
+      version: v1
+      resource: jobs
+    template: "resources/templates/kueue/job.yml"
+    nameformat: "job{{._ENUM_}}"
+    overrides:
+      queueName: team-a-queue
+      namespace: default
+      parallelism: 3
+      completions: 3
+      completionMode: Indexed
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 1
