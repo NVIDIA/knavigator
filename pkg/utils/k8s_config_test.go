@@ -110,11 +110,11 @@ func TestGetK8sConfig(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			os.Unsetenv("KUBECONFIG")
+			_ = os.Unsetenv("KUBECONFIG")
 			if len(tc.envCfg) != 0 {
 				f, err := os.CreateTemp("", "test")
 				require.NoError(t, err)
-				defer os.Remove(f.Name())
+				defer func() { _ = os.Remove(f.Name()) }()
 
 				_, err = f.Write([]byte(tc.envCfg))
 				require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestGetK8sConfig(t *testing.T) {
 			if len(tc.kubeCfg) != 0 {
 				f, err := os.CreateTemp("", "test")
 				require.NoError(t, err)
-				defer os.Remove(f.Name())
+				defer func() { _ = os.Remove(f.Name()) }()
 
 				_, err = f.Write([]byte(tc.kubeCfg))
 				require.NoError(t, err)

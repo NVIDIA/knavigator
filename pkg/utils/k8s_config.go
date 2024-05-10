@@ -45,7 +45,7 @@ func GetK8sConfig(log logr.Logger, kubeConfigPath, kubectx string) (*rest.Config
 	if err != nil {
 		return nil, err
 	}
-	//update cert file location if needed
+	// update cert file location if needed
 	for _, info := range config.AuthInfos {
 		if len(info.LocationOfOrigin) != 0 {
 			dir := filepath.Dir(info.LocationOfOrigin)
