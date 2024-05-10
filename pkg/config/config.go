@@ -55,6 +55,7 @@ func New(data []byte) (*TaskConfig, error) {
 
 // NewFromFile populates test config from YAML file
 func NewFromFile(path string) (*TaskConfig, error) {
+	path = filepath.Clean(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
