@@ -37,7 +37,7 @@ type CheckObjTask struct {
 }
 
 // newCheckObjTask initializes and returns CheckObjTask
-func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjGetter, cfg *config.Task) (*CheckObjTask, error) {
+func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*CheckObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -49,8 +49,8 @@ func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjG
 				taskType: cfg.Type,
 				taskID:   cfg.ID,
 			},
-			client: client,
-			getter: getter,
+			client:   client,
+			accessor: accessor,
 		},
 	}
 
@@ -63,7 +63,7 @@ func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjG
 
 // Exec implements Runnable interface
 func (task *CheckObjTask) Exec(ctx context.Context) error {
-	info, err := task.getter.GetObjInfo(task.RefTaskID)
+	info, err := task.accessor.GetObjInfo(task.RefTaskID)
 	if err != nil {
 		return err
 	}
