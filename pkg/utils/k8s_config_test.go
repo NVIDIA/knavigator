@@ -22,6 +22,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/klog/v2/textlogger"
+
+	"github.com/NVIDIA/knavigator/pkg/config"
 )
 
 const testKubeCfg1 = `
@@ -134,7 +136,13 @@ func TestGetK8sConfig(t *testing.T) {
 
 				cfgPath = f.Name()
 			}
-			cfg, err := GetK8sConfig(testLogger, cfgPath, tc.kubeCtx)
+			c := &config.KubeConfig{
+				KubeConfigPath: cfgPath,
+				KubeCtx:        tc.kubeCtx,
+				QPS:            10,
+				Burst:          10,
+			}
+			cfg, err := GetK8sConfig(testLogger, c)
 			if len(tc.expectedErr) != 0 {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {

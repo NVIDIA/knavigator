@@ -32,9 +32,13 @@ import (
 
 func mainInternal() error {
 	var kubeConfigPath, kubeCtx, taskConfigs string
+	var qps float64
+	var burst int
 	flag.StringVar(&kubeConfigPath, "kubeconfig", "", "kubeconfig file path")
 	flag.StringVar(&kubeCtx, "kubectx", "", "kube context")
 	flag.StringVar(&taskConfigs, "tasks", "", "comma-separated list of task config files and dirs")
+	flag.Float64Var(&qps, "kube-api-qps", 500, "Maximum QPS to use while talking with Kubernetes API")
+	flag.IntVar(&burst, "kube-api-burst", 500, "Maximum burst for throttle while talking with Kubernetes API")
 
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -53,8 +57,13 @@ func mainInternal() error {
 	}
 
 	log := textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(utils.Flag2Verbosity(flag.Lookup("v")))))
-
-	restConfig, err := utils.GetK8sConfig(log, kubeConfigPath, kubeCtx)
+	cfg := &config.KubeConfig{
+		KubeConfigPath: kubeConfigPath,
+		KubeCtx:        kubeCtx,
+		QPS:            float32(qps),
+		Burst:          burst,
+	}
+	restConfig, err := utils.GetK8sConfig(log, cfg)
 	if err != nil {
 		return err
 	}
