@@ -58,3 +58,7 @@ Run a test jobset with a driver and workers:
 ```shell
 ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset-with-driver.yml
 ```
+
+### Kueue
+
+Refer to [this document](./examples/kueue/kueue.md) for detailed instructions on how to run `kueue` system with `knavigator`.

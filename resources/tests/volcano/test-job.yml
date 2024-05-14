@@ -27,7 +27,7 @@ tasks:
   type: CheckPod
   params:
     refTaskId: job
-    status: Completed
+    status: Running
     nodeLabels:
       nodeType: gpu
     timeout: 5s

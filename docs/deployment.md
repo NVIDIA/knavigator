@@ -40,11 +40,16 @@ KWOK_REPO=kubernetes-sigs/kwok
 KWOK_LATEST_RELEASE="v0.5.2"
 
 kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwok.yaml"
+```
 
+Next, deploy and adjust the stages.
+```bash
 kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/stage-fast.yaml"
 
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
+
+kubectl apply -f charts/overrides/kwok/pod-complete.yml
 ```
 
 For configuring virtual nodes, you need to provide the `values.yaml` file to define the type and quantity of nodes you wish to create. You also have the option to enhance node configurations by adding annotations, labels, and conditions. For guidance, refer to the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
@@ -61,6 +66,8 @@ To deploy the nodes in `values-example.yaml`, use the Helm command:
 ```bash
 helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
 ```
+
+> :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 
 ## Running Knavigator
 
