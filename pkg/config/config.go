@@ -25,6 +25,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type KubeConfig struct {
+	KubeConfigPath string
+	KubeCtx        string
+	QPS            float32
+	Burst          int
+}
+
 type TaskConfig struct {
 	Name        string  `yaml:"name"`
 	Description string  `yaml:"description,omitempty"`
