@@ -40,15 +40,21 @@ var (
 )
 
 type testEngine struct {
-	execErr  error
-	resetErr error
+	execErr   error
+	resetErr  error
+	deleteErr error
 }
 
 func (eng *testEngine) RunTask(context.Context, *config.Task) error {
 	return eng.execErr
 }
+
 func (eng *testEngine) Reset(context.Context) error {
 	return eng.resetErr
+}
+
+func (eng *testEngine) DeleteAllObjects(context.Context) error {
+	return eng.deleteErr
 }
 
 func TestRunEngine(t *testing.T) {

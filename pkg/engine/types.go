@@ -27,15 +27,16 @@ import (
 )
 
 const (
-	TaskRegisterObj = "RegisterObj"
-	TaskSubmitObj   = "SubmitObj"
-	TaskUpdateObj   = "UpdateObj"
-	TaskCheckObj    = "CheckObj"
-	TaskDeleteObj   = "DeleteObj"
-	TaskCheckPod    = "CheckPod"
-	TaskUpdateNodes = "UpdateNodes"
-	TaskSleep       = "Sleep"
-	TaskPause       = "Pause"
+	TaskRegisterObj       = "RegisterObj"
+	TaskSubmitObj         = "SubmitObj"
+	TaskUpdateObj         = "UpdateObj"
+	TaskCheckObj          = "CheckObj"
+	TaskDeleteObj         = "DeleteObj"
+	TaskCheckPod          = "CheckPod"
+	TaskUpdateNodes       = "UpdateNodes"
+	TaskSleep             = "Sleep"
+	TaskPause             = "Pause"
+	DefaultCleanupTimeout = 10 * time.Minute
 )
 
 type Runnable interface {
