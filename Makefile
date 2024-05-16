@@ -42,7 +42,7 @@ clean:
 .PHONY: test
 test:
 	@echo running tests
-	go test ./...
+	go test -coverprofile=coverage.out -covermode=atomic ./...
 
 .PHONY: fmt
 fmt:
@@ -59,6 +59,10 @@ lint:
 .PHONY: mod
 mod:
 	go mod tidy
+
+.PHONY: coverage
+coverage: test
+	go tool cover -func=coverage.out
 
 .PHONY: image-build
 image-build: build
