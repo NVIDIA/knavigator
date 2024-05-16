@@ -35,10 +35,11 @@ func NewSyncMap() *SyncMap {
 }
 
 // Set sets a key:value pair
-func (m *SyncMap) Set(key interface{}, val interface{}) {
+func (m *SyncMap) Set(key interface{}, val interface{}) int {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.data[key] = val
+	return len(m.data)
 }
 
 // Get return a value for a key (first returned argument) if found (second returned argument)

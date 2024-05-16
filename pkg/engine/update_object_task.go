@@ -35,7 +35,7 @@ type UpdateObjTask struct {
 	ObjStateTask
 }
 
-func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjGetter, cfg *config.Task) (*UpdateObjTask, error) {
+func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*UpdateObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -47,8 +47,8 @@ func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, getter Obj
 				taskType: cfg.Type,
 				taskID:   cfg.ID,
 			},
-			client: client,
-			getter: getter,
+			client:   client,
+			accessor: accessor,
 		},
 	}
 
@@ -61,7 +61,7 @@ func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, getter Obj
 
 // Exec implements Runnable interface
 func (task *UpdateObjTask) Exec(ctx context.Context) error {
-	info, err := task.getter.GetObjInfo(task.RefTaskID)
+	info, err := task.accessor.GetObjInfo(task.RefTaskID)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2/textlogger"
@@ -30,11 +31,12 @@ import (
 )
 
 var (
-	errExec           = fmt.Errorf("exec error")
-	errReset          = fmt.Errorf("reset error")
-	testLogger        = textlogger.NewLogger(textlogger.NewConfig())
-	testK8sClient     = &kubernetes.Clientset{}
-	testDynamicClient = &dynamic.DynamicClient{}
+	errExec             = fmt.Errorf("exec error")
+	errReset            = fmt.Errorf("reset error")
+	testLogger          = textlogger.NewLogger(textlogger.NewConfig())
+	testK8sClient       = &kubernetes.Clientset{}
+	testDynamicClient   = &dynamic.DynamicClient{}
+	testDiscoveryClient = &discovery.DiscoveryClient{}
 )
 
 type testEngine struct {

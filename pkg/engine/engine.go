@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -36,30 +37,37 @@ type Engine interface {
 }
 
 type Eng struct {
-	log           logr.Logger
-	mutex         sync.Mutex
-	k8sClient     *kubernetes.Clientset
-	dynamicClient *dynamic.DynamicClient
-	objMap        map[string]*ObjInfo
+	log             logr.Logger
+	mutex           sync.Mutex
+	k8sClient       *kubernetes.Clientset
+	dynamicClient   *dynamic.DynamicClient
+	discoveryClient *discovery.DiscoveryClient
+	objTypeMap      map[string]*RegisterObjParams
+	objInfoMap      map[string]*ObjInfo
 }
 
 func New(log logr.Logger, config *rest.Config, sim ...bool) (*Eng, error) {
 	eng := &Eng{
-		log:    log,
-		objMap: make(map[string]*ObjInfo),
+		log:        log,
+		objTypeMap: make(map[string]*RegisterObjParams),
+		objInfoMap: make(map[string]*ObjInfo),
 	}
 
 	if len(sim) == 0 { // len(sim) != 0 in unit tests
 		var err error
-		if eng.dynamicClient, err = dynamic.NewForConfig(config); err != nil {
-			return nil, err
-		}
 		if eng.k8sClient, err = kubernetes.NewForConfig(config); err != nil {
 			return nil, err
 		}
+		if eng.dynamicClient, err = dynamic.NewForConfig(config); err != nil {
+			return nil, err
+		}
+		if eng.discoveryClient, err = discovery.NewDiscoveryClientForConfig(config); err != nil {
+			return nil, err
+		}
 	} else if sim[0] {
-		eng.dynamicClient = &dynamic.DynamicClient{}
 		eng.k8sClient = &kubernetes.Clientset{}
+		eng.dynamicClient = &dynamic.DynamicClient{}
+		eng.discoveryClient = &discovery.DiscoveryClient{}
 	}
 
 	return eng, nil
@@ -98,56 +106,64 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 
 	eng.log.Info("Creating task", "name", cfg.Type, "id", cfg.ID)
 	switch cfg.Type {
+	case TaskRegisterObj:
+		return newRegisterObjTask(eng.log, eng.discoveryClient, eng, cfg)
+
 	case TaskSubmitObj:
 		task, err := newSubmitObjTask(eng.log, eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
+		if _, ok := eng.objTypeMap[task.RefTaskID]; !ok {
+			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
+		}
 		return task, nil
+
 	case TaskUpdateObj:
 		task, err := newUpdateObjTask(eng.log, eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := eng.objMap[task.RefTaskID]; !ok {
+		if _, ok := eng.objInfoMap[task.RefTaskID]; !ok {
 			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
 		}
 		return task, nil
+
 	case TaskCheckObj:
 		task, err := newCheckObjTask(eng.log, eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := eng.objMap[task.RefTaskID]; !ok {
+		if _, ok := eng.objInfoMap[task.RefTaskID]; !ok {
 			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
 		}
 		return task, nil
+
 	case TaskDeleteObj:
 		task, err := newDeleteObjTask(eng.log, eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := eng.objMap[task.RefTaskID]; !ok {
+		if _, ok := eng.objInfoMap[task.RefTaskID]; !ok {
 			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
 		}
 		return task, nil
+
 	case TaskUpdateNodes:
 		return newUpdateNodesTask(eng.log, eng.k8sClient, cfg)
+
 	case TaskCheckPod:
 		task, err := newCheckPodTask(eng.log, eng.k8sClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := eng.objMap[task.RefTaskID]; !ok {
+		if _, ok := eng.objInfoMap[task.RefTaskID]; !ok {
 			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
 		}
 		return task, nil
+
 	case TaskSleep:
-		task, err := newSleepTask(eng.log, cfg)
-		if err != nil {
-			return nil, err
-		}
-		return task, nil
+		return newSleepTask(eng.log, cfg)
 
 	case TaskPause:
 		return newPauseTask(eng.log, cfg), nil
@@ -157,16 +173,47 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 	}
 }
 
+// SetObjType implements ObjSetter interface and maps object type to RegisterObjParams
+func (eng *Eng) SetObjType(taskID string, params *RegisterObjParams) error {
+	eng.mutex.Lock()
+	defer eng.mutex.Unlock()
+
+	if _, ok := eng.objTypeMap[taskID]; ok {
+		return fmt.Errorf("SetObjType: duplicate task ID %s", taskID)
+	}
+
+	eng.objTypeMap[taskID] = params
+
+	eng.log.V(4).Info("Registering object for task ID", "name", taskID)
+
+	return nil
+}
+
+// GetObjType implements ObjGetter interface returns RegisterObjParams for given object type
+func (eng *Eng) GetObjType(objType string) (*RegisterObjParams, error) {
+	eng.mutex.Lock()
+	defer eng.mutex.Unlock()
+
+	info, ok := eng.objTypeMap[objType]
+	if !ok {
+		return nil, fmt.Errorf("GetObjType: missing object type %s", objType)
+	}
+
+	eng.log.V(4).Info("Getting object type", "name", objType)
+
+	return info, nil
+}
+
 // SetObjInfo implements ObjSetter interface and maps task ID to the corresponding ObjInfo
 func (eng *Eng) SetObjInfo(taskID string, info *ObjInfo) error {
 	eng.mutex.Lock()
 	defer eng.mutex.Unlock()
 
-	if _, ok := eng.objMap[taskID]; ok {
+	if _, ok := eng.objInfoMap[taskID]; ok {
 		return fmt.Errorf("SetObjInfo: duplicate task ID %s", taskID)
 	}
 
-	eng.objMap[taskID] = info
+	eng.objInfoMap[taskID] = info
 
 	eng.log.V(4).Info("Setting task info", "taskID", taskID)
 
@@ -178,7 +225,7 @@ func (eng *Eng) GetObjInfo(taskID string) (*ObjInfo, error) {
 	eng.mutex.Lock()
 	defer eng.mutex.Unlock()
 
-	info, ok := eng.objMap[taskID]
+	info, ok := eng.objInfoMap[taskID]
 	if !ok {
 		return nil, fmt.Errorf("GetObjInfo: missing task ID %s", taskID)
 	}

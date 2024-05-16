@@ -33,7 +33,7 @@ type DeleteObjTask struct {
 	deleteObjTaskParams
 
 	client *dynamic.DynamicClient
-	getter ObjGetter
+	getter ObjInfoAccessor
 }
 
 type deleteObjTaskParams struct {
@@ -41,7 +41,7 @@ type deleteObjTaskParams struct {
 }
 
 // newDeleteObjTask initializes and returns DeleteObjTask
-func newDeleteObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjGetter, cfg *config.Task) (*DeleteObjTask, error) {
+func newDeleteObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjInfoAccessor, cfg *config.Task) (*DeleteObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}

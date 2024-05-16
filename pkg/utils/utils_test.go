@@ -18,6 +18,7 @@ package utils
 
 import (
 	"flag"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,41 @@ func TestGenerateNames(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.names, names)
+			}
+		})
+	}
+}
+
+func TestExp2Regexp(t *testing.T) {
+	testCases := []struct {
+		name string
+		in   []string
+		out  []*regexp.Regexp
+		err  string
+	}{
+		{
+			name: "Case 1: invalid input",
+			in:   []string{"^name[0-9]+$", "(foo(bar)"},
+			err:  "failed to compile regexp '(foo(bar)': error parsing regexp: missing closing ): `(foo(bar)`",
+		},
+		{
+			name: "Case 2: valid input",
+			in:   []string{"^name[0-9]+$", "text"},
+			out: []*regexp.Regexp{
+				regexp.MustCompile("^name[0-9]+$"),
+				regexp.MustCompile("text"),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			re, err := Exp2Regexp(tc.in)
+			if len(tc.err) != 0 {
+				require.EqualError(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.out, re)
 			}
 		})
 	}

@@ -19,6 +19,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"text/template"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -26,6 +27,7 @@ import (
 )
 
 const (
+	TaskRegisterObj = "RegisterObj"
 	TaskSubmitObj   = "SubmitObj"
 	TaskUpdateObj   = "UpdateObj"
 	TaskCheckObj    = "CheckObj"
@@ -58,32 +60,65 @@ type StateParams struct {
 	Timeout   time.Duration          `yaml:"timeout"`
 }
 
+type TypeMeta struct {
+	Kind       string `json:"kind" yaml:"kind"`
+	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+}
+
+type RegisterObjParams struct {
+	// Template: path to the object template; see examples in resources/templates/
+	Template string `yaml:"template"`
+	// NameFormat: a Go-template parameter for generating unique object names.
+	// It utilizes the '_ENUM_' keyword for an incrementing counter and
+	// adds the '_NAME_' key to the parameter map with the templated value.
+	// Example: "job{{._ENUM_}}"
+	NameFormat string `yaml:"nameFormat"`
+	// PodNameFormat: an optional Go-template parameter for specifying regexp for the naming format
+	// of pods spawned by the object(s). It utilizes the '_NAME_' keyword for the object name.
+	// PodNameFormat should be specified when a user intends to use 'CheckPod' task.
+	// Example: "{{._NAME_}}-\d+-\S+"
+	PodNameFormat string `yaml:"podNameFormat,omitempty"`
+	// PodCount: an optional Go-template parameter for specifying number of spawned pods per object.
+	// It can contain a numerical value or refer to the template parameter.
+	// PodCount should be specified when a user intends to use 'CheckPod' task.
+	// Example: "2" or "{{.replicas}}"
+	PodCount string `yaml:"podCount,omitempty"`
+
+	// derived
+	gvr         schema.GroupVersionResource
+	objTpl      *template.Template
+	podNameTpl  *template.Template
+	podCountTpl *template.Template
+}
+
 // ObjInfo contains object GVR and an optional list of derived pod names
 type ObjInfo struct {
 	Names     []string
 	Namespace string
 	GVR       schema.GroupVersionResource
-	Pods      []string
+	PodCount  int
+	PodRegexp []string
 }
 
 // NewObjInfo creates new ObjInfo
-func NewObjInfo(names []string, ns string, gvr schema.GroupVersionResource, pods ...string) *ObjInfo {
+func NewObjInfo(names []string, ns string, gvr schema.GroupVersionResource, podCount int, podRegexp ...string) *ObjInfo {
 	return &ObjInfo{
 		Names:     names,
 		Namespace: ns,
 		GVR:       gvr,
-		Pods:      pods,
+		PodCount:  podCount,
+		PodRegexp: podRegexp,
 	}
 }
 
-// ObjSetter defines interface for setting ObjInfo
-type ObjSetter interface {
+// ObjInfoAccessor defines interface for getting and setting object info
+type ObjInfoAccessor interface {
+	// SetObjType maps object type to RegisterObjParams
+	SetObjType(string, *RegisterObjParams) error
+	// GetObjType returns RegisterObjParams for given object type, where object type is formatted as "<resource>.<group>"
+	GetObjType(string) (*RegisterObjParams, error)
 	// SetObjInfo maps task ID to ObjInfo
 	SetObjInfo(string, *ObjInfo) error
-}
-
-// ObjGetter defines interface for retrieving ObjInfo
-type ObjGetter interface {
 	// GetObjInfo returns ObjInfo for given task ID
 	GetObjInfo(string) (*ObjInfo, error)
 }

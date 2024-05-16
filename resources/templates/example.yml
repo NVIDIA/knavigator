@@ -2,7 +2,7 @@ apiVersion: example.com/v1
 kind: MyObject
 metadata:
   name: "{{._NAME_}}"
-  namespace: test
+  namespace: {{or .namespace "default"}}
 spec:
   runPolicy:
     coScheduling: null
@@ -16,6 +16,7 @@ spec:
         obj-name: test
         instance: {{.instance}}
     spec:
+      replicas: {{.replicas}}
       containers:
       - name: test
         args:

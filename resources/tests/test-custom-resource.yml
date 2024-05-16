@@ -1,17 +1,21 @@
 name: test-custom-resource
 description: submit custom resource
 tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/templates/example.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-[0-9]+"
+    podCount: "{{.replicas}}"
 - id: job
   type: SubmitObj
   params:
-    count: 1
-    grv:
-      group: example.com
-      version: v1
-      resource: myobjects
-    template: "resources/templates/example.yml"
-    overrides:
-      name: 1
+    refTaskId: register
+    count: 4
+    params:
+      namespace: test
+      replicas: 2
       instance: lnx2000
       command: "sleep infinity"
       image: ubuntu
