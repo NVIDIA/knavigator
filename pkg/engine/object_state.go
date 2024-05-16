@@ -28,8 +28,8 @@ type ObjStateTask struct {
 	BaseTask
 	StateParams
 
-	client *dynamic.DynamicClient
-	getter ObjGetter
+	client   *dynamic.DynamicClient
+	accessor ObjInfoAccessor
 }
 
 // validate initializes and validates parameters for ObjStateTask

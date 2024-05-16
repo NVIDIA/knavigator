@@ -18,6 +18,7 @@ package engine
 
 import (
 	"testing"
+	"text/template"
 
 	"github.com/stretchr/testify/require"
 
@@ -27,12 +28,8 @@ import (
 
 func TestNewSubmitObjTask(t *testing.T) {
 	taskID := "submit"
-	grv := map[string]interface{}{
-		"group":    "example.com",
-		"version":  "v1",
-		"resource": "myobjects",
-	}
-	overrides := map[string]interface{}{
+	params := map[string]interface{}{
+		"replicas": 2,
 		"instance": "lnx2000",
 		"command":  "sleep infinity",
 		"image":    "ubuntu",
@@ -83,12 +80,16 @@ func TestNewSubmitObjTask(t *testing.T) {
 		},
 	}
 	testCases := []struct {
-		name       string
-		params     map[string]interface{}
-		simClients bool
-		err        string
-		task       *SubmitObjTask
-		pods       []string
+		name         string
+		params       map[string]interface{}
+		simClients   bool
+		regObjParams *RegisterObjParams
+		refTaskID    string
+		err          string
+		task         *SubmitObjTask
+		objs         []GenericObject
+		podCount     int
+		podRegexp    []string
 	}{
 		{
 			name:       "Case 1: no client",
@@ -99,77 +100,57 @@ func TestNewSubmitObjTask(t *testing.T) {
 		{
 			name: "Case 2a: parsing error",
 			params: map[string]interface{}{
-				"count":     false,
-				"grv":       grv,
-				"template":  "../../resources/templates/example.yml",
-				"overrides": overrides,
+				"count":  false,
+				"params": params,
 			},
 			simClients: true,
 			err:        "SubmitObj/submit: failed to parse parameters: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!bool `false` into int",
 		},
 		{
-			name: "Case 2b: negative count",
+			name: "Case 2b: missing refTaskId",
 			params: map[string]interface{}{
+				"params": params,
+			},
+			simClients: true,
+			err:        "SubmitObj/submit: must specify refTaskId",
+		},
+		{
+			name: "Case 2c: negative count",
+			params: map[string]interface{}{
+				"refTaskId": "register",
 				"count":     -3,
-				"grv":       grv,
-				"template":  "../../resources/templates/example.yml",
-				"overrides": overrides,
+				"params":    params,
 			},
 			simClients: true,
 			err:        "SubmitObj/submit: 'count' must be a positive number",
 		},
 		{
-			name: "Case 2c: no template",
+			name: "Case 2d: negative count",
 			params: map[string]interface{}{
-				"grv":       grv,
-				"overrides": overrides,
+				"refTaskId": "register",
+				"count":     1,
+				"params":    params,
 			},
 			simClients: true,
-			err:        "SubmitObj/submit: 'template' must be a filepath",
+			regObjParams: &RegisterObjParams{
+				Template:   "../../resources/templates/example.yml",
+				NameFormat: "job{{._ENUM_}}",
+			},
+			err: "SubmitObj/submit: unreferenced task ID register",
 		},
 		{
-			name: "Case 2d: bad template",
+			name: "Case 3: Valid parameters without pods",
 			params: map[string]interface{}{
-				"grv":       grv,
-				"template":  "/does/not/exist",
-				"overrides": overrides,
+				"refTaskId": "register",
+				"count":     1,
+				"params":    params,
 			},
 			simClients: true,
-			err:        "SubmitObj/submit: failed to parse template /does/not/exist: open /does/not/exist: no such file or directory",
-		},
-		{
-			name: "Case 2e: no name format",
-			params: map[string]interface{}{
-				"count":     3,
-				"grv":       grv,
-				"template":  "../../resources/templates/example.yml",
-				"overrides": overrides,
+			regObjParams: &RegisterObjParams{
+				Template:   "../../resources/templates/example.yml",
+				NameFormat: "job{{._ENUM_}}",
 			},
-			simClients: true,
-			err:        "SubmitObj/submit: must specify name format for multiple object submissions",
-		},
-		{
-			name: "Case 2f: name format error",
-			params: map[string]interface{}{
-				"count":      3,
-				"grv":        grv,
-				"template":   "../../resources/templates/example.yml",
-				"nameformat": "{{{.}}",
-				"overrides":  overrides,
-			},
-			simClients: true,
-			err:        "SubmitObj/submit: failed to generate object names: template: name:1: unexpected \"{\" in command",
-		},
-		{
-			name: "Case 3: Valid parameters without pod name selector",
-			params: map[string]interface{}{
-				"count":      1,
-				"grv":        grv,
-				"template":   "../../resources/templates/example.yml",
-				"nameformat": "job{{._ENUM_}}",
-				"overrides":  overrides,
-			},
-			simClients: true,
+			refTaskID: "register",
 			task: &SubmitObjTask{
 				BaseTask: BaseTask{
 					log:      testLogger,
@@ -177,52 +158,42 @@ func TestNewSubmitObjTask(t *testing.T) {
 					taskID:   taskID,
 				},
 				submitObjTaskParams: submitObjTaskParams{
-					Count: 1,
-					GRV: groupVersionResource{
-						Group:    "example.com",
-						Version:  "v1",
-						Resource: "myobjects",
-					},
-					Template:   "../../resources/templates/example.yml",
-					NameFormat: "job{{._ENUM_}}",
-					Overrides:  overrides,
+					RefTaskID: "register",
+					Count:     1,
+					Params:    params,
 				},
 				client: testDynamicClient,
-				obj: []GenericObject{
-					{
-						typeMeta: typeMeta{
-							APIVersion: "example.com/v1",
-							Kind:       "MyObject",
-						},
-						Metadata: objectMeta{
-							Name:      "job1",
-							Namespace: "test",
-						},
-						Spec: spec,
+			},
+			objs: []GenericObject{
+				{
+					TypeMeta: TypeMeta{
+						APIVersion: "example.com/v1",
+						Kind:       "MyObject",
 					},
+					Metadata: objectMeta{
+						Name:      "job1",
+						Namespace: "test",
+					},
+					Spec: spec,
 				},
 			},
-			pods: []string{},
+			podRegexp: []string{},
 		},
 		{
-			name: "Case 4: Valid parameters with pod name selector",
+			name: "Case 4: Valid parameters with pods",
 			params: map[string]interface{}{
-				"count":      2,
-				"grv":        grv,
-				"template":   "../../resources/templates/example.yml",
-				"nameformat": "job{{._ENUM_}}",
-				"overrides":  overrides,
-				"pods": map[string]interface{}{
-					"list": map[string]interface{}{
-						"patterns": []string{"pod{{._NAME_}}"},
-					},
-					"range": map[string]interface{}{
-						"pattern": "{{._NAME_}}-{{._INDEX_}}",
-						"ranges":  []string{"0-1"},
-					},
-				},
+				"refTaskId": "register",
+				"count":     2,
+				"params":    params,
 			},
 			simClients: true,
+			regObjParams: &RegisterObjParams{
+				Template:      "../../resources/templates/example.yml",
+				NameFormat:    "job{{._ENUM_}}",
+				PodNameFormat: "{{._NAME_}}-test-[0-9]+",
+				PodCount:      "{{.replicas}}",
+			},
+			refTaskID: "register",
 			task: &SubmitObjTask{
 				BaseTask: BaseTask{
 					log:      testLogger,
@@ -230,43 +201,38 @@ func TestNewSubmitObjTask(t *testing.T) {
 					taskID:   taskID,
 				},
 				submitObjTaskParams: submitObjTaskParams{
-					Count: 2,
-					GRV: groupVersionResource{
-						Group:    "example.com",
-						Version:  "v1",
-						Resource: "myobjects",
-					},
-					Template:   "../../resources/templates/example.yml",
-					NameFormat: "job{{._ENUM_}}",
-					Overrides:  overrides,
+					RefTaskID: "register",
+					Count:     2,
+					Params:    params,
 				},
 				client: testDynamicClient,
-				obj: []GenericObject{
-					{
-						typeMeta: typeMeta{
-							APIVersion: "example.com/v1",
-							Kind:       "MyObject",
-						},
-						Metadata: objectMeta{
-							Name:      "job1",
-							Namespace: "test",
-						},
-						Spec: spec,
+			},
+			objs: []GenericObject{
+				{
+					TypeMeta: TypeMeta{
+						APIVersion: "example.com/v1",
+						Kind:       "MyObject",
 					},
-					{
-						typeMeta: typeMeta{
-							APIVersion: "example.com/v1",
-							Kind:       "MyObject",
-						},
-						Metadata: objectMeta{
-							Name:      "job2",
-							Namespace: "test",
-						},
-						Spec: spec,
+					Metadata: objectMeta{
+						Name:      "job1",
+						Namespace: "test",
 					},
+					Spec: spec,
+				},
+				{
+					TypeMeta: TypeMeta{
+						APIVersion: "example.com/v1",
+						Kind:       "MyObject",
+					},
+					Metadata: objectMeta{
+						Name:      "job2",
+						Namespace: "test",
+					},
+					Spec: spec,
 				},
 			},
-			pods: []string{"podjob1", "job1-0", "job1-1", "podjob2", "job2-0", "job2-1"},
+			podCount:  4,
+			podRegexp: []string{"job1-test-[0-9]+", "job2-test-[0-9]+"},
 		},
 	}
 
@@ -277,6 +243,10 @@ func TestNewSubmitObjTask(t *testing.T) {
 			eng, err := New(testLogger, nil, tc.simClients)
 			require.NoError(t, err)
 
+			if len(tc.refTaskID) != 0 {
+				eng.objTypeMap[tc.refTaskID] = tc.regObjParams
+			}
+
 			runnable, err := eng.GetTask(&config.Task{
 				ID:     taskID,
 				Type:   TaskSubmitObj,
@@ -286,18 +256,34 @@ func TestNewSubmitObjTask(t *testing.T) {
 				require.EqualError(t, err, tc.err)
 				require.Nil(t, tc.task)
 			} else {
-				tc.task.setter = eng
+				tc.task.accessor = eng
 				require.NoError(t, err)
 				require.NotNil(t, tc.task)
 
 				task := runnable.(*SubmitObjTask)
-				delete(task.Overrides, "_NAME_")
-				delete(task.Overrides, "_ENUM_")
-
-				require.Equal(t, tc.pods, task.Pods.Names())
-				task.Pods = utils.NameSelector{}
+				delete(task.Params, "_NAME_")
+				delete(task.Params, "_ENUM_")
 
 				require.Equal(t, tc.task, task)
+
+				tc.regObjParams.objTpl, err = template.ParseFiles(tc.regObjParams.Template)
+				require.NoError(t, err)
+
+				if len(tc.regObjParams.PodNameFormat) != 0 {
+					tc.regObjParams.podNameTpl, err = template.New("podname").Parse(tc.regObjParams.PodNameFormat)
+					require.NoError(t, err)
+				}
+
+				if len(tc.regObjParams.PodCount) != 0 {
+					tc.regObjParams.podCountTpl, err = template.New("podcount").Parse(tc.regObjParams.PodCount)
+					require.NoError(t, err)
+				}
+
+				objs, podCount, podRegexp, err := task.getGenericObjects(tc.regObjParams)
+				require.NoError(t, err)
+				require.Equal(t, tc.objs, objs)
+				require.Equal(t, tc.podCount, podCount)
+				require.Equal(t, tc.podRegexp, podRegexp)
 			}
 		})
 	}

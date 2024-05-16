@@ -90,7 +90,7 @@ func TestNewUpdateObjTask(t *testing.T) {
 			eng, err := New(testLogger, nil, tc.simClients)
 			require.NoError(t, err)
 			if len(tc.refTaskId) != 0 {
-				eng.objMap[tc.refTaskId] = nil
+				eng.objInfoMap[tc.refTaskId] = nil
 			}
 
 			task, err := eng.GetTask(&config.Task{
@@ -102,7 +102,7 @@ func TestNewUpdateObjTask(t *testing.T) {
 				require.EqualError(t, err, tc.err)
 				require.Nil(t, tc.task)
 			} else {
-				tc.task.getter = eng
+				tc.task.accessor = eng
 				require.NoError(t, err)
 				require.NotNil(t, tc.task)
 				require.Equal(t, tc.task, task)

@@ -79,7 +79,7 @@ func TestNewDeleteObjTask(t *testing.T) {
 			eng, err := New(testLogger, nil, tc.simClients)
 			require.NoError(t, err)
 			if len(tc.refTaskId) != 0 {
-				eng.objMap[tc.refTaskId] = nil
+				eng.objInfoMap[tc.refTaskId] = nil
 			}
 
 			task, err := eng.GetTask(&config.Task{

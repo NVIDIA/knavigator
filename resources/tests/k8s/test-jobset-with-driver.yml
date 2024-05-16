@@ -1,17 +1,19 @@
 name: test-k8s-jobset-with-driver
 description: submit and validate a k8s jobset with 1 driver and 1 worker job
 tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/templates/k8s/jobset-with-driver.yml"
+    nameFormat: "jobset{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-(worker|driver)-[0-9]+-[0-9]+-.+"
+    podCount: "{{.replicas}}"
 - id: jobset
   type: SubmitObj
   params:
-    count: 1
-    grv:
-      group: jobset.x-k8s.io
-      version: v1alpha2
-      resource: jobsets
-    template: "resources/templates/k8s/jobset-with-driver.yml"
-    nameformat: "jobset{{._ENUM_}}"
-    overrides:
+    refTaskId: register
+    count: 2
+    params:
       namespace: default
       replicas: 1
       parallelism: 1
@@ -23,3 +25,9 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: jobset
+    status: Running
+    timeout: 5s

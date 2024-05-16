@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"regexp"
 	"sync/atomic"
 	"text/template"
 
@@ -78,4 +79,15 @@ func GenerateNames(pattern string, n int, params map[string]interface{}) ([]stri
 		}
 	}
 	return names, nil
+}
+
+func Exp2Regexp(expr []string) ([]*regexp.Regexp, error) {
+	re := make([]*regexp.Regexp, len(expr))
+	for i, r := range expr {
+		var err error
+		if re[i], err = regexp.Compile(r); err != nil {
+			return nil, fmt.Errorf("failed to compile regexp '%s': %v", r, err)
+		}
+	}
+	return re, nil
 }

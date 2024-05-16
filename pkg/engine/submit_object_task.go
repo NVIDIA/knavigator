@@ -19,13 +19,13 @@ package engine
 import (
 	"context"
 	"fmt"
-	"text/template"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -35,40 +35,17 @@ import (
 type SubmitObjTask struct {
 	BaseTask
 	submitObjTaskParams
-	client *dynamic.DynamicClient
-	setter ObjSetter
-
-	// derived
-	obj []GenericObject
+	client   *dynamic.DynamicClient
+	accessor ObjInfoAccessor
 }
 
 type submitObjTaskParams struct {
+	// RefTaskID: task ID of the corresponding RegisterObjTask
+	RefTaskID string `yaml:"refTaskId"`
 	// Count: number of objects to submit; default 1.
-	Count int `json:"count"`
-	// GRV: Group/Version/Resource of the object.
-	GRV groupVersionResource `json:"grv"`
-	// Template: path to the object template; see examples in resources/templates/
-	Template string `json:"template"`
-	// NameFormat: a Go-template parameter for generating unique object names.
-	// It utilizes the '_ENUM_' keyword for an incrementing counter and
-	// adds the '_NAME_' key to the Overrides map with the templated value.
-	// Example: "job{{._ENUM_}}"
-	NameFormat string `json:"nameformat"`
-	// Overrides: a map of key:value pairs to be used when executing object and name templates.
-	Overrides map[string]interface{} `json:"overrides"`
-	// Pods: an optional parameter for specifying the naming format of pods spawned by the object(s).
-	Pods utils.NameSelector `json:"pods,omitempty"`
-}
-
-type groupVersionResource struct {
-	Group    string `json:"group" yaml:"group"`
-	Version  string `json:"version" yaml:"version"`
-	Resource string `json:"resource" yaml:"resource"`
-}
-
-type typeMeta struct {
-	Kind       string `json:"kind" yaml:"kind"`
-	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
+	Count int `yaml:"count"`
+	// Params: a map of key:value pairs to be used when executing object and name templates.
+	Params map[string]interface{} `yaml:"params"`
 }
 
 type objectMeta struct {
@@ -79,13 +56,13 @@ type objectMeta struct {
 }
 
 type GenericObject struct {
-	typeMeta `json:",inline" yaml:",inline"`
+	TypeMeta `json:",inline" yaml:",inline"`
 	Metadata objectMeta  `json:"metadata" yaml:"metadata"`
 	Spec     interface{} `json:"spec" yaml:"spec"`
 }
 
 // newSubmitObjTask initializes and returns SubmitObjTask
-func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, setter ObjSetter, cfg *config.Task) (*SubmitObjTask, error) {
+func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*SubmitObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -96,8 +73,8 @@ func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, setter Obj
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},
-		client: client,
-		setter: setter,
+		client:   client,
+		accessor: accessor,
 	}
 
 	if err := task.validate(cfg.Params); err != nil {
@@ -117,82 +94,32 @@ func (task *SubmitObjTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: failed to parse parameters: %v", task.ID(), err)
 	}
 
+	if len(task.RefTaskID) == 0 {
+		return fmt.Errorf("%s: must specify refTaskId", task.ID())
+	}
+
 	if task.Count == 0 {
 		task.Count = 1 // default
 	} else if task.Count < 0 {
 		return fmt.Errorf("%s: 'count' must be a positive number", task.ID())
 	}
 
-	if len(task.Template) == 0 {
-		return fmt.Errorf("%s: 'template' must be a filepath", task.ID())
-	}
-
-	tpl, err := template.ParseFiles(task.Template)
-	if err != nil {
-		return fmt.Errorf("%s: failed to parse template %s: %v", task.ID(), task.Template, err)
-	}
-
-	if len(task.NameFormat) == 0 {
-		if task.Count > 1 {
-			return fmt.Errorf("%s: must specify name format for multiple object submissions", task.ID())
-		}
-	}
-
-	task.obj = make([]GenericObject, task.Count)
-	names, err := utils.GenerateNames(task.NameFormat, task.Count, task.Overrides)
-	if err != nil {
-		return fmt.Errorf("%s: failed to generate object names: %v", task.ID(), err)
-	}
-
-	task.Pods.Init()
-	if task.Pods.List != nil {
-		if task.Pods.List.Params == nil {
-			task.Pods.List.Params = make(map[string]interface{})
-		}
-	}
-	if task.Pods.Range != nil {
-		if task.Pods.Range.Params == nil {
-			task.Pods.Range.Params = make(map[string]interface{})
-		}
-	}
-
-	for i := 0; i < task.Count; i++ {
-		task.Overrides["_NAME_"] = names[i]
-
-		data, err = utils.ExecTemplate(tpl, task.Overrides)
-		if err != nil {
-			return err
-		}
-
-		if err = yaml.Unmarshal(data, &task.obj[i]); err != nil {
-			return err
-		}
-
-		if task.Pods.List != nil {
-			task.Pods.List.Params["_NAME_"] = task.obj[i].Metadata.Name
-		}
-		if task.Pods.Range != nil {
-			task.Pods.Range.Params["_NAME_"] = task.obj[i].Metadata.Name
-		}
-		if err = task.Pods.Finalize(); err != nil {
-			return err
-		}
-	}
-
-	if pods := task.Pods.Names(); len(pods) != 0 {
-		task.log.V(4).Info("Expected pods", "names", pods)
-	}
 	return nil
 }
 
 // Exec implements Runnable interface
 func (task *SubmitObjTask) Exec(ctx context.Context) error {
-	gvr := schema.GroupVersionResource{
-		Group:    task.GRV.Group,
-		Version:  task.GRV.Version,
-		Resource: task.GRV.Resource,
+	regObjParams, err := task.accessor.GetObjType(task.RefTaskID)
+	if err != nil {
+		return fmt.Errorf("%s: failed to get object type: %v", task.ID(), err)
 	}
-	for _, obj := range task.obj {
+
+	objs, podCount, podRegexp, err := task.getGenericObjects(regObjParams)
+	if err != nil {
+		return err
+	}
+
+	for _, obj := range objs {
 		crd := &unstructured.Unstructured{
 			Object: map[string]interface{}{
 				"apiVersion": obj.APIVersion,
@@ -202,18 +129,67 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 			},
 		}
 
-		if _, err := task.client.Resource(gvr).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {
+		if _, err := task.client.Resource(regObjParams.gvr).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
 
-	return task.setter.SetObjInfo(task.taskID,
-		NewObjInfo([]string{task.obj[0].Metadata.Name}, task.obj[0].Metadata.Namespace, gvr, task.Pods.Names()...))
+	return task.accessor.SetObjInfo(task.taskID,
+		NewObjInfo([]string{objs[0].Metadata.Name}, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
+}
+
+func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([]GenericObject, int, []string, error) {
+	names, err := utils.GenerateNames(regObjParams.NameFormat, task.Count, task.Params)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("%s: failed to generate object names: %v", task.ID(), err)
+	}
+
+	objs := make([]GenericObject, task.Count)
+	podRegexp := []string{}
+
+	for i := 0; i < task.Count; i++ {
+		task.Params["_NAME_"] = names[i]
+
+		data, err := utils.ExecTemplate(regObjParams.objTpl, task.Params)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+
+		if err = yaml.Unmarshal(data, &objs[i]); err != nil {
+			return nil, 0, nil, err
+		}
+
+		if regObjParams.podNameTpl != nil {
+			data, err = utils.ExecTemplate(regObjParams.podNameTpl, task.Params)
+			if err != nil {
+				return nil, 0, nil, err
+			}
+			re := strings.Trim(strings.TrimSpace(string(data)), "\"")
+			podRegexp = append(podRegexp, re)
+		}
+	}
+
+	var podCount int
+	if regObjParams.podCountTpl != nil {
+		data, err := utils.ExecTemplate(regObjParams.podCountTpl, task.Params)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		str := string(data)
+		podCount, err = strconv.Atoi(str)
+		if err != nil {
+			return nil, 0, nil, fmt.Errorf("%s: failed to convert pod count %s to int: %v", task.ID(), str, err)
+		}
+		podCount *= task.Count
+	}
+	task.log.V(4).Info("Generating object specs", "podCount", podCount, "podRegexp", podRegexp)
+
+	return objs, podCount, podRegexp, nil
 }
 
 func (obj *GenericObject) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var o struct {
-		typeMeta `yaml:",inline"`
+		TypeMeta `yaml:",inline"`
 		Metadata objectMeta             `yaml:"metadata"`
 		Spec     map[string]interface{} `yaml:"spec"`
 	}
@@ -223,7 +199,7 @@ func (obj *GenericObject) UnmarshalYAML(unmarshal func(interface{}) error) error
 		return err
 	}
 
-	obj.typeMeta = o.typeMeta
+	obj.TypeMeta = o.TypeMeta
 	obj.Metadata = o.Metadata
 	obj.Spec = convertMap(o.Spec)
 	return nil

@@ -1,17 +1,19 @@
 name: test-volcano-job
 description: submit and manage volcano job
 tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/templates/volcano/job.yml"
+    nameFormat: "j{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-test-[0-9]+"
+    podCount: "{{.replicas}}"
 - id: job
   type: SubmitObj
   params:
-    count: 1
-    grv:
-      group: batch.volcano.sh
-      version: v1alpha1
-      resource: jobs
-    template: "resources/templates/volcano/job.yml"
-    nameformat: "j{{._ENUM_}}"
-    overrides:
+    refTaskId: register
+    count: 2
+    params:
       namespace: default
       replicas: 2
       priorityClassName: normal-priority
@@ -19,15 +21,9 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
-    pods:
-      range:
-        pattern: "{{._NAME_}}-test-{{._INDEX_}}"
-        ranges: ["0-1"]
 - id: status
   type: CheckPod
   params:
     refTaskId: job
     status: Running
-    nodeLabels:
-      nodeType: gpu
     timeout: 5s
