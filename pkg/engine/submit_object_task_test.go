@@ -76,6 +76,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 						},
 					},
 				},
+				"replicas": 2,
 			},
 		},
 	}
@@ -172,7 +173,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 					},
 					Metadata: objectMeta{
 						Name:      "job1",
-						Namespace: "test",
+						Namespace: "default",
 					},
 					Spec: spec,
 				},
@@ -215,7 +216,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 					},
 					Metadata: objectMeta{
 						Name:      "job1",
-						Namespace: "test",
+						Namespace: "default",
 					},
 					Spec: spec,
 				},
@@ -226,7 +227,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 					},
 					Metadata: objectMeta{
 						Name:      "job2",
-						Namespace: "test",
+						Namespace: "default",
 					},
 					Spec: spec,
 				},
