@@ -9,8 +9,9 @@ linters:
     - gosimple
     - govet
     - ineffassign
-    - megacheck
     - staticcheck
+    - unused
+    - gosimple
     - typecheck
     - unused
 
