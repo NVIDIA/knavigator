@@ -83,6 +83,8 @@ image-push: image-build
 	@./hack/democtl.sh "$<" "$@" \
 		--term xresources \
 	  	--profile ./.xresources
+	rm -f $(shell dirname $<)/*.cast
 
 %.mp4: %.cast
 	@./hack/democtl.sh "$<" "$@"
+	rm -f $(shell dirname $<)/*.cast
