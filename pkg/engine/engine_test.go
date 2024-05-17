@@ -40,9 +40,8 @@ var (
 )
 
 type testEngine struct {
-	execErr   error
-	resetErr  error
-	deleteErr error
+	execErr  error
+	resetErr error
 }
 
 func (eng *testEngine) RunTask(context.Context, *config.Task) error {
@@ -53,9 +52,7 @@ func (eng *testEngine) Reset(context.Context) error {
 	return eng.resetErr
 }
 
-func (eng *testEngine) DeleteAllObjects(context.Context) error {
-	return eng.deleteErr
-}
+func (eng *testEngine) DeleteAllObjects(context.Context) {}
 
 func TestRunEngine(t *testing.T) {
 	testCases := []struct {
