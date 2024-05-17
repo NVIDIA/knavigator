@@ -89,6 +89,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 		err          string
 		task         *SubmitObjTask
 		objs         []GenericObject
+		names        []string
 		podCount     int
 		podRegexp    []string
 	}{
@@ -178,6 +179,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 					Spec: spec,
 				},
 			},
+			names:     []string{"job1"},
 			podRegexp: []string{},
 		},
 		{
@@ -232,6 +234,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 					Spec: spec,
 				},
 			},
+			names:     []string{"job1", "job2"},
 			podCount:  4,
 			podRegexp: []string{"job1-test-[0-9]+", "job2-test-[0-9]+"},
 		},
@@ -280,9 +283,10 @@ func TestNewSubmitObjTask(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				objs, podCount, podRegexp, err := task.getGenericObjects(tc.regObjParams)
+				objs, names, podCount, podRegexp, err := task.getGenericObjects(tc.regObjParams)
 				require.NoError(t, err)
 				require.Equal(t, tc.objs, objs)
+				require.Equal(t, tc.names, names)
 				require.Equal(t, tc.podCount, podCount)
 				require.Equal(t, tc.podRegexp, podRegexp)
 			}

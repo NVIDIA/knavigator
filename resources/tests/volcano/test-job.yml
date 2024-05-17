@@ -27,3 +27,7 @@ tasks:
     refTaskId: job
     status: Running
     timeout: 5s
+- id: delete
+  type: DeleteObj
+  params:
+    refTaskId: job

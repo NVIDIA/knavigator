@@ -114,7 +114,7 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		return fmt.Errorf("%s: failed to get object type: %v", task.ID(), err)
 	}
 
-	objs, podCount, podRegexp, err := task.getGenericObjects(regObjParams)
+	objs, names, podCount, podRegexp, err := task.getGenericObjects(regObjParams)
 	if err != nil {
 		return err
 	}
@@ -135,13 +135,13 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 	}
 
 	return task.accessor.SetObjInfo(task.taskID,
-		NewObjInfo([]string{objs[0].Metadata.Name}, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
+		NewObjInfo(names, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
 }
 
-func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([]GenericObject, int, []string, error) {
+func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([]GenericObject, []string, int, []string, error) {
 	names, err := utils.GenerateNames(regObjParams.NameFormat, task.Count, task.Params)
 	if err != nil {
-		return nil, 0, nil, fmt.Errorf("%s: failed to generate object names: %v", task.ID(), err)
+		return nil, nil, 0, nil, fmt.Errorf("%s: failed to generate object names: %v", task.ID(), err)
 	}
 
 	objs := make([]GenericObject, task.Count)
@@ -152,17 +152,17 @@ func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([
 
 		data, err := utils.ExecTemplate(regObjParams.objTpl, task.Params)
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, nil, 0, nil, err
 		}
 
 		if err = yaml.Unmarshal(data, &objs[i]); err != nil {
-			return nil, 0, nil, err
+			return nil, nil, 0, nil, err
 		}
 
 		if regObjParams.podNameTpl != nil {
 			data, err = utils.ExecTemplate(regObjParams.podNameTpl, task.Params)
 			if err != nil {
-				return nil, 0, nil, err
+				return nil, nil, 0, nil, err
 			}
 			re := strings.Trim(strings.TrimSpace(string(data)), "\"")
 			podRegexp = append(podRegexp, re)
@@ -173,18 +173,18 @@ func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([
 	if regObjParams.podCountTpl != nil {
 		data, err := utils.ExecTemplate(regObjParams.podCountTpl, task.Params)
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, nil, 0, nil, err
 		}
 		str := string(data)
 		podCount, err = strconv.Atoi(str)
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("%s: failed to convert pod count %s to int: %v", task.ID(), str, err)
+			return nil, nil, 0, nil, fmt.Errorf("%s: failed to convert pod count %s to int: %v", task.ID(), str, err)
 		}
 		podCount *= task.Count
 	}
 	task.log.V(4).Info("Generating object specs", "podCount", podCount, "podRegexp", podRegexp)
 
-	return objs, podCount, podRegexp, nil
+	return objs, names, podCount, podRegexp, nil
 }
 
 func (obj *GenericObject) UnmarshalYAML(unmarshal func(interface{}) error) error {
