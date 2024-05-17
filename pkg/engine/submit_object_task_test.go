@@ -244,7 +244,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			utils.SetObjectID(0)
 
-			eng, err := New(testLogger, nil, tc.simClients)
+			eng, err := New(testLogger, nil, nil, tc.simClients)
 			require.NoError(t, err)
 
 			if len(tc.refTaskID) != 0 {

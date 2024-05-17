@@ -31,11 +31,16 @@ import (
 )
 
 func mainInternal() error {
-	var kubeConfigPath, kubeCtx, taskConfigs string
-	var qps float64
-	var burst int
+	var (
+		kubeConfigPath, kubeCtx, taskConfigs string
+		qps                                  float64
+		burst                                int
+		cleanupInfo                          engine.CleanupInfo
+	)
 	flag.StringVar(&kubeConfigPath, "kubeconfig", "", "kubeconfig file path")
 	flag.StringVar(&kubeCtx, "kubectx", "", "kube context")
+	flag.BoolVar(&cleanupInfo.Enabled, "cleanup", false, "delete objects")
+	flag.DurationVar(&cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
 	flag.StringVar(&taskConfigs, "tasks", "", "comma-separated list of task config files and dirs")
 	flag.Float64Var(&qps, "kube-api-qps", 500, "Maximum QPS to use while talking with Kubernetes API")
 	flag.IntVar(&burst, "kube-api-burst", 500, "Maximum burst for throttle while talking with Kubernetes API")
@@ -68,7 +73,7 @@ func mainInternal() error {
 		return err
 	}
 
-	eng, err := engine.New(log, restConfig)
+	eng, err := engine.New(log, restConfig, &cleanupInfo)
 	if err != nil {
 		return err
 	}

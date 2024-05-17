@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -34,6 +35,7 @@ import (
 type Engine interface {
 	RunTask(context.Context, *config.Task) error
 	Reset(context.Context) error
+	DeleteAllObjects(context.Context) error
 }
 
 type Eng struct {
@@ -44,13 +46,15 @@ type Eng struct {
 	discoveryClient *discovery.DiscoveryClient
 	objTypeMap      map[string]*RegisterObjParams
 	objInfoMap      map[string]*ObjInfo
+	cleanup         *CleanupInfo
 }
 
-func New(log logr.Logger, config *rest.Config, sim ...bool) (*Eng, error) {
+func New(log logr.Logger, config *rest.Config, cleanupInfo *CleanupInfo, sim ...bool) (*Eng, error) {
 	eng := &Eng{
 		log:        log,
 		objTypeMap: make(map[string]*RegisterObjParams),
 		objInfoMap: make(map[string]*ObjInfo),
+		cleanup:    cleanupInfo,
 	}
 
 	if len(sim) == 0 { // len(sim) != 0 in unit tests
@@ -247,6 +251,38 @@ func execRunnable(ctx context.Context, log logr.Logger, r Runnable) error {
 	return nil
 }
 
+// Reset re-initializes engine and deletes the remaining objects
 func (eng *Eng) Reset(ctx context.Context) error {
+	eng.log.Info("Reset Engine")
+
+	if eng.cleanup == nil || !eng.cleanup.Enabled {
+		return nil
+	}
+
+	eng.log.Info("Cleaning up objects")
+	ctx, cancel := context.WithTimeout(ctx, eng.cleanup.Timeout)
+	defer cancel()
+
+	return eng.DeleteAllObjects(ctx)
+}
+
+// DeleteAllObjects deletes all objects
+func (eng *Eng) DeleteAllObjects(ctx context.Context) error {
+	deletePolicy := metav1.DeletePropagationBackground
+	deletions := metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+
+	for _, objInfo := range eng.objInfoMap {
+		ns := objInfo.Namespace
+		for _, name := range objInfo.Names {
+			err := eng.dynamicClient.Resource(objInfo.GVR).Namespace(ns).Delete(ctx, name, deletions)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	eng.log.Info("Deleted all objects")
 	return nil
 }

@@ -66,7 +66,7 @@ func TestSleepParams(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, false)
+			eng, err := New(testLogger, nil, nil, false)
 			require.NoError(t, err)
 
 			task, err := eng.GetTask(&config.Task{
