@@ -20,7 +20,6 @@ tasks:
       completions: 1
       backoffLimit: 0
       completionMode: Indexed
-      priorityClassName: normal-priority
       image: ubuntu
       cpu: 100m
       memory: 512M
