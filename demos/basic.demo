@@ -22,14 +22,12 @@ kubectl get nodes
 make build
 
 # Run Knavigator with an example test
-kubectl create ns k8s-test 
 ./bin/knavigator --tasks resources/tests/k8s/test-job.yml
 
 # Show the job running
-kubectl get job -n k8s-test
+kubectl get job
 
 # Clean up
-kubectl delete job job1 -n k8s-test
-kubectl delete ns k8s-test
+kubectl delete job job1
 
 # That's it. Thank you!

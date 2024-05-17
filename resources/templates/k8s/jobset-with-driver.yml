@@ -34,7 +34,6 @@ spec:
         completionMode: {{.completionMode}}
         template:
           spec:
-            priorityClassName: {{.priorityClassName}}
             schedulerName: default-scheduler
             containers:
             - name: test

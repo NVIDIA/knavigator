@@ -46,10 +46,6 @@ kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/release
 ```
 The controller runs in the `jobset-system` namespace. Make sure it is running on a real node, e.g., a control-plane node.
 
-Create a priority class if needed:
-```shell
-kubectl create priorityclass normal-priority --value=100000
-```
 Run jobset with workers: 
 ```shell
 ./bin/knavigator -tasks ./resources/tests/k8s/test-jobset.yml

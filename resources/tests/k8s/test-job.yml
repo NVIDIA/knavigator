@@ -14,12 +14,11 @@ tasks:
     refTaskId: register
     count: 1
     params:
-      namespace: k8s-test
+      namespace: default
       parallelism: 2
       completions: 2
       backoffLimit: 0
       completionMode: Indexed
-      priorityClassName: normal-priority
       image: ubuntu
       cpu: 100m
       memory: 512M
