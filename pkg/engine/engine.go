@@ -35,7 +35,7 @@ import (
 type Engine interface {
 	RunTask(context.Context, *config.Task) error
 	Reset(context.Context) error
-	DeleteAllObjects(context.Context) error
+	DeleteAllObjects(context.Context)
 }
 
 type Eng struct {
@@ -263,11 +263,23 @@ func (eng *Eng) Reset(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, eng.cleanup.Timeout)
 	defer cancel()
 
-	return eng.DeleteAllObjects(ctx)
+	stop := make(chan struct{})
+
+	go func() {
+		eng.DeleteAllObjects(ctx)
+		stop <- struct{}{}
+	}()
+
+	select {
+	case <-stop:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // DeleteAllObjects deletes all objects
-func (eng *Eng) DeleteAllObjects(ctx context.Context) error {
+func (eng *Eng) DeleteAllObjects(ctx context.Context) {
 	deletePolicy := metav1.DeletePropagationBackground
 	deletions := metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
@@ -278,11 +290,10 @@ func (eng *Eng) DeleteAllObjects(ctx context.Context) error {
 		for _, name := range objInfo.Names {
 			err := eng.dynamicClient.Resource(objInfo.GVR).Namespace(ns).Delete(ctx, name, deletions)
 			if err != nil {
-				return err
+				eng.log.Info("Warning: cannot delete object", "name", name, "err", err.Error())
 			}
 		}
 	}
 
 	eng.log.Info("Deleted all objects")
-	return nil
 }
