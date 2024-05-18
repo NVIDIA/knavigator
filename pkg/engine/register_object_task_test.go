@@ -149,9 +149,9 @@ func TestNewRegisterObjTask(t *testing.T) {
 				require.EqualError(t, err, tc.err)
 				require.Nil(t, tc.task)
 			} else {
-				tc.task.accessor = eng
 				require.NoError(t, err)
 				require.NotNil(t, tc.task)
+				tc.task.accessor = eng
 
 				task := runnable.(*RegisterObjTask)
 				task.objTpl, task.podNameTpl, task.podCountTpl = nil, nil, nil
