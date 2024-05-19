@@ -14,7 +14,7 @@
 
 nodes:
 - type: dgxa100.80g
-  count: 1
+  count: 2
   annotations: {}
   labels:
     nvidia.com/gpu.count: "8"
@@ -29,7 +29,7 @@ nodes:
     status: "False"
     type: KernelDeadlock
 - type: dgxh100.80g
-  count: 1
+  count: 2
   annotations: {}
   labels:
     nvidia.com/gpu.count: "8"

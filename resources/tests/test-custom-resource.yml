@@ -8,6 +8,15 @@ tasks:
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-[0-9]+"
     podCount: "{{.replicas}}"
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 2
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
 - id: job
   type: SubmitObj
   params:

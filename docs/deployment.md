@@ -29,7 +29,7 @@ Some of the tested frameworks are:
 - [Jobset](https://github.com/kubernetes-sigs/jobset?tab=readme-ov-file#installation)
 - [Kueue](https://kueue.sigs.k8s.io/docs/installation/)
 
-## KWOK Integration
+## KWOK integration
 
 Knavigator integrates with KWOK to simulate large clusters with hundreds or thousands of virtual nodes. This allows for the execution of experiments in a resource-efficient manner, without the need to run actual user workloads. The integration is facilitated through the API Server, which communicates with KWOK to manage the virtual nodes.
 
@@ -52,20 +52,33 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 kubectl apply -f charts/overrides/kwok/pod-complete.yml
 ```
 
-For configuring virtual nodes, you need to provide the `values.yaml` file to define the type and quantity of nodes you wish to create. You also have the option to enhance node configurations by adding annotations, labels, and conditions. For guidance, refer to the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
+## Setting up virtual nodes
 
+There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
+
+### 1. Using the `helm` command
+
+Run the `helm install` command and provide the `values.yaml` file that specifies the types and quantities of nodes you wish to create. For example, see the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
 Currently, the system includes the following node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxa100.80g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxh100.80g](https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview)
 - cpu.x86
 
-If you need to introduce additional node types, update the values file used for node configuration with the node information (such as type and count), and include a parameters section in the [nodes.yaml](../charts/virtual-nodes/templates/nodes.yaml) file.
-
-To deploy the nodes in `values-example.yaml`, use the Helm command:
+To deploy the nodes defined in `values-example.yaml`, use the following command:
 ```bash
-helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
+helm upgrade --install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
 ```
+
+### 2. Using the Task Specification
+
+Set up virtual nodes within the `Configure` task in the task specification file. For this example, refer to [test-custom-resource.yml](../resources/tests/test-custom-resource.yml#L11-L19).
+
+### Enhancing Node Configurations
+
+In both methods, you can enhance node configurations by adding annotations, labels, and conditions.
+
+To introduce additional node types, update the `values.yaml` file or the `Configure` task used for node configuration with the node information (such as type, count, etc.), and include a parameters section in the [nodes.yaml](../charts/virtual-nodes/templates/nodes.yaml) file.
 
 > :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 

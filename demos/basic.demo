@@ -15,10 +15,6 @@ kubectl apply -f charts/overrides/kwok/pod-complete.yml
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
 
-# Add virtual nodes to the cluster
-helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
-kubectl get nodes
-
 # Build Knavigator
 make build
 
@@ -27,6 +23,9 @@ make build
 
 # Show the job running
 kubectl get job
+
+# Show the pods running
+kubectl get pod -o wide
 
 # Clean up
 kubectl delete job job1
