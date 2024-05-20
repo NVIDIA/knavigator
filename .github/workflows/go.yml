@@ -91,24 +91,10 @@ jobs:
         version: v3.14.4
 
     - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
+      run: |
+        go install sigs.k8s.io/kind@v0.23.0
+        kind create cluster
 
     - name: Install KWOK node simulator
       run: |
-        kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwok.yaml"
-        kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/stage-fast.yaml"
-        kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
-        kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
-        kubectl apply -f charts/overrides/kwok/pod-complete.yml
-
-    - name: Add virtual nodes to the cluster
-      run: |
-        helm install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
-        kubectl get nodes
-
-    - name: Run knavigator with an example test
-      run: |
-        kubectl create ns k8s-test
-        kubectl create priorityclass normal-priority --value=100000
-        ./bin/knavigator -tasks resources/tests/k8s/test-job.yml
-        kubectl get job -n k8s-test
+        ./resources/tests/k8s/k8s_test.sh
