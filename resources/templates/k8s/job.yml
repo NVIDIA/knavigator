@@ -23,6 +23,9 @@ spec:
   parallelism: {{.parallelism}}
   completionMode: {{.completionMode}}
   template:
+    metadata:
+      annotations:
+        pod-complete.stage.kwok.x-k8s.io/delay: {{.delay}}
     spec:
       schedulerName: default-scheduler
       containers:
