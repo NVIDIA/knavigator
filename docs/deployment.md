@@ -54,31 +54,57 @@ kubectl apply -f charts/overrides/kwok/pod-complete.yml
 
 ## Setting up virtual nodes
 
-There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, and `conditions`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
-### 1. Using the `helm` command
-
-Run the `helm install` command and provide the `values.yaml` file that specifies the types and quantities of nodes you wish to create. For example, see the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
-Currently, the system includes the following node types:
+There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxa100.80g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
 - [dgxh100.80g](https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html#hardware-overview)
-- cpu.x86
 
-To deploy the nodes defined in `values-example.yaml`, use the following command:
-```bash
-helm upgrade --install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
+For these types, the resource attributes are already configured, but you can still modify `count`, `annotations`, `labels`, and `conditions`. For example:
+```yaml
+- type: dgxa100.80g
+  count: 2
+  annotations: {}
+  labels:
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  conditions:
+  - message: kernel has no deadlock
+    reason: KernelHasNoDeadlock
+    status: "False"
+    type: KernelDeadlock
 ```
 
-### 2. Using the Task Specification
+For other node types, it is recommended to provide resource capacity. For example:
+```yaml
+- type: cpu.x86
+  count: 2
+  resources:
+    hugepages-1Gi: 0
+    hugepages-2Mi: 0
+    pods: 110
+    cpu: 48
+    memory: 196692052Ki
+    ephemeral-storage: 2537570228Ki
+```
 
-Set up virtual nodes within the `Configure` task in the task specification file. For this example, refer to [test-custom-resource.yml](../resources/tests/test-custom-resource.yml#L11-L19).
+There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
 
-### Enhancing Node Configurations
+- Using the `helm` command:
 
-In both methods, you can enhance node configurations by adding annotations, labels, and conditions.
+  Run the `helm install` command and provide the `values.yaml` file that specifies the types and quantities of nodes you wish to create. For example, see the [values-example.yaml](../charts/virtual-nodes/values-example.yaml) file.
+  
+  To deploy the nodes defined in `values-example.yaml`, use the following command:
+  ```bash
+  helm upgrade --install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
+  ```
 
-To introduce additional node types, update the `values.yaml` file or the `Configure` task used for node configuration with the node information (such as type, count, etc.), and include a parameters section in the [nodes.yaml](../charts/virtual-nodes/templates/nodes.yaml) file.
+- Using the task specification:
+
+  Set up virtual nodes within the `Configure` task in the task specification file.
+  
+  For this example, refer to [test-custom-resource.yml](../resources/tests/test-custom-resource.yml#L11-L19).
 
 > :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 
