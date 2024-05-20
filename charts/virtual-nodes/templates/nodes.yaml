@@ -58,19 +58,8 @@
   {{- $resources = set $resources "ephemeral-storage"   "30Ti" }}
   {{- $params = set $params "resources" $resources }}
 
-{{/*
-# cpu.x86
-*/}}
-{{- else if eq $node.type "cpu.x86" }}
-  {{- $resources := deepCopy $defaultResources }}
-  {{- $resources = set $resources "cpu"               48             }}
-  {{- $resources = set $resources "memory"            "196692052Ki"  }}
-  {{- $resources = set $resources "ephemeral-storage" "2537570228Ki" }}
-  {{- $params = set $params "resources" $resources }}
-
 {{- else }}
-  {{- $error := printf "Unsupported node type '%s'" $node.type }}
-  {{- fail $error }}
+  {{- $params = set $params "resources" $node.resources }}
 {{- end }}
 
 {{- $count := ($node.count | int) }}

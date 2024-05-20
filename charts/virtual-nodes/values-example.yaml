@@ -45,3 +45,10 @@ nodes:
     type: KernelDeadlock
 - type: cpu.x86
   count: 2
+  resources:
+    hugepages-1Gi: 0
+    hugepages-2Mi: 0
+    pods: 110
+    cpu: 48
+    memory: 196692052Ki
+    ephemeral-storage: 2537570228Ki
