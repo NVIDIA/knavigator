@@ -113,6 +113,9 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 	case TaskRegisterObj:
 		return newRegisterObjTask(eng.log, eng.discoveryClient, eng, cfg)
 
+	case TaskConfigure:
+		return newConfigureTask(eng.log, eng.k8sClient, cfg)
+
 	case TaskSubmitObj:
 		task, err := newSubmitObjTask(eng.log, eng.dynamicClient, eng, cfg)
 		if err != nil {
