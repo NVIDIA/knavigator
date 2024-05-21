@@ -4,6 +4,7 @@
 name: Nightly
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "05 07 * * *" # Everyday 07:05 AM UTC
 
