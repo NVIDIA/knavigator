@@ -112,11 +112,32 @@ There are two ways to set up virtual nodes in the cluster, both of which require
 
 Knavigator can be deployed inside a Kubernetes cluster or used externally from outside the cluster.
 
+### Running Knavigator outside the cluster
+
 To use Knavigator outside the cluster, run
 ```bash
 ./bin/knavigator -tasks <task config>
 ```
+
+Additionally, you can use the `-cleanup` flag to remove any leftover objects created by the test, and the `-v` flag to increase verbosity. For usage instructions, use the `-h` flag.
+
+For example,
+```bash
+./bin/knavigator -tasks resources/tests/k8s/test-job.yml -v 4 -cleanup
+```
+
 In this mode, Knavigator requires the `KUBECONFIG` environment variable or the presence of the `-kubeconfig` or `-kubectx` command-line arguments.
 
-To deploy Knavigator inside the cluster, you would need to create a pod. 
-Details: TBD
+### Running Knavigator inside the cluster
+
+To deploy Knavigator inside the cluster, follow these steps:
+
+- Create a service account and bind it to the `cluster-admin` role. Refer to [rbac.yml](examples/knavigator/rbac.yml) for an example.
+
+- Deploy a pod or job that uses the service account and executes the Knavigator command, for example [test-job.yml](examples/knavigator/test-job.yml).
+
+```bash
+kubectl apply -f docs/examples/knavigator/rbac.yaml
+
+kubectl apply -f docs/examples/knavigator/test-job.yml
+```
