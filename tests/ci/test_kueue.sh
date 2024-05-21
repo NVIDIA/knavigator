@@ -12,5 +12,18 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
 kubectl apply -f ${REPO_HOME}/charts/overrides/kwok/pod-complete.yml
 
+# Install Kueue
+KUEUE_VERSION=v0.6.2
+
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/prometheus.yaml
+
+# Wait until kueue webhook is ready
+# TODO: we need a deterministric way to check if it's ready
+sleep 10
+
+# Deploy cluster and local queues
+kubectl apply -f ${REPO_HOME}/docs/examples/kueue/queues.yml
+
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/k8s/test-job.yml
+${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/kueue/test-job.yml

@@ -12,5 +12,13 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
 kubectl apply -f ${REPO_HOME}/charts/overrides/kwok/pod-complete.yml
 
+# Install Volcano
+helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
+helm install volcano volcano-sh/volcano -n volcano-system --create-namespace --wait
+
+# Wait until volcano webhook is ready
+# TODO: we need a deterministric way to check if it's ready
+sleep 10
+
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/k8s/test-job.yml
+${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/volcano/test-job.yml
