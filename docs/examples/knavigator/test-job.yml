@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: klient
+  namespace: default
+spec:
+  template:
+    spec:
+      serviceAccountName: knavigator
+      containers:
+      - name: knavigator
+        image: ghcr.io/nvidia/knavigator:3527c8c
+        imagePullPolicy: Always
+        command:
+        - /usr/local/bin/knavigator
+        args:
+        - -tasks=resources/tests/k8s/test-job.yml
+        - -cleanup
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: type
+                operator: NotIn
+                values:
+                - kwok
+      restartPolicy: "Never"
