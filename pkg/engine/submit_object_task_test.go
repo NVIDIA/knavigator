@@ -29,16 +29,17 @@ import (
 func TestNewSubmitObjTask(t *testing.T) {
 	taskID := "submit"
 	params := map[string]interface{}{
-		"replicas": 2,
-		"instance": "lnx2000",
-		"command":  "sleep infinity",
-		"image":    "ubuntu",
-		"cpu":      "100m",
-		"memory":   "512M",
-		"gpu":      8,
-		"teamName": "teamName",
-		"orgName":  "orgName",
-		"userName": "tester",
+		"replicas":    2,
+		"parallelism": 2,
+		"instance":    "lnx2000",
+		"command":     "sleep infinity",
+		"image":       "ubuntu",
+		"cpu":         "100m",
+		"memory":      "512M",
+		"gpu":         8,
+		"teamName":    "teamName",
+		"orgName":     "orgName",
+		"userName":    "tester",
 	}
 	spec := map[string]interface{}{
 		"runPolicy": map[string]interface{}{
@@ -236,6 +237,62 @@ func TestNewSubmitObjTask(t *testing.T) {
 			},
 			names:     []string{"job1", "job2"},
 			podCount:  4,
+			podRegexp: []string{"job1-test-[0-9]+", "job2-test-[0-9]+"},
+		},
+		{
+			name: "Case 5: Pod count evaluation",
+			params: map[string]interface{}{
+				"refTaskId": "register",
+				"count":     2,
+				"params":    params,
+			},
+			simClients: true,
+			regObjParams: &RegisterObjParams{
+				Template:      "../../resources/templates/example.yml",
+				NameFormat:    "job{{._ENUM_}}",
+				PodNameFormat: "{{._NAME_}}-test-[0-9]+",
+				PodCount:      "{{.replicas}} * {{.parallelism}}",
+			},
+			refTaskID: "register",
+			task: &SubmitObjTask{
+				BaseTask: BaseTask{
+					log:      testLogger,
+					taskType: TaskSubmitObj,
+					taskID:   taskID,
+				},
+				submitObjTaskParams: submitObjTaskParams{
+					RefTaskID: "register",
+					Count:     2,
+					Params:    params,
+				},
+				client: testDynamicClient,
+			},
+			objs: []GenericObject{
+				{
+					TypeMeta: TypeMeta{
+						APIVersion: "example.com/v1",
+						Kind:       "MyObject",
+					},
+					Metadata: objectMeta{
+						Name:      "job1",
+						Namespace: "default",
+					},
+					Spec: spec,
+				},
+				{
+					TypeMeta: TypeMeta{
+						APIVersion: "example.com/v1",
+						Kind:       "MyObject",
+					},
+					Metadata: objectMeta{
+						Name:      "job2",
+						Namespace: "default",
+					},
+					Spec: spec,
+				},
+			},
+			names:     []string{"job1", "job2"},
+			podCount:  8,
 			podRegexp: []string{"job1-test-[0-9]+", "job2-test-[0-9]+"},
 		},
 	}
