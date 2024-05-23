@@ -131,3 +131,32 @@ func TestIsSubset(t *testing.T) {
 		})
 	}
 }
+
+func TestToInt64(t *testing.T) {
+	testCases := []struct {
+		name string
+		val  interface{}
+		ref  int64
+	}{
+		{
+			name: "Case 1: int",
+			val:  int(5),
+			ref:  5,
+		},
+		{
+			name: "Case 2: int32",
+			val:  int32(88),
+			ref:  88,
+		},
+		{
+			name: "Case 3: int64",
+			val:  int64(101),
+			ref:  101,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.ref, toInt64(tc.val))
+		})
+	}
+}
