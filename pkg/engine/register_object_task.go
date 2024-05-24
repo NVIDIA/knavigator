@@ -86,8 +86,7 @@ func (task *RegisterObjTask) validate(params map[string]interface{}) error {
 
 	tplStr := string(tplData)
 	var ver, kind string
-	reader := strings.NewReader(tplStr)
-	scanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(strings.NewReader(tplStr))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "apiVersion:") {

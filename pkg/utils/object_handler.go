@@ -49,6 +49,12 @@ func IsSubset(obj, subset map[string]interface{}) bool {
 			if _, ok := obj[key].([]interface{}); !ok {
 				return false
 			}
+
+		case int, int32, int64:
+			if toInt64(objVal) != toInt64(val) {
+				return false
+			}
+
 		default:
 			if objVal != val {
 				return false
@@ -64,4 +70,15 @@ func convert(in map[interface{}]interface{}) map[string]interface{} {
 		out[k.(string)] = v
 	}
 	return out
+}
+
+func toInt64(val interface{}) int64 {
+	switch v := val.(type) {
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	default:
+		return val.(int64)
+	}
 }
