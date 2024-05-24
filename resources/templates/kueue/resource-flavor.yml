@@ -1,0 +1,11 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: {{ .name }}
+spec:
+  {{- if .nodeLabels }}
+  nodeLabels:
+    {{- range $key, $value := .nodeLabels }}
+    {{ $key }}: "{{ $value }}"
+    {{- end }}
+  {{- end }}

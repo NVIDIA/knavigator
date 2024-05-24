@@ -1,0 +1,24 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: {{.name}}
+spec:
+  namespaceSelector: {} # match all.
+  cohort: {{.cohort}}
+  resourceGroups:
+  - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+    flavors:
+    - name: {{.flavor}}
+      resources:
+      - name: "cpu"
+        nominalQuota: {{.cpu}}
+      - name: "memory"
+        nominalQuota: {{.memory}}
+      - name: "nvidia.com/gpu"
+        nominalQuota: {{.gpu}}
+  preemption:
+    reclaimWithinCohort: Any
+    borrowWithinCohort:
+      policy: LowerPriority
+      maxPriorityThreshold: 100
+    withinClusterQueue: LowerPriority

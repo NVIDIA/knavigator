@@ -16,6 +16,8 @@ Install kueue by following these [instructions](https://kueue.sigs.k8s.io/docs/i
 KUEUE_VERSION=v0.6.2
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/prometheus.yaml
+
+kubectl apply -f charts/overrides/kueue/priority.yml
 ```
 
 ## Deploy cluster and local queues

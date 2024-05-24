@@ -56,14 +56,6 @@ func TestNewRegisterObjTask(t *testing.T) {
 			err:        "RegisterObj/register: failed to read /does/not/exist: open /does/not/exist: no such file or directory",
 		},
 		{
-			name: "Case 4: missing nameFormat",
-			params: map[string]interface{}{
-				"template": "../../resources/templates/example.yml",
-			},
-			simClients: true,
-			err:        "RegisterObj/register: must specify nameFormat",
-		},
-		{
 			name: "Case 5: bad podNameFormat",
 			params: map[string]interface{}{
 				"template":      "../../resources/templates/example.yml",

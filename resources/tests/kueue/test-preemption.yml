@@ -1,0 +1,145 @@
+name: test-kueue-job
+description: submit and validate a kueue job
+tasks:
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/cluster-queue.yml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yml"
+- id: register-job
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-[0-9]-.*"
+    podCount: "{{.parallelism}}"
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    params:
+      name: "gpu-node"
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+- id: create-cluster-queue-a
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    params:
+      name: team-a-cq
+      cohort: team-ab
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      gpu: 16
+- id: create-cluster-queue-b
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    params:
+      name: team-b-cq
+      cohort: team-ab
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      gpu: 16
+- id: create-local-queue-a
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    params:
+      name: team-a-queue
+      namespace: team-a
+      clusterQueue: team-a-cq
+- id: create-local-queue-b
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    params:
+      name: team-b-queue
+      namespace: team-b
+      clusterQueue: team-b-cq
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 4
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
+- id: job-a
+  type: SubmitObj
+  params:
+    refTaskId: register-job
+    count: 1
+    params:
+      queueName: team-a-queue
+      namespace: team-a
+      priority: low-priority
+      parallelism: 3
+      completions: 3
+      completionMode: Indexed
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 8
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job-a
+    state:
+      status:
+        active: 3
+    timeout: 5s
+- id: job-b
+  type: SubmitObj
+  params:
+    refTaskId: register-job
+    count: 1
+    params:
+      queueName: team-b-queue
+      namespace: team-b
+      priority: high-priority
+      parallelism: 2
+      completions: 2
+      completionMode: Indexed
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 8
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job-a
+    state:
+      status:
+        ready: 0
+    timeout: 5s
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job-b
+    state:
+      status:
+        active: 2
+    timeout: 5s
+- id: delete-b
+  type: DeleteObj
+  params:
+    refTaskId: job-b
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job-a
+    state:
+      status:
+        active: 3
+    timeout: 5s
