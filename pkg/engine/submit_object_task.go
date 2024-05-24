@@ -19,10 +19,10 @@ package engine
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/maja42/goval"
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -180,11 +180,18 @@ func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([
 		if err != nil {
 			return nil, nil, 0, nil, err
 		}
-		str := string(data)
-		podCount, err = strconv.Atoi(str)
+		str := strings.TrimSuffix(strings.TrimPrefix(string(data), "\""), "\"")
+		eval := goval.NewEvaluator()
+		result, err := eval.Evaluate(str, nil, nil)
 		if err != nil {
-			return nil, nil, 0, nil, fmt.Errorf("%s: failed to convert pod count %s to int: %v", task.ID(), str, err)
+			return nil, nil, 0, nil, fmt.Errorf("%s: failed to evaluate pod count %s %v", task.ID(), str, err)
 		}
+
+		var ok bool
+		if podCount, ok = result.(int); !ok {
+			return nil, nil, 0, nil, fmt.Errorf("%s: failed to convert pod count %s to int", task.ID(), str)
+		}
+
 		podCount *= task.Count
 	}
 	task.log.V(4).Info("Generating object specs", "podCount", podCount, "podRegexp", podRegexp)
