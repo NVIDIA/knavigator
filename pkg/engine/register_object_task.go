@@ -17,9 +17,11 @@
 package engine
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/go-logr/logr"
@@ -82,21 +84,37 @@ func (task *RegisterObjTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: failed to read %s: %v", task.ID(), task.Template, err)
 	}
 
-	var typeMeta TypeMeta
-	err = yaml.Unmarshal(tplData, &typeMeta)
-	if err != nil {
-		return fmt.Errorf("%s: failed to parse template %s: %v", task.ID(), task.Template, err)
+	tplStr := string(tplData)
+	var ver, kind string
+	reader := strings.NewReader(tplStr)
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "apiVersion:") {
+			ver = strings.TrimSpace(line[11:])
+		}
+		if strings.HasPrefix(line, "kind:") {
+			kind = strings.TrimSpace(line[5:])
+		}
+		if len(ver) != 0 && len(kind) != 0 {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading string:", err)
+	}
+	if len(ver) == 0 {
+		return fmt.Errorf("%s: failed to fetch 'apiVersion' from template %s: %d", task.ID(), task.Template, len(ver))
+	}
+	if len(kind) == 0 {
+		return fmt.Errorf("%s: failed to fetch 'kind' from template %s: %d", task.ID(), task.Template, len(kind))
 	}
 
-	task.gvk = schema.FromAPIVersionAndKind(typeMeta.APIVersion, typeMeta.Kind)
+	task.gvk = schema.FromAPIVersionAndKind(ver, kind)
 
-	task.objTpl, err = template.ParseFiles(task.Template)
+	task.objTpl, err = template.New("object").Parse(tplStr)
 	if err != nil {
 		return fmt.Errorf("%s: failed to parse template %s: %v", task.ID(), task.Template, err)
-	}
-
-	if len(task.NameFormat) == 0 {
-		return fmt.Errorf("%s: must specify nameFormat", task.ID())
 	}
 
 	if len(task.PodNameFormat) != 0 {
