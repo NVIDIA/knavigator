@@ -20,6 +20,20 @@ tasks:
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-[0-9]-.*"
     podCount: "{{.parallelism}}"
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 4
+      labels:
+        nvidia.com/gpu.count: "8"
+    namespaces:
+    - name: team-a
+      op: create
+    - name: team-b
+      op: create
+    timeout: 1m
 - id: create-resource-flavor
   type: SubmitObj
   params:
@@ -66,15 +80,6 @@ tasks:
       name: team-b-queue
       namespace: team-b
       clusterQueue: team-b-cq
-- id: configure
-  type: Configure
-  params:
-    nodes:
-    - type: dgxa100.80g
-      count: 4
-      labels:
-        nvidia.com/gpu.count: "8"
-    timeout: 1m
 - id: job-a
   type: SubmitObj
   params:
@@ -131,6 +136,10 @@ tasks:
       status:
         active: 2
     timeout: 5s
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 2s
 - id: delete-b
   type: DeleteObj
   params:
