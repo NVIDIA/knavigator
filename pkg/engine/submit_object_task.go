@@ -114,6 +114,10 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		return fmt.Errorf("%s: failed to get object type: %v", task.ID(), err)
 	}
 
+	if task.Count > 1 && len(regObjParams.NameFormat) == 0 {
+		return fmt.Errorf("%s: multi-instance objects must specify 'nameFormat' during object registration", task.ID())
+	}
+
 	objs, names, podCount, podRegexp, err := task.getGenericObjects(regObjParams)
 	if err != nil {
 		return err
@@ -148,8 +152,9 @@ func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([
 	podRegexp := []string{}
 
 	for i := 0; i < task.Count; i++ {
-		task.Params["_NAME_"] = names[i]
-
+		if len(names[i]) != 0 {
+			task.Params["_NAME_"] = names[i]
+		}
 		data, err := utils.ExecTemplate(regObjParams.objTpl, task.Params)
 		if err != nil {
 			return nil, nil, 0, nil, err
