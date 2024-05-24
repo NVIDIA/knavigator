@@ -52,7 +52,7 @@ func TestNewConfigureTask(t *testing.T) {
 			params: map[string]interface{}{
 				"timeout": "BAD",
 			},
-			err: "failed to parse parameters in Configure task configure: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into time.Duration",
+			err: "Configure/configure: failed to parse parameters: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into time.Duration",
 		},
 		{
 			name:       "Case 4: Invalid nodes type",
@@ -61,10 +61,19 @@ func TestNewConfigureTask(t *testing.T) {
 				"timeout": "1m",
 				"nodes":   "BAD",
 			},
-			err: "failed to parse parameters in Configure task configure: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into []engine.virtualNode",
+			err: "Configure/configure: failed to parse parameters: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into []engine.virtualNode",
 		},
 		{
-			name:       "Case 5: Valid parameters with default",
+			name:       "Case 5: Invalid namespace op",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":    "1m",
+				"namespaces": []interface{}{map[string]interface{}{"name": "ns", "op": "BAD"}},
+			},
+			err: "Configure/configure: invalid namespace operation BAD; supported: create, delete",
+		},
+		{
+			name:       "Case 6: Valid parameters with default",
 			simClients: true,
 			params:     map[string]interface{}{"timeout": "1m"},
 			task: &ConfigureTask{
@@ -80,13 +89,17 @@ func TestNewConfigureTask(t *testing.T) {
 			},
 		},
 		{
-			name:       "Case 6: Valid parameters without default",
+			name:       "Case 7: Valid parameters without default",
 			simClients: true,
 			params: map[string]interface{}{
 				"timeout": "1m",
 				"nodes": []interface{}{
 					map[string]interface{}{"type": "dgxa100.40g", "count": 2},
 					map[string]interface{}{"type": "cpu-tiny", "count": 4},
+				},
+				"namespaces": []interface{}{
+					map[string]interface{}{"name": "ns1", "op": "create"},
+					map[string]interface{}{"name": "ns2", "op": "delete"},
 				},
 			},
 			task: &ConfigureTask{
@@ -105,6 +118,16 @@ func TestNewConfigureTask(t *testing.T) {
 						{
 							Type:  "cpu-tiny",
 							Count: 4,
+						},
+					},
+					Namespaces: []namespace{
+						{
+							Name: "ns1",
+							Op:   NamespaceCreate,
+						},
+						{
+							Name: "ns2",
+							Op:   NamespaceDelete,
 						},
 					},
 				},

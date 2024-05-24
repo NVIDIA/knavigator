@@ -22,10 +22,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -39,8 +42,9 @@ type ConfigureTask struct {
 }
 
 type configureTaskParams struct {
-	Nodes   []virtualNode `yaml:"nodes"`
-	Timeout time.Duration `yaml:"timeout"`
+	Nodes      []virtualNode `yaml:"nodes"`
+	Namespaces []namespace   `yaml:"namespaces"`
+	Timeout    time.Duration `yaml:"timeout"`
 }
 
 type virtualNode struct {
@@ -49,6 +53,11 @@ type virtualNode struct {
 	Annotations map[string]string   `yaml:"annotations,omitempty" json:"annotations,omitempty"`
 	Labels      map[string]string   `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Conditions  []map[string]string `yaml:"conditions,omitempty" json:"conditions,omitempty"`
+}
+
+type namespace struct {
+	Name string `yaml:"name"`
+	Op   string `yaml:"op"`
 }
 
 func newConfigureTask(log logr.Logger, client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
@@ -76,10 +85,19 @@ func newConfigureTask(log logr.Logger, client *kubernetes.Clientset, cfg *config
 func (task *ConfigureTask) validate(params map[string]interface{}) error {
 	data, err := yaml.Marshal(params)
 	if err != nil {
-		return fmt.Errorf("failed to parse parameters in %s task %s: %v", task.taskType, task.taskID, err)
+		return fmt.Errorf("%s: failed to parse parameters: %v", task.ID(), err)
 	}
 	if err = yaml.Unmarshal(data, &task.configureTaskParams); err != nil {
-		return fmt.Errorf("failed to parse parameters in %s task %s: %v", task.taskType, task.taskID, err)
+		return fmt.Errorf("%s: failed to parse parameters: %v", task.ID(), err)
+	}
+
+	for _, ns := range task.Namespaces {
+		switch ns.Op {
+		case NamespaceCreate, NamespaceDelete:
+			// nop
+		default:
+			return fmt.Errorf("%s: invalid namespace operation %s; supported: %s, %s", task.ID(), ns.Op, NamespaceCreate, NamespaceDelete)
+		}
 	}
 
 	if task.Timeout == 0 {
@@ -94,19 +112,65 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, task.Timeout)
 	defer cancel()
 
-	stop := make(chan error)
-	defer close(stop)
+	errs := make(chan error)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	go func() {
-		stop <- task.updateVirtualNodes(ctx)
+		wg.Wait()
+		close(errs)
 	}()
 
-	select {
-	case err := <-stop:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
+	go func() {
+		defer wg.Done()
+		errs <- task.updateNamespaces(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		errs <- task.updateVirtualNodes(ctx)
+	}()
+
+	for e := range errs {
+		if e != nil {
+			task.log.Error(e, "configuration error")
+			err = e
+		}
 	}
+
+	return
+}
+
+func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
+	for _, ns := range task.Namespaces {
+		task.log.Info("Update namespace", "name", ns.Name, "op", ns.Op)
+		switch ns.Op {
+		case NamespaceCreate:
+			_, err := task.client.CoreV1().Namespaces().Get(ctx, ns.Name, metav1.GetOptions{})
+			if err == nil {
+				task.log.Info("Namespace already exist", "name", ns.Name)
+			} else {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: ns.Name,
+					},
+				}
+				_, err = task.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+				if err != nil {
+					return fmt.Errorf("%s: failed to create namespace %s: %v", task.ID(), ns.Name, err)
+				}
+			}
+
+		case NamespaceDelete:
+			err := task.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return fmt.Errorf("%s: failed to delete namespace %s: %v", task.ID(), ns.Name, err)
+			}
+			task.log.Info("Namespace deleted", "name", ns.Name)
+		}
+	}
+
+	return nil
 }
 
 func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
@@ -153,8 +217,7 @@ func runCommand(ctx context.Context, log logr.Logger, exe string, args []string)
 	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
-		log.Error(err, "failed to run command",
-			"stdout", stdout.String(), "stderr", stderr.String())
+		log.Error(err, "failed to run command", "stdout", stdout.String(), "stderr", stderr.String())
 		return err
 	}
 
