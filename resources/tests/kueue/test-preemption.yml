@@ -104,6 +104,14 @@ tasks:
       status:
         active: 3
     timeout: 5s
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job-a
+    status: Running
+    nodeLabels:
+      nvidia.com/gpu.count: "8"
+    timeout: 5s
 - id: job-b
   type: SubmitObj
   params:
@@ -151,4 +159,12 @@ tasks:
     state:
       status:
         active: 3
+    timeout: 5s
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job-a
+    status: Running
+    nodeLabels:
+      nvidia.com/gpu.count: "8"
     timeout: 5s
