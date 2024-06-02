@@ -28,7 +28,7 @@ import (
 type KubeConfig struct {
 	KubeConfigPath string
 	KubeCtx        string
-	QPS            float32
+	QPS            float64
 	Burst          int
 }
 
@@ -45,7 +45,7 @@ type Task struct {
 	Params      map[string]interface{} `yaml:"params,omitempty"`
 }
 
-// New populates task config from raw data
+// New populates workflow config from raw data
 func New(data []byte) (*Workflow, error) {
 	var config Workflow
 
@@ -60,7 +60,7 @@ func New(data []byte) (*Workflow, error) {
 	return &config, nil
 }
 
-// NewFromFile populates test config from YAML file
+// NewFromFile populates workflow config from YAML file
 func NewFromFile(path string) (*Workflow, error) {
 	path = filepath.Clean(path)
 	data, err := os.ReadFile(path)

@@ -33,7 +33,7 @@ func GetK8sConfig(log logr.Logger, cfg *cfg.KubeConfig) (*rest.Config, error) {
 	restConfig, err := rest.InClusterConfig()
 	if err == nil {
 		restConfig.Burst = cfg.Burst
-		restConfig.QPS = cfg.QPS
+		restConfig.QPS = float32(cfg.QPS)
 		log.Info("Using in-cluster kubeconfig")
 		return restConfig, err
 	}
