@@ -14,7 +14,7 @@ spec:
         command:
         - /usr/local/bin/knavigator
         args:
-        - -tasks=resources/tests/k8s/test-job.yml
+        - -workflow=resources/workflows/k8s/test-job.yml
         - -cleanup
       affinity:
         nodeAffinity:

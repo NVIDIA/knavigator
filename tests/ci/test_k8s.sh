@@ -13,4 +13,4 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 kubectl apply -f ${REPO_HOME}/charts/overrides/kwok/pod-complete.yml
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/k8s/test-job.yml
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/k8s/test-job.yml

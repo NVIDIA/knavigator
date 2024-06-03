@@ -77,14 +77,14 @@ func TestRunEngine(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	testCfg := &config.TaskConfig{
+	workflow := &config.Workflow{
 		Name:  "test",
 		Tasks: []*config.Task{{ID: "task"}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Run(ctx, tc.eng, testCfg)
+			err := Run(ctx, tc.eng, workflow)
 			if tc.err != nil {
 				require.Equal(t, err, tc.err)
 			} else {

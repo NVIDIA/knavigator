@@ -102,9 +102,9 @@ There are two ways to set up virtual nodes in the cluster, both of which require
 
 - Using the task specification:
 
-  Set up virtual nodes within the `Configure` task in the task specification file.
+  Set up virtual nodes within the `Configure` task in the workflow config file.
   
-  For this example, refer to [test-custom-resource.yml](../resources/tests/test-custom-resource.yml#L11-L19).
+  For this example, refer to [test-custom-resource.yml](../resources/workflows/test-custom-resource.yml#L11-L19).
 
 > :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 
@@ -116,14 +116,14 @@ Knavigator can be deployed inside a Kubernetes cluster or used externally from o
 
 To use Knavigator outside the cluster, run
 ```bash
-./bin/knavigator -tasks <task config>
+./bin/knavigator -workflow <task config>
 ```
 
 Additionally, you can use the `-cleanup` flag to remove any leftover objects created by the test, and the `-v` flag to increase verbosity. For usage instructions, use the `-h` flag.
 
 For example,
 ```bash
-./bin/knavigator -tasks resources/tests/k8s/test-job.yml -v 4 -cleanup
+./bin/knavigator -workflow resources/workflows/k8s/test-job.yml -v 4 -cleanup
 ```
 
 In this mode, Knavigator requires the `KUBECONFIG` environment variable or the presence of the `-kubeconfig` or `-kubectx` command-line arguments.

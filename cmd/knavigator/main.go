@@ -32,33 +32,30 @@ import (
 
 func mainInternal() error {
 	var (
-		kubeConfigPath, kubeCtx, taskConfigs string
-		qps                                  float64
-		burst                                int
-		cleanupInfo                          engine.CleanupInfo
+		kubeConfigPath, kubeCtx, workflow string
+		qps                               float64
+		burst                             int
+		cleanupInfo                       engine.CleanupInfo
 	)
 	flag.StringVar(&kubeConfigPath, "kubeconfig", "", "kubeconfig file path")
 	flag.StringVar(&kubeCtx, "kubectx", "", "kube context")
 	flag.BoolVar(&cleanupInfo.Enabled, "cleanup", false, "delete objects")
 	flag.DurationVar(&cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
-	flag.StringVar(&taskConfigs, "tasks", "", "comma-separated list of task config files and dirs")
+	flag.StringVar(&workflow, "workflow", "", "comma-separated list of workflow config files and dirs")
 	flag.Float64Var(&qps, "kube-api-qps", 500, "Maximum QPS to use while talking with Kubernetes API")
 	flag.IntVar(&burst, "kube-api-burst", 500, "Maximum burst for throttle while talking with Kubernetes API")
 
 	klog.InitFlags(nil)
 	flag.Parse()
 
-	if len(taskConfigs) == 0 {
+	if len(workflow) == 0 {
 		flag.Usage()
-		return fmt.Errorf("missing task config")
+		return fmt.Errorf("missing 'workflow' argument")
 	}
 
-	taskconfigs, err := config.NewFromPaths(taskConfigs)
+	workflows, err := config.NewFromPaths(workflow)
 	if err != nil {
 		return err
-	}
-	if len(taskconfigs) == 0 {
-		return fmt.Errorf("missing 'tasks' argument")
 	}
 
 	log := textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(utils.Flag2Verbosity(flag.Lookup("v")))))
@@ -80,9 +77,9 @@ func mainInternal() error {
 
 	ctx := context.Background()
 
-	for _, taskconfig := range taskconfigs {
-		log.Info("Starting test", "name", taskconfig.Name)
-		if err := engine.Run(ctx, eng, taskconfig); err != nil {
+	for _, workflow := range workflows {
+		log.Info("Starting workflow", "name", workflow.Name)
+		if err := engine.Run(ctx, eng, workflow); err != nil {
 			return err
 		}
 	}

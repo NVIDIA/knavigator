@@ -31,13 +31,13 @@ kubectl create priorityclass normal-priority --value=100000
 ```
 Run a Volcano batch job with `volcano`:
 ```shell
-./bin/knavigator -tasks ./resources/tests/volcano/test-job.yml
+./bin/knavigator -workflow ./resources/workflows/volcano/test-job.yml
 ```
 ### Native kubernetes
 
 Run a kubernetes job:
 ```shell
-./bin/knavigator -tasks ./resources/tests/k8s/test-job.yml
+./bin/knavigator -workflow ./resources/workflows/k8s/test-job.yml
 ```
 
 Install [JobSet](https://github.com/kubernetes-sigs/jobset) in your cluster:
@@ -48,11 +48,11 @@ The controller runs in the `jobset-system` namespace. Make sure it is running on
 
 Run jobset with workers: 
 ```shell
-./bin/knavigator -tasks ./resources/tests/k8s/test-jobset.yml
+./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset.yml
 ```
 Run a test jobset with a driver and workers:
 ```shell
-./bin/knavigator -tasks ./resources/tests/k8s/test-jobset-with-driver.yml
+./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset-with-driver.yml
 ```
 
 ### Kueue

@@ -21,4 +21,4 @@ helm install volcano volcano-sh/volcano -n volcano-system --create-namespace --w
 sleep 10
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/volcano/test-job.yml
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/volcano/test-job.yml

@@ -77,7 +77,7 @@ func New(log logr.Logger, config *rest.Config, cleanupInfo *CleanupInfo, sim ...
 	return eng, nil
 }
 
-func Run(ctx context.Context, eng Engine, testconfig *config.TaskConfig) error {
+func Run(ctx context.Context, eng Engine, testconfig *config.Workflow) error {
 	var errExec error
 	for _, cfg := range testconfig.Tasks {
 		if errExec = eng.RunTask(ctx, cfg); errExec != nil {
