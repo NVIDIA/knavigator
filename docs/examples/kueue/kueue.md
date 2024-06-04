@@ -36,5 +36,5 @@ helm install virtual-nodes charts/virtual-nodes -f docs/examples/kueue/values.ya
 ## Run kueue job
 
 ```bash
-./bin/knavigator -tasks resources/tests/kueue/test-job.yml
+./bin/knavigator -workflow resources/workflows/kueue/test-job.yml
 ```

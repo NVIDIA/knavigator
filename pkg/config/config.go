@@ -32,7 +32,7 @@ type KubeConfig struct {
 	Burst          int
 }
 
-type TaskConfig struct {
+type Workflow struct {
 	Name        string  `yaml:"name"`
 	Description string  `yaml:"description,omitempty"`
 	Tasks       []*Task `yaml:"tasks"`
@@ -46,8 +46,8 @@ type Task struct {
 }
 
 // New populates task config from raw data
-func New(data []byte) (*TaskConfig, error) {
-	var config TaskConfig
+func New(data []byte) (*Workflow, error) {
+	var config Workflow
 
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func New(data []byte) (*TaskConfig, error) {
 }
 
 // NewFromFile populates test config from YAML file
-func NewFromFile(path string) (*TaskConfig, error) {
+func NewFromFile(path string) (*Workflow, error) {
 	path = filepath.Clean(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -71,10 +71,10 @@ func NewFromFile(path string) (*TaskConfig, error) {
 	return New(data)
 }
 
-func NewFromPaths(paths string) ([]*TaskConfig, error) {
+func NewFromPaths(paths string) ([]*Workflow, error) {
 	cfgPaths := strings.Split(paths, ",")
-	configs := []*TaskConfig{}
-	var cfg *TaskConfig
+	configs := []*Workflow{}
+	var cfg *Workflow
 	for _, path := range cfgPaths {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
@@ -106,7 +106,7 @@ func NewFromPaths(paths string) ([]*TaskConfig, error) {
 }
 
 // validate performs checks of mandatory fields
-func (c *TaskConfig) validate() error {
+func (c *Workflow) validate() error {
 	if len(c.Tasks) == 0 {
 		return fmt.Errorf("test %s has no tasks", c.Name)
 	}

@@ -19,7 +19,7 @@ kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/ch
 make build
 
 # Run Knavigator with an example test
-./bin/knavigator --tasks resources/tests/k8s/test-job.yml
+./bin/knavigator --workflow resources/tests/k8s/test-job.yml
 
 # Show the job running
 kubectl get job

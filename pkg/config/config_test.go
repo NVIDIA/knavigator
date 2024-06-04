@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTaskConfig(t *testing.T) {
+func TestWorkflow(t *testing.T) {
 	testCases := []struct {
 		name   string
 		config string
@@ -81,7 +81,7 @@ tasks:
 }
 
 func TestConfigFile(t *testing.T) {
-	c, err := NewFromFile("../../resources/tests/test-custom-resource.yml")
+	c, err := NewFromFile("../../resources/workflows/test-custom-resource.yml")
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
@@ -104,7 +104,7 @@ func TestConfigPaths(t *testing.T) {
 		},
 		{
 			name:  "Case 3: Valid input",
-			paths: "../../resources/tests/volcano,../../resources/tests/test-custom-resource.yml",
+			paths: "../../resources/workflows/volcano,../../resources/workflows/test-custom-resource.yml",
 			count: 2,
 		},
 	}

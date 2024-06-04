@@ -26,4 +26,4 @@ sleep 10
 kubectl apply -f ${REPO_HOME}/docs/examples/kueue/queues.yml
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -tasks ${REPO_HOME}/resources/tests/kueue/test-job.yml
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/kueue/test-job.yml
