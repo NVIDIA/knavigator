@@ -80,13 +80,13 @@ tasks:
 	}
 }
 
-func TestConfigFile(t *testing.T) {
+func TestWorkflowFile(t *testing.T) {
 	c, err := NewFromFile("../../resources/workflows/test-custom-resource.yml")
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
 
-func TestConfigPaths(t *testing.T) {
+func TestWorkflowPaths(t *testing.T) {
 	testCases := []struct {
 		name  string
 		paths string

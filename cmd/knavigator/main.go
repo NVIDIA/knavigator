@@ -27,50 +27,53 @@ import (
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/engine"
+	"github.com/NVIDIA/knavigator/pkg/server"
 	"github.com/NVIDIA/knavigator/pkg/utils"
 )
 
+type Args struct {
+	kubeCfg     config.KubeConfig
+	workflow    string
+	port        int
+	cleanupInfo engine.CleanupInfo
+}
+
 func mainInternal() error {
-	var (
-		kubeConfigPath, kubeCtx, workflow string
-		qps                               float64
-		burst                             int
-		cleanupInfo                       engine.CleanupInfo
-	)
-	flag.StringVar(&kubeConfigPath, "kubeconfig", "", "kubeconfig file path")
-	flag.StringVar(&kubeCtx, "kubectx", "", "kube context")
-	flag.BoolVar(&cleanupInfo.Enabled, "cleanup", false, "delete objects")
-	flag.DurationVar(&cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
-	flag.StringVar(&workflow, "workflow", "", "comma-separated list of workflow config files and dirs")
-	flag.Float64Var(&qps, "kube-api-qps", 500, "Maximum QPS to use while talking with Kubernetes API")
-	flag.IntVar(&burst, "kube-api-burst", 500, "Maximum burst for throttle while talking with Kubernetes API")
+	var args Args
+	flag.StringVar(&args.kubeCfg.KubeConfigPath, "kubeconfig", "", "kubeconfig file path")
+	flag.StringVar(&args.kubeCfg.KubeCtx, "kubectx", "", "kube context")
+	flag.Float64Var(&args.kubeCfg.QPS, "kube-api-qps", 500, "Maximum QPS to use while talking with Kubernetes API")
+	flag.IntVar(&args.kubeCfg.Burst, "kube-api-burst", 500, "Maximum burst for throttle while talking with Kubernetes API")
+	flag.BoolVar(&args.cleanupInfo.Enabled, "cleanup", false, "delete objects")
+	flag.DurationVar(&args.cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
+	flag.StringVar(&args.workflow, "workflow", "", "comma-separated list of workflow config files and dirs (mutually exclusive with the 'port' flag)")
+	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
 
 	klog.InitFlags(nil)
 	flag.Parse()
 
-	if len(workflow) == 0 {
+	if err := validate(&args); err != nil {
 		flag.Usage()
-		return fmt.Errorf("missing 'workflow' argument")
-	}
-
-	workflows, err := config.NewFromPaths(workflow)
-	if err != nil {
 		return err
 	}
 
 	log := textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(utils.Flag2Verbosity(flag.Lookup("v")))))
-	cfg := &config.KubeConfig{
-		KubeConfigPath: kubeConfigPath,
-		KubeCtx:        kubeCtx,
-		QPS:            float32(qps),
-		Burst:          burst,
-	}
-	restConfig, err := utils.GetK8sConfig(log, cfg)
+
+	restConfig, err := utils.GetK8sConfig(log, &args.kubeCfg)
 	if err != nil {
 		return err
 	}
 
-	eng, err := engine.New(log, restConfig, &cleanupInfo)
+	eng, err := engine.New(log, restConfig, &args.cleanupInfo)
+	if err != nil {
+		return err
+	}
+
+	if args.port > 0 {
+		return server.New(&log, eng, args.port).Run()
+	}
+
+	workflows, err := config.NewFromPaths(args.workflow)
 	if err != nil {
 		return err
 	}
@@ -82,6 +85,18 @@ func mainInternal() error {
 		if err := engine.Run(ctx, eng, workflow); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func validate(args *Args) error {
+	if len(args.workflow) == 0 && args.port == 0 {
+		return fmt.Errorf("must specify 'workflow' or 'port'")
+	}
+
+	if len(args.workflow) != 0 && args.port > 0 {
+		return fmt.Errorf("'workflow' and 'port' are mutually exclusive")
 	}
 
 	return nil
