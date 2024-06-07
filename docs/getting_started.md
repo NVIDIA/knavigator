@@ -57,4 +57,4 @@ Run a test jobset with a driver and workers:
 
 ### Kueue
 
-Refer to [this document](./examples/kueue/kueue.md) for detailed instructions on how to run `kueue` system with `knavigator`.
+Refer to [this document](./examples/kueue.md) for detailed instructions on how to run `kueue` with `knavigator`.
