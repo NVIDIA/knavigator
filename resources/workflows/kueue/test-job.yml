@@ -1,7 +1,19 @@
 name: test-kueue-job
 description: submit and validate a kueue job
 tasks:
-- id: register
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/cluster-queue.yml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yml"
+- id: register-job
   type: RegisterObj
   params:
     template: "resources/templates/kueue/job.yml"
@@ -17,13 +29,39 @@ tasks:
       labels:
         nvidia.com/gpu.count: "8"
     timeout: 1m
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    params:
+      name: "gpu-node"
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+- id: create-cluster-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    params:
+      name: team
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      gpu: 32
+- id: create-local-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    params:
+      name: team-queue
+      namespace: default
+      clusterQueue: team
 - id: job
   type: SubmitObj
   params:
-    refTaskId: register
+    refTaskId: register-job
     count: 1
     params:
-      queueName: team-a-queue
+      queueName: team-queue
       namespace: default
       parallelism: 3
       completions: 3
@@ -31,7 +69,15 @@ tasks:
       image: ubuntu
       cpu: 100m
       memory: 512M
-      gpu: 1
+      gpu: 8
+- id: status
+  type: CheckObj
+  params:
+    refTaskId: job
+    state:
+      status:
+        active: 3
+    timeout: 5s
 - id: status
   type: CheckPod
   params:

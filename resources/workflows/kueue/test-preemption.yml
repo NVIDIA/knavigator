@@ -1,5 +1,5 @@
-name: test-kueue-job
-description: submit and validate a kueue job
+name: test-kueue-preemption
+description: test preemption with kueue
 tasks:
 - id: register-cluster-queue
   type: RegisterObj

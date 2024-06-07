@@ -4,7 +4,9 @@ metadata:
   name: {{.name}}
 spec:
   namespaceSelector: {} # match all.
+  {{- if .cohort }}
   cohort: {{.cohort}}
+  {{- end }}
   resourceGroups:
   - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
     flavors:

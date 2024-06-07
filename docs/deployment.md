@@ -116,7 +116,7 @@ Knavigator can be deployed inside a Kubernetes cluster or used externally from o
 
 To use Knavigator outside the cluster, run
 ```bash
-./bin/knavigator -workflow <task config>
+./bin/knavigator -workflow <workflow>
 ```
 
 Additionally, you can use the `-cleanup` flag to remove any leftover objects created by the test, and the `-v` flag to increase verbosity. For usage instructions, use the `-h` flag.
