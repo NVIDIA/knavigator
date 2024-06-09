@@ -42,7 +42,7 @@ Run a kubernetes job:
 
 Install [JobSet](https://github.com/kubernetes-sigs/jobset) in your cluster:
 ```shell
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.4.0/manifests.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.5.2/manifests.yaml
 ```
 The controller runs in the `jobset-system` namespace. Make sure it is running on a real node, e.g., a control-plane node.
 
