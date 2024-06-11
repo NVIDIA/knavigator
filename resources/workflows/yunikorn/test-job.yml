@@ -1,0 +1,87 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-yunikorn-job
+description: submit and validate a yunikorn job
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/templates/yunikorn/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-.*"
+    podCount: "{{.parallelism}}"
+- id: configure
+  type: Configure
+  description: set up 2 virtual GPU nodes and update yunikorn config
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 2
+      labels:
+        nvidia.com/gpu.count: "8"
+    configmaps:
+    - name: yunikorn-configs
+      namespace: yunikorn
+      op: create
+      data:
+        queues.yaml: |
+          partitions:
+            - name: default
+              queues:
+              - name: root
+                queues:
+                - name: sandbox
+                  submitacl: '*'
+                  resources:
+                    max:
+                      {memory: 1000Mi, vcore: 2000m, nvidia.com/gpu: 32}
+    timeout: 1m
+- id: job
+  type: SubmitObj
+  description: submit a 2-nodes job
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      namespace: default
+      parallelism: 2
+      completions: 2
+      applicationId: test-job
+      queue: root.sandbox
+      image: ubuntu
+      cpu: 100m
+      memory: 200Mi
+      gpu: 8
+- id: status
+  type: CheckObj
+  description: confirm that job is running
+  params:
+    refTaskId: job
+    state:
+      status:
+        active: 2
+    timeout: 5s
+- id: status
+  type: CheckPod
+  description: confirm that the pods initiated by the job are running
+  params:
+    refTaskId: job
+    status: Running
+    timeout: 5s
+- id: delete
+  type: DeleteObj
+  description: delete the job
+  params:
+    refTaskId: job

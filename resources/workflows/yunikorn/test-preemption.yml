@@ -1,0 +1,174 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-yunikorn-preemption
+description: test preemption with yunikorn
+tasks:
+- id: register
+  type: RegisterObj
+  description: register yunikorn job template
+  params:
+    template: "resources/templates/yunikorn/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-.*"
+    podCount: "{{.parallelism}}"
+- id: configure
+  type: Configure
+  description: set up 2 virtual GPU nodes and update yunikorn config
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 2
+      labels:
+        nvidia.com/gpu.count: "8"
+    configmaps:
+    - name: yunikorn-configs
+      namespace: yunikorn
+      op: create
+      queues.yaml: |
+        partitions:
+          - name: default
+            queues:
+            - name: root
+              queues:
+              - name: sandbox
+                resources:
+                  max:
+                    {memory: 1000Mi, vcore: 2000m, nvidia.com/gpu: 16}
+                queues:
+                - name: tenants
+                  properties:
+                    preemption.delay: 5s
+                  queues:
+                  - name: normal
+                    submitacl: '*'
+                    resources:
+                      max:
+                        {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
+                    properties:
+                      priority.offset: "0"
+                  - name: high
+                    submitacl: '*'
+                    resources:
+                      guaranteed:
+                        {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
+                    properties:
+                      priority.offset: "1000"
+    timeout: 1m
+- id: job-normal
+  type: SubmitObj
+  description: submit a 2-nodes job with normal priority (job A)
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      namespace: default
+      parallelism: 2
+      completions: 2
+      applicationId: normal-priority-job
+      queue: root.sandbox.tenants.normal
+      image: ubuntu
+      cpu: 100m
+      memory: 100Mi
+      gpu: 8
+- id: status
+  type: CheckObj
+  description: confirm that job A is running
+  params:
+    refTaskId: job-normal
+    state:
+      status:
+        active: 2
+    timeout: 5s
+- id: status
+  type: CheckPod
+  description: confirm that the pods initiated by job A are running
+  params:
+    refTaskId: job-normal
+    status: Running
+    timeout: 5s
+- id: job-high
+  type: SubmitObj
+  description: submit a 2-nodes job with high priority (job B)
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      namespace: default
+      parallelism: 2
+      completions: 2
+      applicationId: high-priority-job
+      queue: root.sandbox.tenants.high
+      image: ubuntu
+      cpu: 100m
+      memory: 100Mi
+      gpu: 8
+- id: sleep
+  type: Sleep
+  description: wait for the preemption delay to take effect
+  params:
+    timeout: 10s
+- id: status
+  type: CheckObj
+  description: confirm that job B is running
+  params:
+    refTaskId: job-high
+    state:
+      status:
+        active: 2
+    timeout: 5s
+- id: status
+  type: CheckPod
+  description: confirm that the pods initiated by job B are running
+  params:
+    refTaskId: job-high
+    status: Running
+    timeout: 5s
+- id: status
+  type: CheckObj
+  description: confirm that job A has been preempted
+  params:
+    refTaskId: job-normal
+    state:
+      status:
+        ready: 0
+    timeout: 5s
+- id: sleep
+  type: Sleep
+  description: allow job B to run for a while
+  params:
+    timeout: 5s
+- id: delete
+  type: DeleteObj
+  description: delete job B
+  params:
+    refTaskId: job-high
+- id: status
+  type: CheckObj
+  description: confirm that job A has been reinstated
+  params:
+    refTaskId: job-normal
+    state:
+      status:
+        active: 2
+    timeout: 5s
+- id: status
+  type: CheckPod
+  description: confirm that the pods initiated by job A are running
+  params:
+    refTaskId: job-normal
+    status: Running
+    nodeLabels:
+      nvidia.com/gpu.count: "8"
+    timeout: 5s
