@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -171,16 +172,16 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 			_, err := task.client.CoreV1().Namespaces().Get(ctx, ns.Name, metav1.GetOptions{})
 			if err == nil {
 				task.log.Info("Namespace already exist", "name", ns.Name)
-			} else {
+			} else if errors.IsNotFound(err) {
 				ns := &corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: ns.Name,
 					},
 				}
 				_, err = task.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-				if err != nil {
-					return fmt.Errorf("%s: failed to create namespace %s: %v", task.ID(), ns.Name, err)
-				}
+			}
+			if err != nil {
+				return fmt.Errorf("%s: failed to create namespace %s: %v", task.ID(), ns.Name, err)
 			}
 
 		case OpDelete:
@@ -212,7 +213,7 @@ func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 			if err == nil {
 				op = "update"
 				_, err = task.client.CoreV1().ConfigMaps(cm.Namespace).Update(ctx, cmap, metav1.UpdateOptions{})
-			} else {
+			} else if errors.IsNotFound(err) {
 				op = "create"
 				_, err = task.client.CoreV1().ConfigMaps(cm.Namespace).Create(ctx, cmap, metav1.CreateOptions{})
 			}
