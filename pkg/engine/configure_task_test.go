@@ -64,13 +64,22 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: failed to parse parameters: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into []engine.virtualNode",
 		},
 		{
-			name:       "Case 5: Invalid namespace op",
+			name:       "Case 5a: Invalid namespace op",
 			simClients: true,
 			params: map[string]interface{}{
 				"timeout":    "1m",
 				"namespaces": []interface{}{map[string]interface{}{"name": "ns", "op": "BAD"}},
 			},
 			err: "Configure/configure: invalid namespace operation BAD; supported: create, delete",
+		},
+		{
+			name:       "Case 5b: Invalid configmap op",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":    "1m",
+				"configmaps": []interface{}{map[string]interface{}{"name": "ns", "op": "BAD"}},
+			},
+			err: "Configure/configure: invalid configmap operation BAD; supported: create, delete",
 		},
 		{
 			name:       "Case 6: Valid parameters with default",
@@ -101,6 +110,14 @@ func TestNewConfigureTask(t *testing.T) {
 					map[string]interface{}{"name": "ns1", "op": "create"},
 					map[string]interface{}{"name": "ns2", "op": "delete"},
 				},
+				"configmaps": []interface{}{
+					map[string]interface{}{
+						"name":      "cm1",
+						"namespace": "default",
+						"op":        "create",
+						"data":      map[string]string{"key": "value"},
+					},
+				},
 			},
 			task: &ConfigureTask{
 				BaseTask: BaseTask{
@@ -123,11 +140,19 @@ func TestNewConfigureTask(t *testing.T) {
 					Namespaces: []namespace{
 						{
 							Name: "ns1",
-							Op:   NamespaceCreate,
+							Op:   OpCreate,
 						},
 						{
 							Name: "ns2",
-							Op:   NamespaceDelete,
+							Op:   OpDelete,
+						},
+					},
+					ConfigMaps: []configmap{
+						{
+							Name:      "cm1",
+							Namespace: "default",
+							Op:        "create",
+							Data:      map[string]string{"key": "value"},
 						},
 					},
 				},
