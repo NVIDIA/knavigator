@@ -38,8 +38,8 @@ const (
 	TaskSleep       = "Sleep"
 	TaskPause       = "Pause"
 
-	NamespaceCreate = "create"
-	NamespaceDelete = "delete"
+	OpCreate = "create"
+	OpDelete = "delete"
 
 	DefaultCleanupTimeout = 5 * time.Minute
 )

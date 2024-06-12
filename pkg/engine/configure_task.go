@@ -44,6 +44,7 @@ type ConfigureTask struct {
 type configureTaskParams struct {
 	Nodes      []virtualNode `yaml:"nodes"`
 	Namespaces []namespace   `yaml:"namespaces"`
+	ConfigMaps []configmap   `yaml:"configmaps"`
 	Timeout    time.Duration `yaml:"timeout"`
 }
 
@@ -58,6 +59,13 @@ type virtualNode struct {
 type namespace struct {
 	Name string `yaml:"name"`
 	Op   string `yaml:"op"`
+}
+
+type configmap struct {
+	Name      string            `yaml:"name"`
+	Namespace string            `yaml:"namespace"`
+	Data      map[string]string `yaml:"data"`
+	Op        string            `yaml:"op"`
 }
 
 func newConfigureTask(log logr.Logger, client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
@@ -93,10 +101,19 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 
 	for _, ns := range task.Namespaces {
 		switch ns.Op {
-		case NamespaceCreate, NamespaceDelete:
+		case OpCreate, OpDelete:
 			// nop
 		default:
-			return fmt.Errorf("%s: invalid namespace operation %s; supported: %s, %s", task.ID(), ns.Op, NamespaceCreate, NamespaceDelete)
+			return fmt.Errorf("%s: invalid namespace operation %s; supported: %s, %s", task.ID(), ns.Op, OpCreate, OpDelete)
+		}
+	}
+
+	for _, cm := range task.ConfigMaps {
+		switch cm.Op {
+		case OpCreate, OpDelete:
+			// nop
+		default:
+			return fmt.Errorf("%s: invalid configmap operation %s; supported: %s, %s", task.ID(), cm.Op, OpCreate, OpDelete)
 		}
 	}
 
@@ -114,7 +131,7 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 
 	errs := make(chan error)
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		wg.Wait()
@@ -124,6 +141,11 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 	go func() {
 		defer wg.Done()
 		errs <- task.updateNamespaces(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		errs <- task.updateConfigmaps(ctx)
 	}()
 
 	go func() {
@@ -145,7 +167,7 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 	for _, ns := range task.Namespaces {
 		task.log.Info("Update namespace", "name", ns.Name, "op", ns.Op)
 		switch ns.Op {
-		case NamespaceCreate:
+		case OpCreate:
 			_, err := task.client.CoreV1().Namespaces().Get(ctx, ns.Name, metav1.GetOptions{})
 			if err == nil {
 				task.log.Info("Namespace already exist", "name", ns.Name)
@@ -161,12 +183,50 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 				}
 			}
 
-		case NamespaceDelete:
+		case OpDelete:
 			err := task.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return fmt.Errorf("%s: failed to delete namespace %s: %v", task.ID(), ns.Name, err)
 			}
 			task.log.Info("Namespace deleted", "name", ns.Name)
+		}
+	}
+
+	return nil
+}
+
+func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
+	for _, cm := range task.ConfigMaps {
+		task.log.Info("Update configmap", "name", cm.Name, "op", cm.Op)
+		switch cm.Op {
+		case OpCreate:
+			var op string
+			cmap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cm.Name,
+					Namespace: cm.Namespace,
+				},
+				Data: cm.Data,
+			}
+			_, err := task.client.CoreV1().ConfigMaps(cm.Namespace).Get(ctx, cm.Name, metav1.GetOptions{})
+			if err == nil {
+				op = "update"
+				_, err = task.client.CoreV1().ConfigMaps(cm.Namespace).Update(ctx, cmap, metav1.UpdateOptions{})
+			} else {
+				op = "create"
+				_, err = task.client.CoreV1().ConfigMaps(cm.Namespace).Create(ctx, cmap, metav1.CreateOptions{})
+			}
+			if err != nil {
+				return fmt.Errorf("%s: failed to %s configmap %s: %v", task.ID(), op, cm.Name, err)
+			}
+			task.log.Info("Configmap configured", "name", cm.Name, "op", op)
+
+		case OpDelete:
+			err := task.client.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return fmt.Errorf("%s: failed to delete configmap %s: %v", task.ID(), cm.Name, err)
+			}
+			task.log.Info("Configmap deleted", "name", cm.Name)
 		}
 	}
 
