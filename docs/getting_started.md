@@ -1,60 +1,28 @@
 # Getting started
 
-Build Knavigator, run
+## Build Knavigator
+
 ```shell
 make build
 ```
 
 ## Running jobs
 
-`Knavigator` currently provides templates for different batch jobs, including kubernetes native `job`, `jobset` and Volcano `job`. The templates for [run:ai workloads](https://docs.run.ai/v2.14/admin/workloads/workload-overview-admin/) is under development.
+### Preparatory step
 
-### Volcano
+To properly install a scheduling system or workload manager, ensure your cluster has no virtual nodes. Deploying the workload manager on a virtual node will cause it to malfunction.
 
-Install [volcano](https://volcano.sh).
-
-Using YAML files:
-```shell
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
+If you have already created virtual nodes or run some workloads, consider deleting these nodes.
+```bash
+kubectl delete node -l type=kwok
 ```
 
-Using helm:
-```shell
-helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
-helm install volcano volcano-sh/volcano -n volcano-system --create-namespace
-```
-Please make sure `volcano-admission`, `volcano-controller` and `volcano-scheduler` all are running on real nodes, e.g., control-plane nodes.
+## Tested workflows
 
-Create a priority class if needed:
-```shell
-kubectl create priorityclass normal-priority --value=100000
-```
-Run a Volcano batch job with `volcano`:
-```shell
-./bin/knavigator -workflow ./resources/workflows/volcano/test-job.yml
-```
-### Native kubernetes
+In general, `Knavigator` is compatible with any Kubernetes scheduling system.
 
-Run a kubernetes job:
-```shell
-./bin/knavigator -workflow ./resources/workflows/k8s/test-job.yml
-```
-
-Install [JobSet](https://github.com/kubernetes-sigs/jobset) in your cluster:
-```shell
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.5.2/manifests.yaml
-```
-The controller runs in the `jobset-system` namespace. Make sure it is running on a real node, e.g., a control-plane node.
-
-Run jobset with workers: 
-```shell
-./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset.yml
-```
-Run a test jobset with a driver and workers:
-```shell
-./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset-with-driver.yml
-```
-
-### Kueue
-
-Refer to [this document](./examples/kueue.md) for detailed instructions on how to run `kueue` with `knavigator`.
+We have tested several of these systems and offer templates and workflows to support them.
+* [Job and JobSet](./examples/jobset/jobset.md)
+* [Volcano](./examples/volcano/volcano.md)
+* [Kueue](./examples/kueue/kueue.md)
+* [YuniKorn](./examples/yunikorn/yunikorn.md)
