@@ -22,12 +22,13 @@ helm install -n prometheus --create-namespace kube-prometheus-stack \
 
 ## Setting up scheduling framework
 
-Knavigator is compatible with any scheduling framework that operates within Kubernetes, including [Volcano](https://volcano.sh), [Kueue](https://kueue.sigs.k8s.io/), [Run.ai](https://www.run.ai/), and others. To deploy your chosen scheduling framework, please visit its respective website and follow the instructions there.
+Knavigator is compatible with any scheduling framework that operates within Kubernetes. To deploy your chosen scheduling framework, please visit its respective website and follow the instructions there.
 
-Some of the tested frameworks are: 
-- [Volcano](https://volcano.sh/en/docs/installation/)
+Some of the tested frameworks are:
 - [Jobset](https://github.com/kubernetes-sigs/jobset?tab=readme-ov-file#installation)
+- [Volcano](https://volcano.sh/en/docs/installation/)
 - [Kueue](https://kueue.sigs.k8s.io/docs/installation/)
+- [Apache YuniKorn](https://yunikorn.apache.org/docs/)
 
 ## KWOK integration
 
