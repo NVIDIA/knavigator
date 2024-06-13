@@ -10,7 +10,7 @@ make build
 
 ### Preparatory step
 
-To properly install a scheduling system or workload manager, ensure your cluster has no virtual nodes. Deploying the workload manager on a virtual node will cause it to malfunction.
+To properly install a scheduling framework or workload manager, ensure your cluster has no virtual nodes. Deploying the workload manager on a virtual node will cause it to malfunction.
 
 If you have already created virtual nodes or run some workloads, consider deleting these nodes.
 ```bash
@@ -19,9 +19,9 @@ kubectl delete node -l type=kwok
 
 ## Tested workflows
 
-In general, `Knavigator` is compatible with any Kubernetes scheduling system.
+In general, `Knavigator` is compatible with any Kubernetes scheduling framework.
 
-We have tested several of these systems and offer templates and workflows to support them.
+We have tested several of these and offer templates and workflows to support them.
 * [Job and JobSet](./examples/jobset/jobset.md)
 * [Volcano](./examples/volcano/volcano.md)
 * [Kueue](./examples/kueue/kueue.md)
