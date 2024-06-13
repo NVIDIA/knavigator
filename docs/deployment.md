@@ -36,21 +36,9 @@ Knavigator integrates with KWOK to simulate large clusters with hundreds or thou
 
 To deploy the KWOK controller and the stages on a Kubernetes cluster, follow the instructions at [KWOK Installation Guide](https://kwok.sigs.k8s.io/docs/user/kwok-in-cluster).
 
+For convenience, we have included them in [scripts/install-kwok.sh](../scripts/install-kwok.sh).
 ```bash
-KWOK_REPO=kubernetes-sigs/kwok
-KWOK_LATEST_RELEASE="v0.5.2"
-
-kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/kwok.yaml"
-```
-
-Next, deploy and adjust the stages.
-```bash
-kubectl apply -f "https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST_RELEASE}/stage-fast.yaml"
-
-kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
-kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
-
-kubectl apply -f charts/overrides/kwok/pod-complete.yml
+./scripts/install-kwok.sh
 ```
 
 ## Setting up virtual nodes
