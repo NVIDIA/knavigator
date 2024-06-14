@@ -36,35 +36,37 @@ tasks:
     - name: yunikorn-configs
       namespace: yunikorn
       op: create
-      queues.yaml: |
-        partitions:
-          - name: default
-            queues:
-            - name: root
+      data:
+        queues.yaml: |
+          partitions:
+            - name: default
               queues:
-              - name: sandbox
-                resources:
-                  max:
-                    {memory: 1000Mi, vcore: 2000m, nvidia.com/gpu: 16}
+              - name: root
                 queues:
-                - name: tenants
-                  properties:
-                    preemption.delay: 5s
+                - name: sandbox
+                  resources:
+                    max:
+                      {memory: 1000Mi, vcore: 2000m, nvidia.com/gpu: 16}
                   queues:
-                  - name: normal
-                    submitacl: '*'
-                    resources:
-                      max:
-                        {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
+                  - name: tenants
                     properties:
-                      priority.offset: "0"
-                  - name: high
-                    submitacl: '*'
-                    resources:
-                      guaranteed:
-                        {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
-                    properties:
-                      priority.offset: "1000"
+                      preemption.policy: fence
+                      preemption.delay: 5s
+                    queues:
+                    - name: normal
+                      submitacl: '*'
+                      resources:
+                        max:
+                          {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
+                      properties:
+                        priority.offset: "0"
+                    - name: high
+                      submitacl: '*'
+                      resources:
+                        guaranteed:
+                          {memory: 500Mi, vcore: 1000m, nvidia.com/gpu: 16}
+                      properties:
+                        priority.offset: "1000"
     timeout: 1m
 - id: job-normal
   type: SubmitObj
