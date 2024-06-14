@@ -36,9 +36,9 @@ Knavigator integrates with KWOK to simulate large clusters with hundreds or thou
 
 To deploy the KWOK controller and the stages on a Kubernetes cluster, follow the instructions at [KWOK Installation Guide](https://kwok.sigs.k8s.io/docs/user/kwok-in-cluster).
 
-For convenience, we have included them in [scripts/install-kwok.sh](../scripts/install-kwok.sh).
+For convenience, we have included them in [scripts/install_kwok.sh](../scripts/install_kwok.sh).
 ```bash
-./scripts/install-kwok.sh
+./scripts/install_kwok.sh
 ```
 
 ## Setting up virtual nodes

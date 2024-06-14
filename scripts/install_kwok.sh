@@ -1,6 +1,6 @@
 #/bin/bash
 
-set -e
+set -x -e
 
 KWOK_REPO=kubernetes-sigs/kwok
 KWOK_RELEASE="v0.5.2"
