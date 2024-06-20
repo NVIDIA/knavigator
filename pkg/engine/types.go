@@ -36,6 +36,7 @@ const (
 	TaskUpdateNodes = "UpdateNodes"
 	TaskSleep       = "Sleep"
 	TaskPause       = "Pause"
+	TaskWait        = "Wait"
 
 	OpCreate = "create"
 	OpDelete = "delete"
@@ -97,6 +98,7 @@ type RegisterObjParams struct {
 
 // ObjInfo contains object GVR and an optional list of derived pod names
 type ObjInfo struct {
+	TaskID    string
 	Names     []string
 	Namespace string
 	GVR       schema.GroupVersionResource
