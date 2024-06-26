@@ -36,6 +36,10 @@ spec:
     template:
       metadata:
         name: test
+        annotations:
+          {{- if .ttl }}
+          pod-complete.stage.kwok.x-k8s.io/delay: "{{.ttl}}"
+          {{- end }}
       spec:
         containers:
         - name: job

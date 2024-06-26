@@ -8,8 +8,7 @@ export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
 ${REPO_HOME}/scripts/install_kwok.sh
 
 # Install Volcano
-helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
-helm repo update
+helm repo add --force-update volcano-sh https://volcano-sh.github.io/helm-charts
 helm install volcano volcano-sh/volcano -n volcano-system --create-namespace --wait
 
 for app in volcano-admission volcano-controller volcano-scheduler; do

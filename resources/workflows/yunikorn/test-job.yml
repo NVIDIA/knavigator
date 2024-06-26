@@ -64,6 +64,7 @@ tasks:
       cpu: 100m
       memory: 200Mi
       gpu: 8
+      ttl: "10s"
 - id: status
   type: CheckObj
   description: confirm that job is running

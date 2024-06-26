@@ -25,8 +25,8 @@ spec:
   template:
     metadata:
       annotations:
-        {{- if .delay }}
-        pod-complete.stage.kwok.x-k8s.io/delay: "{{.delay}}"
+        {{- if .ttl }}
+        pod-complete.stage.kwok.x-k8s.io/delay: "{{.ttl}}"
         {{- end }}
     spec:
       schedulerName: default-scheduler
