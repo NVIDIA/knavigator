@@ -46,6 +46,7 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
+      ttl: "10s"
 - id: status
   type: CheckPod
   params:

@@ -8,8 +8,7 @@ export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
 ${REPO_HOME}/scripts/install_kwok.sh
 
 # Install YuniKorn
-helm repo add yunikorn https://apache.github.io/yunikorn-release
-helm repo update
+helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
 helm install yunikorn yunikorn/yunikorn -n yunikorn --create-namespace --wait
 
 kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=60s
