@@ -1,0 +1,54 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: "{{._NAME_}}"
+  namespace: default
+spec:
+  minAvailable: {{.replicas}}
+  schedulerName: volcano
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+  - replicas: {{.replicas}}
+    name: test
+    template:
+      metadata:
+        name: test
+        annotations:
+          pod-complete.stage.kwok.x-k8s.io/delay: "30s"
+      spec:
+        containers:
+        - name: job
+          image: ubuntu
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256M
+              nvidia.com/gpu: "8"
+            requests:
+              cpu: 100m
+              memory: 256M
+              nvidia.com/gpu: "8"
+      restartPolicy: OnFailure

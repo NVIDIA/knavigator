@@ -1,0 +1,212 @@
+name: test-gang-scheduling
+tasks:
+### Job
+#- id: register
+#  type: RegisterObj
+#  params:
+#    template: "resources/benchmarks/gang-scheduling/templates/k8s/job.yml"
+#    nameFormat: "job{{._ENUM_}}"
+#    podNameFormat: "{{._NAME_}}-[0-9]-.*"
+#    podCount: "{{.replicas}}"
+
+### Jobset
+#- id: register
+#  type: RegisterObj
+#  params:
+#    template: "resources/benchmarks/gang-scheduling/templates/k8s/jobset.yml"
+#    nameFormat: "jobset{{._ENUM_}}"
+#    podNameFormat: "{{._NAME_}}-workers-[0-9]+-[0-9]+-.+"
+#    podCount: "{{.replicas}}"
+
+### Kueue
+#- id: register-cluster-queue
+#  type: RegisterObj
+#  params:
+#    template: "resources/templates/kueue/cluster-queue.yml"
+#- id: register-local-queue
+#  type: RegisterObj
+#  params:
+#    template: "resources/templates/kueue/local-queue.yml"
+#- id: register-resource-flavor
+#  type: RegisterObj
+#  params:
+#    template: "resources/templates/kueue/resource-flavor.yml"
+#- id: register
+#  type: RegisterObj
+#  params:
+#    template: "resources/benchmarks/gang-scheduling/templates/kueue/job.yml"
+#    nameFormat: "job{{._ENUM_}}"
+#    podNameFormat: "{{._NAME_}}-[0-9]-.*"
+#    podCount: "{{.replicas}}"
+#- id: create-resource-flavor
+#  type: SubmitObj
+#  params:
+#    refTaskId: register-resource-flavor
+#    params:
+#      name: "gpu-node"
+#      nodeLabels:
+#        nvidia.com/gpu.count: "8"
+#- id: create-cluster-queue
+#  type: SubmitObj
+#  params:
+#    refTaskId: register-cluster-queue
+#    params:
+#      name: team
+#      flavor: gpu-node
+#      cpu: 8
+#      memory: 36Gi
+#      gpu: 256
+#- id: create-local-queue
+#  type: SubmitObj
+#  params:
+#    refTaskId: register-local-queue
+#    params:
+#      name: team-queue
+#      namespace: default
+#      clusterQueue: team
+
+### Volcano
+#- id: register
+#  type: RegisterObj
+#  params:
+#    template: "resources/benchmarks/gang-scheduling/templates/volcano/job.yml"
+#    nameFormat: "j{{._ENUM_}}"
+#    podNameFormat: "{{._NAME_}}-test-[0-9]+"
+#    podCount: "{{.replicas}}"
+
+### Yunikorn
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/gang-scheduling/templates/yunikorn/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-.*"
+    podCount: "{{.replicas}}"
+- id: configure
+  type: Configure
+  params:
+    configmaps:
+    - name: yunikorn-configs
+      namespace: yunikorn
+      op: create
+      data:
+        queues.yaml: |
+          partitions:
+            - name: default
+              queues:
+              - name: root
+                queues:
+                - name: sandbox
+                  submitacl: '*'
+                  resources:
+                    max:
+                      {memory: 36Gi, vcore: 8000m, nvidia.com/gpu: 256}
+    timeout: 1m
+#
+### Benchmark test
+#
+- id: job1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 32
+- id: job2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 16
+- id: job3
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 3
+    params:
+      replicas: 10
+- id: job3.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2  
+- id: job4
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 4
+    params:
+      replicas: 8  
+- id: job5
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 5
+    params:
+      replicas: 6
+- id: job5.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 1
+- id: job6
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 6
+    params:
+      replicas: 5
+- id: job6.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2
+- id: job7
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 7
+    params:
+      replicas: 4
+- id: job7.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2
+- id: job7.2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 1
+- id: job8
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 8
+    params:
+     replicas: 4
+- id: job9
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 9
+    params:
+      replicas: 3
+- id: job9.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 5
