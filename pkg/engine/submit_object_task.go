@@ -37,6 +37,7 @@ type SubmitObjTask struct {
 	submitObjTaskParams
 	client   *dynamic.DynamicClient
 	accessor ObjInfoAccessor
+	deferrer *Deferrer
 }
 
 type submitObjTaskParams struct {
@@ -62,7 +63,7 @@ type GenericObject struct {
 }
 
 // newSubmitObjTask initializes and returns SubmitObjTask
-func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*SubmitObjTask, error) {
+func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, deferrer *Deferrer, cfg *config.Task) (*SubmitObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -75,6 +76,7 @@ func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor O
 		},
 		client:   client,
 		accessor: accessor,
+		deferrer: deferrer,
 	}
 
 	if err := task.validate(cfg.Params); err != nil {
@@ -138,8 +140,9 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		}
 	}
 
-	return task.accessor.SetObjInfo(task.taskID,
-		NewObjInfo(names, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
+	info := NewObjInfo(names, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...)
+	//task.deferrer.ScheduleTermination(task.taskID)
+	return task.accessor.SetObjInfo(task.taskID, info)
 }
 
 func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([]GenericObject, []string, int, []string, error) {
