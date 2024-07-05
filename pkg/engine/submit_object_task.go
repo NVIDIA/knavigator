@@ -21,12 +21,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"github.com/maja42/goval"
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/utils"
@@ -62,14 +62,13 @@ type GenericObject struct {
 }
 
 // newSubmitObjTask initializes and returns SubmitObjTask
-func newSubmitObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*SubmitObjTask, error) {
+func newSubmitObjTask(client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*SubmitObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
 
 	task := &SubmitObjTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},
@@ -194,7 +193,7 @@ func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([
 
 		podCount *= task.Count
 	}
-	task.log.V(4).Info("Generating object specs", "podCount", podCount, "podRegexp", podRegexp)
+	log.V(4).Infof("Generating object specs; podCount:%d podRegexp:%v", podCount, podRegexp)
 
 	return objs, names, podCount, podRegexp, nil
 }

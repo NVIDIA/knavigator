@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,14 +45,13 @@ type nodeStateParams struct {
 	Selector *utils.NameSelector `yaml:"selector"`
 }
 
-func newUpdateNodesTask(log logr.Logger, client *kubernetes.Clientset, cfg *config.Task) (*UpdateNodesTask, error) {
+func newUpdateNodesTask(client *kubernetes.Clientset, cfg *config.Task) (*UpdateNodesTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("kubernetes clientset not set")
 	}
 
 	task := &UpdateNodesTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},

@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/klog/v2/textlogger"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -62,8 +61,6 @@ contexts:
     namespace: default
 current-context: cloud3
 `
-
-var testLogger = textlogger.NewLogger(textlogger.NewConfig())
 
 func TestGetK8sConfig(t *testing.T) {
 	testCases := []struct {
@@ -142,7 +139,7 @@ func TestGetK8sConfig(t *testing.T) {
 				QPS:            10,
 				Burst:          10,
 			}
-			cfg, err := GetK8sConfig(testLogger, c)
+			cfg, err := GetK8sConfig(c)
 			if len(tc.expectedErr) != 0 {
 				require.EqualError(t, err, tc.expectedErr)
 			} else {

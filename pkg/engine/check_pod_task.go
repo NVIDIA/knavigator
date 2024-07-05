@@ -22,13 +22,13 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/utils"
@@ -54,14 +54,13 @@ type checkPodTaskParams struct {
 }
 
 // newCheckPodTask initializes and returns CheckPodTask
-func newCheckPodTask(log logr.Logger, client *kubernetes.Clientset, accessor ObjInfoAccessor, cfg *config.Task) (*CheckPodTask, error) {
+func newCheckPodTask(client *kubernetes.Clientset, accessor ObjInfoAccessor, cfg *config.Task) (*CheckPodTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: Kubernetes client is not set", cfg.Type, cfg.ID)
 	}
 
 	task := &CheckPodTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},
@@ -130,7 +129,7 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 		pod := &list.Items[i]
 		for _, r := range re {
 			if r.MatchString(pod.Name) {
-				task.log.V(4).Info("Matched pod", "name", pod.Name)
+				log.V(4).Infof("Matched pod %s", pod.Name)
 				count++
 
 				status := string(pod.Status.Phase)
@@ -155,7 +154,7 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 // watchPods watches statuses of given pods and compares them with the expected status.
 // The function runs until all statuses are equal to the expected one, or until the timeout, whichever comes first.
 func (task *CheckPodTask) watchPods(ctx context.Context, info *ObjInfo) error {
-	task.log.Info("Create pod informer", "#pod", info.PodCount, "timeout", task.Timeout.String())
+	log.Infof("Create pod informer for %d pods with %s timeout", info.PodCount, task.Timeout.String())
 
 	re, err := utils.Exp2Regexp(info.PodRegexp)
 	if err != nil {
@@ -224,7 +223,7 @@ func (task *CheckPodTask) verifyLabels(ctx context.Context, pod *v1.Pod) error {
 		if node.Labels[key] != val {
 			return fmt.Errorf("%s: pod '%s' was scheduled on node '%s' without label '%s=%s'", task.ID(), pod.Name, pod.Spec.NodeName, key, val)
 		}
-		task.log.V(4).Info("Verified", "pod", pod.Name, "node", pod.Spec.NodeName, "label", key+":"+val)
+		log.V(4).Infof("Verified pod %s for node %s with label %s:%s", pod.Name, pod.Spec.NodeName, key, val)
 	}
 
 	return nil
@@ -239,12 +238,12 @@ func (task *CheckPodTask) verifyPod(ctx context.Context, re []*regexp.Regexp, po
 
 	for _, r := range re {
 		if r.MatchString(pod.Name) {
-			task.log.V(4).Info("Matched pod", "name", pod.Name)
+			log.V(4).Infof("Matched pod %s", pod.Name)
 			if _, ok := podMap.Get(pod.Name); ok {
 				return
 			}
 			status := string(pod.Status.Phase)
-			task.log.V(4).Info("Informer event", "pod", pod.Name, "status", status)
+			log.V(4).Infof("Informer event for pod %s with status %s", pod.Name, status)
 			if status != task.Status {
 				return
 			}
@@ -253,7 +252,7 @@ func (task *CheckPodTask) verifyPod(ctx context.Context, re []*regexp.Regexp, po
 				return
 			}
 			if sz := podMap.Set(pod.Name, true); sz == count {
-				task.log.Info("Accounted for all pods")
+				log.Infof("Accounted for all pods")
 				errs <- nil
 				return
 			}

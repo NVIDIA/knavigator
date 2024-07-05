@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// Flag2Verbosity expects flag.Lookup("v") as a parameter and returns verbosity level
 func Flag2Verbosity(f *flag.Flag) int {
 	if f == nil || f.Value == nil {
 		return 0

@@ -156,7 +156,6 @@ func TestNewSubmitObjTask(t *testing.T) {
 			refTaskID: "register",
 			task: &SubmitObjTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskSubmitObj,
 					taskID:   taskID,
 				},
@@ -200,7 +199,6 @@ func TestNewSubmitObjTask(t *testing.T) {
 			refTaskID: "register",
 			task: &SubmitObjTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskSubmitObj,
 					taskID:   taskID,
 				},
@@ -256,7 +254,6 @@ func TestNewSubmitObjTask(t *testing.T) {
 			refTaskID: "register",
 			task: &SubmitObjTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskSubmitObj,
 					taskID:   taskID,
 				},
@@ -301,7 +298,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			utils.SetObjectID(0)
 
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 
 			if len(tc.refTaskID) != 0 {

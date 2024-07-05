@@ -22,7 +22,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -52,7 +51,6 @@ type Runnable interface {
 type BaseTask struct {
 	taskType string
 	taskID   string
-	log      logr.Logger
 }
 
 // ID implements Runnable interface

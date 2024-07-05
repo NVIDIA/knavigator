@@ -107,7 +107,6 @@ func TestNewRegisterObjTask(t *testing.T) {
 			simClients: true,
 			task: &RegisterObjTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskRegisterObj,
 					taskID:   taskID,
 				},
@@ -129,7 +128,7 @@ func TestNewRegisterObjTask(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 
 			runnable, err := eng.GetTask(&config.Task{

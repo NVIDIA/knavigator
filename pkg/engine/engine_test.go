@@ -25,15 +25,14 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2/textlogger"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
 
 var (
-	errExec             = fmt.Errorf("exec error")
-	errReset            = fmt.Errorf("reset error")
-	testLogger          = textlogger.NewLogger(textlogger.NewConfig())
+	errExec  = fmt.Errorf("exec error")
+	errReset = fmt.Errorf("reset error")
+
 	testK8sClient       = &kubernetes.Clientset{}
 	testDynamicClient   = &dynamic.DynamicClient{}
 	testDiscoveryClient = &discovery.DiscoveryClient{}
@@ -127,7 +126,7 @@ func TestExecRunnable(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := execRunnable(ctx, testLogger, tc.run)
+			err := execRunnable(ctx, tc.run)
 			if tc.err != nil {
 				require.Equal(t, err, tc.err)
 			} else {

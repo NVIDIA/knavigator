@@ -62,7 +62,6 @@ func TestNewDeleteObjTask(t *testing.T) {
 			refTaskId:  "1",
 			task: &DeleteObjTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskDeleteObj,
 					taskID:   taskID,
 				},
@@ -76,7 +75,7 @@ func TestNewDeleteObjTask(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 			if len(tc.refTaskId) != 0 {
 				eng.objInfoMap[tc.refTaskId] = nil

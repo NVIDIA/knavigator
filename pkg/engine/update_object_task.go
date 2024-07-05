@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
@@ -35,7 +33,7 @@ type UpdateObjTask struct {
 	ObjStateTask
 }
 
-func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*UpdateObjTask, error) {
+func newUpdateObjTask(client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*UpdateObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -43,7 +41,6 @@ func newUpdateObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor O
 	task := &UpdateObjTask{
 		ObjStateTask: ObjStateTask{
 			BaseTask: BaseTask{
-				log:      log,
 				taskType: cfg.Type,
 				taskID:   cfg.ID,
 			},

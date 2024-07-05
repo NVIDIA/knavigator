@@ -20,26 +20,26 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/go-logr/logr"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	log "k8s.io/klog/v2"
 
 	cfg "github.com/NVIDIA/knavigator/pkg/config"
 )
 
-func GetK8sConfig(log logr.Logger, cfg *cfg.KubeConfig) (*rest.Config, error) {
+func GetK8sConfig(cfg *cfg.KubeConfig) (*rest.Config, error) {
 	// checking in-cluster kubeconfig
 	restConfig, err := rest.InClusterConfig()
 	if err == nil {
 		restConfig.Burst = cfg.Burst
 		restConfig.QPS = float32(cfg.QPS)
-		log.Info("Using in-cluster kubeconfig")
+		log.Infof("Using in-cluster kubeconfig")
 		return restConfig, err
 	}
 
 	// checking external kubeconfig
-	log.Info("Using external kubeconfig")
+	log.Infof("Using external kubeconfig")
 	configAccess := clientcmd.NewDefaultPathOptions()
 	if len(cfg.KubeConfigPath) != 0 {
 		configAccess.GlobalFile = cfg.KubeConfigPath
@@ -59,7 +59,7 @@ func GetK8sConfig(log logr.Logger, cfg *cfg.KubeConfig) (*rest.Config, error) {
 	}
 
 	if len(cfg.KubeCtx) != 0 {
-		log.Info("Setting kubecontext", "name", cfg.KubeCtx)
+		log.Infof("Setting kubecontext %s", cfg.KubeCtx)
 
 		err = validateKubeContext(config, cfg.KubeCtx)
 		if err != nil {
