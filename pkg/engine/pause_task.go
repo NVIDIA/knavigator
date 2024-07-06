@@ -22,8 +22,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-logr/logr"
-
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
 
@@ -31,10 +29,9 @@ type PauseTask struct {
 	BaseTask
 }
 
-func newPauseTask(log logr.Logger, cfg *config.Task) *PauseTask {
+func newPauseTask(cfg *config.Task) *PauseTask {
 	return &PauseTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: TaskPause,
 			taskID:   cfg.ID,
 		},

@@ -86,7 +86,7 @@ func TestUpdateNodesTask(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 			_, err = eng.GetTask(&config.Task{
 				ID:     taskID,

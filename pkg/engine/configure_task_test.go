@@ -87,7 +87,6 @@ func TestNewConfigureTask(t *testing.T) {
 			params:     map[string]interface{}{"timeout": "1m"},
 			task: &ConfigureTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskConfigure,
 					taskID:   taskID,
 				},
@@ -121,7 +120,6 @@ func TestNewConfigureTask(t *testing.T) {
 			},
 			task: &ConfigureTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskConfigure,
 					taskID:   taskID,
 				},
@@ -162,7 +160,7 @@ func TestNewConfigureTask(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 
 			task, err := eng.GetTask(&config.Task{

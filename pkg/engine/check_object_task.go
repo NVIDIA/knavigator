@@ -20,12 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/utils"
@@ -37,7 +37,7 @@ type CheckObjTask struct {
 }
 
 // newCheckObjTask initializes and returns CheckObjTask
-func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*CheckObjTask, error) {
+func newCheckObjTask(client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*CheckObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
@@ -45,7 +45,6 @@ func newCheckObjTask(log logr.Logger, client *dynamic.DynamicClient, accessor Ob
 	task := &CheckObjTask{
 		ObjStateTask: ObjStateTask{
 			BaseTask: BaseTask{
-				log:      log,
 				taskType: cfg.Type,
 				taskID:   cfg.ID,
 			},
@@ -92,12 +91,12 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			task.log.V(4).Info("Informer added", "resource", info.GVR.Resource, "name", resource.GetName())
+			log.V(4).Infof("Informer added %s %s", info.GVR.Resource, resource.GetName())
 			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
 		},
 		UpdateFunc: func(_, obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			task.log.V(4).Info("Informer updated", "resource", info.GVR.Resource, "name", resource.GetName())
+			log.V(4).Infof("Informer updated %s %s", info.GVR.Resource, resource.GetName())
 			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
 		},
 	})
@@ -110,13 +109,13 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 
 	// check the objects synchronously, then use informer
 	if err = task.checkStates(ctx, info, nameMap); err != nil {
-		task.log.V(4).Info("Wait for completion with informers")
+		log.V(4).Infof("Wait for completion with informers")
 		select {
 		case <-ctx.Done():
-			task.log.Error(ctx.Err(), "Validation failed", "resources", info.GVR.Resource, "names", nameMap.Keys())
+			log.Errorf("Validation failed for %s %v, err: %v", info.GVR.Resource, nameMap.Keys(), err)
 			err = ctx.Err()
 		case <-done:
-			task.log.Info("Validation passed", "resources", info.GVR.Resource)
+			log.Infof("Validation passed for %s", info.GVR.Resource)
 			err = nil
 		}
 	}
@@ -128,7 +127,7 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMap *utils.SyncMap) error {
 	for _, name := range info.Names {
 		if err := task.checkState(ctx, name, info, nameMap); err != nil {
-			task.log.V(4).Info(err.Error())
+			log.V(4).Infof(err.Error())
 		}
 	}
 
@@ -136,13 +135,13 @@ func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMa
 		return fmt.Errorf("%s: failed to validate %s %v", task.ID(), info.GVR.Resource, nameMap.Keys())
 	}
 
-	task.log.Info("Validation passed", "resources", info.GVR.Resource)
+	log.Infof("Validation passed for %s", info.GVR.Resource)
 	return nil
 }
 
 func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap, done chan struct{}) {
 	if err := task.checkState(ctx, name, info, nameMap); err != nil {
-		task.log.V(4).Info(err.Error())
+		log.V(4).Infof(err.Error())
 		return
 	}
 

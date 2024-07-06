@@ -22,8 +22,7 @@ import (
 	"fmt"
 	"os"
 
-	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/engine"
@@ -49,7 +48,7 @@ func mainInternal() error {
 	flag.StringVar(&args.workflow, "workflow", "", "comma-separated list of workflow config files and dirs (mutually exclusive with the 'port' flag)")
 	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
 
-	klog.InitFlags(nil)
+	log.InitFlags(nil)
 	flag.Parse()
 
 	if err := validate(&args); err != nil {
@@ -57,20 +56,18 @@ func mainInternal() error {
 		return err
 	}
 
-	log := textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(utils.Flag2Verbosity(flag.Lookup("v")))))
-
-	restConfig, err := utils.GetK8sConfig(log, &args.kubeCfg)
+	restConfig, err := utils.GetK8sConfig(&args.kubeCfg)
 	if err != nil {
 		return err
 	}
 
-	eng, err := engine.New(log, restConfig, &args.cleanupInfo)
+	eng, err := engine.New(restConfig, &args.cleanupInfo)
 	if err != nil {
 		return err
 	}
 
 	if args.port > 0 {
-		return server.New(&log, eng, args.port).Run()
+		return server.New(eng, args.port).Run()
 	}
 
 	workflows, err := config.NewFromPaths(args.workflow)
@@ -81,7 +78,7 @@ func mainInternal() error {
 	ctx := context.Background()
 
 	for _, workflow := range workflows {
-		log.Info("Starting workflow", "name", workflow.Name)
+		log.Infof("Starting workflow %s", workflow.Name)
 		if err := engine.Run(ctx, eng, workflow); err != nil {
 			return err
 		}
@@ -103,9 +100,9 @@ func validate(args *Args) error {
 }
 
 func main() {
-	defer klog.Flush()
+	defer log.Flush()
 	if err := mainInternal(); err != nil {
-		klog.Error(err.Error())
+		log.Error(err.Error())
 		os.Exit(1)
 	}
 }

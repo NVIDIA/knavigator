@@ -25,12 +25,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -69,14 +69,13 @@ type configmap struct {
 	Op        string            `yaml:"op"`
 }
 
-func newConfigureTask(log logr.Logger, client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
+func newConfigureTask(client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: Kubernetes client is not set", cfg.Type, cfg.ID)
 	}
 
 	task := &ConfigureTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: TaskConfigure,
 			taskID:   cfg.ID,
 		},
@@ -156,7 +155,7 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 
 	for e := range errs {
 		if e != nil {
-			task.log.Error(e, "configuration error")
+			log.Errorf("configuration error: %v", err)
 			err = e
 		}
 	}
@@ -166,12 +165,12 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 
 func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 	for _, ns := range task.Namespaces {
-		task.log.Info("Update namespace", "name", ns.Name, "op", ns.Op)
+		log.Infof("%s namespace %s", ns.Op, ns.Name)
 		switch ns.Op {
 		case OpCreate:
 			_, err := task.client.CoreV1().Namespaces().Get(ctx, ns.Name, metav1.GetOptions{})
 			if err == nil {
-				task.log.Info("Namespace already exist", "name", ns.Name)
+				log.Infof("Namespace %s already exist", ns.Name)
 			} else if errors.IsNotFound(err) {
 				ns := &corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
@@ -189,7 +188,7 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("%s: failed to delete namespace %s: %v", task.ID(), ns.Name, err)
 			}
-			task.log.Info("Namespace deleted", "name", ns.Name)
+			log.Infof("Namespace %s deleted", ns.Name)
 		}
 	}
 
@@ -198,7 +197,7 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 
 func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 	for _, cm := range task.ConfigMaps {
-		task.log.Info("Update configmap", "name", cm.Name, "op", cm.Op)
+		log.Infof("%s configmap %s", cm.Op, cm.Name)
 		switch cm.Op {
 		case OpCreate:
 			var op string
@@ -220,14 +219,14 @@ func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("%s: failed to %s configmap %s: %v", task.ID(), op, cm.Name, err)
 			}
-			task.log.Info("Configmap configured", "name", cm.Name, "op", op)
+			log.Infof("Configmap %s %sd", cm.Name, op)
 
 		case OpDelete:
 			err := task.client.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return fmt.Errorf("%s: failed to delete configmap %s: %v", task.ID(), cm.Name, err)
 			}
-			task.log.Info("Configmap deleted", "name", cm.Name)
+			log.Infof("Configmap %s deleted", cm.Name)
 		}
 	}
 
@@ -247,9 +246,9 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 	// update helm repo
 	args := []string{"repo", "add", "--force-update", "knavigator", "https://nvidia.github.io/knavigator/helm-charts"}
 
-	task.log.V(4).Info("Updating helm repo")
+	log.V(4).Infof("Updating helm repo")
 
-	if err = runCommand(ctx, task.log, "helm", args); err != nil {
+	if err = runCommand(ctx, "helm", args); err != nil {
 		return err
 	}
 
@@ -257,9 +256,9 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 	args = []string{"upgrade", "--install", "virtual-nodes", "knavigator/virtual-nodes",
 		"--wait", "--set-json", nodeExpr}
 
-	task.log.V(4).Info("Updating nodes", "cmd", append([]string{"helm"}, args...))
+	log.V(4).Infof("Updating nodes with %v", append([]string{"helm"}, args...))
 
-	return runCommand(ctx, task.log, "helm", args)
+	return runCommand(ctx, "helm", args)
 }
 
 func nodes2json(nodes []virtualNode) (string, error) {
@@ -270,7 +269,7 @@ func nodes2json(nodes []virtualNode) (string, error) {
 	return fmt.Sprintf("nodes=%s", string(data)), nil
 }
 
-func runCommand(ctx context.Context, log logr.Logger, exe string, args []string) error {
+func runCommand(ctx context.Context, exe string, args []string) error {
 	command := exec.CommandContext(ctx, exe, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -278,11 +277,11 @@ func runCommand(ctx context.Context, log logr.Logger, exe string, args []string)
 	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
-		log.Error(err, "failed to run command", "stdout", stdout.String(), "stderr", stderr.String())
+		log.Errorf("failed to run command: err:%v stdout:%s stderr:%s", err, stdout.String(), stderr.String())
 		return err
 	}
 
-	log.V(4).Info(stdout.String())
+	log.V(4).Infof(stdout.String())
 
 	return nil
 }

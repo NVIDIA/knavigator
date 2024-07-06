@@ -24,29 +24,27 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/go-logr/logr"
 	"github.com/oklog/run"
 	"gopkg.in/yaml.v3"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/engine"
 )
 
 type Server struct {
-	s   *http.Server
-	log *logr.Logger
+	s *http.Server
 }
 
 type WorkflowHandler struct {
 	eng *engine.Eng
 }
 
-func New(log *logr.Logger, eng *engine.Eng, port int) *Server {
+func New(eng *engine.Eng, port int) *Server {
 	mux := http.NewServeMux()
 	mux.Handle("/workflow", &WorkflowHandler{eng: eng})
 
 	return &Server{
-		log: log,
 		s: &http.Server{ // #nosec G112 // Potential Slowloris Attack because ReadHeaderTimeout is not configured in the http.Server
 			Addr:    fmt.Sprintf(":%d", port),
 			Handler: mux,
@@ -64,15 +62,15 @@ func (srv *Server) Run() error {
 	// Server
 	g.Add(
 		func() error {
-			srv.log.Info("Starting server", "address", srv.s.Addr)
+			log.Infof("Starting server at %s", srv.s.Addr)
 			return srv.s.ListenAndServe()
 		},
 		func(err error) {
-			srv.log.Error(err, "Stopping server")
+			log.Errorf("Stopping server: %v", err)
 			if err := srv.s.Shutdown(ctx); err != nil {
-				srv.log.Error(err, "Error during server shutdown")
+				log.Errorf("Error during server shutdown: %v", err)
 			}
-			srv.log.Info("Server stopped")
+			log.Infof("Server stopped")
 		})
 
 	return g.Run()

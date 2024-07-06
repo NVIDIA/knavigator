@@ -3,7 +3,6 @@ module github.com/NVIDIA/knavigator
 go 1.21
 
 require (
-	github.com/go-logr/logr v1.4.1
 	github.com/maja42/goval v1.4.0
 	github.com/oklog/run v1.1.0
 	github.com/stretchr/testify v1.8.4
@@ -18,6 +17,7 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect

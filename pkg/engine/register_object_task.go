@@ -24,7 +24,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -43,14 +42,13 @@ type RegisterObjTask struct {
 }
 
 // newRegisterObjTask initializes and returns RegisterObjTask
-func newRegisterObjTask(log logr.Logger, client *discovery.DiscoveryClient, accessor ObjInfoAccessor, cfg *config.Task) (*RegisterObjTask, error) {
+func newRegisterObjTask(client *discovery.DiscoveryClient, accessor ObjInfoAccessor, cfg *config.Task) (*RegisterObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DiscoveryClient is not set", cfg.Type, cfg.ID)
 	}
 
 	task := &RegisterObjTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},

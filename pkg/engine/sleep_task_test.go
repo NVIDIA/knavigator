@@ -53,7 +53,6 @@ func TestSleepParams(t *testing.T) {
 			},
 			task: &SleepTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskSleep,
 					taskID:   taskID,
 				},
@@ -66,7 +65,7 @@ func TestSleepParams(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, false)
+			eng, err := New(nil, nil, false)
 			require.NoError(t, err)
 
 			task, err := eng.GetTask(&config.Task{
@@ -103,7 +102,7 @@ func TestSleepExec(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			task, err := newSleepTask(testLogger, &config.Task{
+			task, err := newSleepTask(&config.Task{
 				ID:     "sleep",
 				Type:   TaskSleep,
 				Params: map[string]interface{}{"timeout": tc.timeout},

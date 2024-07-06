@@ -22,12 +22,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -39,7 +39,6 @@ type Engine interface {
 }
 
 type Eng struct {
-	log             logr.Logger
 	mutex           sync.Mutex
 	k8sClient       *kubernetes.Clientset
 	dynamicClient   *dynamic.DynamicClient
@@ -49,9 +48,8 @@ type Eng struct {
 	cleanup         *CleanupInfo
 }
 
-func New(log logr.Logger, config *rest.Config, cleanupInfo *CleanupInfo, sim ...bool) (*Eng, error) {
+func New(config *rest.Config, cleanupInfo *CleanupInfo, sim ...bool) (*Eng, error) {
 	eng := &Eng{
-		log:        log,
 		objTypeMap: make(map[string]*RegisterObjParams),
 		objInfoMap: make(map[string]*ObjInfo),
 		cleanup:    cleanupInfo,
@@ -100,7 +98,7 @@ func (eng *Eng) RunTask(ctx context.Context, cfg *config.Task) error {
 		return err
 	}
 
-	return execRunnable(ctx, eng.log, runnable)
+	return execRunnable(ctx, runnable)
 }
 
 // GetTask initializes and validates task
@@ -108,16 +106,16 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 	eng.mutex.Lock()
 	defer eng.mutex.Unlock()
 
-	eng.log.Info("Creating task", "name", cfg.Type, "id", cfg.ID)
+	log.Infof("Creating task %s/%s", cfg.Type, cfg.ID)
 	switch cfg.Type {
 	case TaskRegisterObj:
-		return newRegisterObjTask(eng.log, eng.discoveryClient, eng, cfg)
+		return newRegisterObjTask(eng.discoveryClient, eng, cfg)
 
 	case TaskConfigure:
-		return newConfigureTask(eng.log, eng.k8sClient, cfg)
+		return newConfigureTask(eng.k8sClient, cfg)
 
 	case TaskSubmitObj:
-		task, err := newSubmitObjTask(eng.log, eng.dynamicClient, eng, cfg)
+		task, err := newSubmitObjTask(eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +125,7 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return task, nil
 
 	case TaskUpdateObj:
-		task, err := newUpdateObjTask(eng.log, eng.dynamicClient, eng, cfg)
+		task, err := newUpdateObjTask(eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +135,7 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return task, nil
 
 	case TaskCheckObj:
-		task, err := newCheckObjTask(eng.log, eng.dynamicClient, eng, cfg)
+		task, err := newCheckObjTask(eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +145,7 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return task, nil
 
 	case TaskDeleteObj:
-		task, err := newDeleteObjTask(eng.log, eng.dynamicClient, eng, cfg)
+		task, err := newDeleteObjTask(eng.dynamicClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -157,10 +155,10 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return task, nil
 
 	case TaskUpdateNodes:
-		return newUpdateNodesTask(eng.log, eng.k8sClient, cfg)
+		return newUpdateNodesTask(eng.k8sClient, cfg)
 
 	case TaskCheckPod:
-		task, err := newCheckPodTask(eng.log, eng.k8sClient, eng, cfg)
+		task, err := newCheckPodTask(eng.k8sClient, eng, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -170,10 +168,10 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return task, nil
 
 	case TaskSleep:
-		return newSleepTask(eng.log, cfg)
+		return newSleepTask(cfg)
 
 	case TaskPause:
-		return newPauseTask(eng.log, cfg), nil
+		return newPauseTask(cfg), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported task type %q", cfg.Type)
@@ -191,7 +189,7 @@ func (eng *Eng) SetObjType(taskID string, params *RegisterObjParams) error {
 
 	eng.objTypeMap[taskID] = params
 
-	eng.log.V(4).Info("Registering object for task ID", "name", taskID)
+	log.V(4).Infof("Registering object for taskID %s", taskID)
 
 	return nil
 }
@@ -206,7 +204,7 @@ func (eng *Eng) GetObjType(objType string) (*RegisterObjParams, error) {
 		return nil, fmt.Errorf("GetObjType: missing object type %s", objType)
 	}
 
-	eng.log.V(4).Info("Getting object type", "name", objType)
+	log.V(4).Infof("Getting object type %s", objType)
 
 	return info, nil
 }
@@ -217,12 +215,12 @@ func (eng *Eng) SetObjInfo(taskID string, info *ObjInfo) error {
 	defer eng.mutex.Unlock()
 
 	if _, ok := eng.objInfoMap[taskID]; ok {
-		return fmt.Errorf("SetObjInfo: duplicate task ID %s", taskID)
+		return fmt.Errorf("SetObjInfo: duplicate taskID %s", taskID)
 	}
 
 	eng.objInfoMap[taskID] = info
 
-	eng.log.V(4).Info("Setting task info", "taskID", taskID)
+	log.V(4).Infof("Setting task info for task ID %s", taskID)
 
 	return nil
 }
@@ -237,32 +235,32 @@ func (eng *Eng) GetObjInfo(taskID string) (*ObjInfo, error) {
 		return nil, fmt.Errorf("GetObjInfo: missing task ID %s", taskID)
 	}
 
-	eng.log.V(4).Info("Getting task info", "taskID", taskID)
+	log.V(4).Infof("Getting task info for taskID %s", taskID)
 
 	return info, nil
 }
 
-func execRunnable(ctx context.Context, log logr.Logger, r Runnable) error {
+func execRunnable(ctx context.Context, r Runnable) error {
 	id := r.ID()
-	log.Info("Starting task", "id", id)
+	log.Infof("Starting task %s", id)
 	start := time.Now()
 	if err := r.Exec(ctx); err != nil {
-		log.Error(err, "Task failed", "id", id)
+		log.Errorf("Task %s failed", id)
 		return err
 	}
-	log.Info("Task completed", "id", id, "duration", time.Since(start).String())
+	log.Infof("Task %s completed in %s", id, time.Since(start).String())
 	return nil
 }
 
 // Reset re-initializes engine and deletes the remaining objects
 func (eng *Eng) Reset(ctx context.Context) error {
-	eng.log.Info("Reset Engine")
+	log.Infof("Reset Engine")
 
 	if eng.cleanup == nil || !eng.cleanup.Enabled {
 		return nil
 	}
 
-	eng.log.Info("Cleaning up objects")
+	log.Infof("Cleaning up objects")
 	ctx, cancel := context.WithTimeout(ctx, eng.cleanup.Timeout)
 	defer cancel()
 
@@ -293,10 +291,10 @@ func (eng *Eng) DeleteAllObjects(ctx context.Context) {
 		for _, name := range objInfo.Names {
 			err := eng.dynamicClient.Resource(objInfo.GVR).Namespace(ns).Delete(ctx, name, deletions)
 			if err != nil {
-				eng.log.Info("Warning: cannot delete object", "name", name, "err", err.Error())
+				log.Infof("Warning: cannot delete object %s: %v", name, err)
 			}
 		}
 	}
 
-	eng.log.Info("Deleted all objects")
+	log.Infof("Deleted all objects")
 }

@@ -27,7 +27,7 @@ import (
 )
 
 func TestPauseExec(t *testing.T) {
-	eng, err := New(testLogger, nil, nil, false)
+	eng, err := New(nil, nil, false)
 	require.NoError(t, err)
 
 	task, err := eng.GetTask(&config.Task{

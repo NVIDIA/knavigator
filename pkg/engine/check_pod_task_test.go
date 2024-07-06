@@ -85,7 +85,6 @@ func TestCheckPodParams(t *testing.T) {
 			refTaskId: "step1",
 			task: &CheckPodTask{
 				BaseTask: BaseTask{
-					log:      testLogger,
 					taskType: TaskCheckPod,
 					taskID:   taskID,
 				},
@@ -102,7 +101,7 @@ func TestCheckPodParams(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			eng, err := New(testLogger, nil, nil, tc.simClients)
+			eng, err := New(nil, nil, tc.simClients)
 			require.NoError(t, err)
 			if len(tc.refTaskId) != 0 {
 				eng.objInfoMap[tc.refTaskId] = nil

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -37,10 +36,9 @@ type sleepTaskParams struct {
 	Timeout time.Duration `yaml:"timeout"`
 }
 
-func newSleepTask(log logr.Logger, cfg *config.Task) (*SleepTask, error) {
+func newSleepTask(cfg *config.Task) (*SleepTask, error) {
 	task := &SleepTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: TaskSleep,
 			taskID:   cfg.ID,
 		},

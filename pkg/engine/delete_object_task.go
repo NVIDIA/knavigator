@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -41,14 +41,13 @@ type deleteObjTaskParams struct {
 }
 
 // newDeleteObjTask initializes and returns DeleteObjTask
-func newDeleteObjTask(log logr.Logger, client *dynamic.DynamicClient, getter ObjInfoAccessor, cfg *config.Task) (*DeleteObjTask, error) {
+func newDeleteObjTask(client *dynamic.DynamicClient, getter ObjInfoAccessor, cfg *config.Task) (*DeleteObjTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
 	}
 
 	task := &DeleteObjTask{
 		BaseTask: BaseTask{
-			log:      log,
 			taskType: cfg.Type,
 			taskID:   cfg.ID,
 		},
@@ -87,7 +86,7 @@ func (task *DeleteObjTask) Exec(ctx context.Context) error {
 		return err
 	}
 
-	task.log.V(4).Info("Deleting objects", "GVR", info.GVR.String(), "names", info.Names)
+	log.V(4).Infof("Deleting objects %s %v", info.GVR.String(), info.Names)
 
 	for _, name := range info.Names {
 		prop := v1.DeletePropagationBackground
