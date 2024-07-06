@@ -45,6 +45,7 @@ type Eng struct {
 	discoveryClient *discovery.DiscoveryClient
 	objTypeMap      map[string]*RegisterObjParams
 	objInfoMap      map[string]*ObjInfo
+	deferrer        *Deferrer
 	cleanup         *CleanupInfo
 }
 
@@ -71,6 +72,9 @@ func New(config *rest.Config, cleanupInfo *CleanupInfo, sim ...bool) (*Eng, erro
 		eng.dynamicClient = &dynamic.DynamicClient{}
 		eng.discoveryClient = &discovery.DiscoveryClient{}
 	}
+
+	eng.deferrer = NewDereffer(eng.k8sClient, eng)
+	eng.deferrer.Start(context.TODO())
 
 	return eng, nil
 }
@@ -115,7 +119,7 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		return newConfigureTask(eng.k8sClient, cfg)
 
 	case TaskSubmitObj:
-		task, err := newSubmitObjTask(eng.dynamicClient, eng, cfg)
+		task, err := newSubmitObjTask(eng.dynamicClient, eng, eng.deferrer, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -172,6 +176,9 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 
 	case TaskPause:
 		return newPauseTask(cfg), nil
+
+	case TaskWait:
+		return newWaitTask(eng.deferrer, cfg), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported task type %q", cfg.Type)
