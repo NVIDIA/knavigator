@@ -26,19 +26,22 @@ import (
 )
 
 const (
-	TaskConfigure   = "Configure"
-	TaskRegisterObj = "RegisterObj"
-	TaskSubmitObj   = "SubmitObj"
-	TaskUpdateObj   = "UpdateObj"
-	TaskCheckObj    = "CheckObj"
-	TaskDeleteObj   = "DeleteObj"
-	TaskCheckPod    = "CheckPod"
-	TaskUpdateNodes = "UpdateNodes"
-	TaskSleep       = "Sleep"
-	TaskPause       = "Pause"
+	TaskConfigure      = "Configure"
+	TaskRegisterObj    = "RegisterObj"
+	TaskSubmitObj      = "SubmitObj"
+	TaskUpdateObj      = "UpdateObj"
+	TaskCheckObj       = "CheckObj"
+	TaskCheckConfigmap = "CheckConfigmap"
+	TaskDeleteObj      = "DeleteObj"
+	TaskCheckPod       = "CheckPod"
+	TaskUpdateNodes    = "UpdateNodes"
+	TaskSleep          = "Sleep"
+	TaskPause          = "Pause"
 
-	OpCreate = "create"
-	OpDelete = "delete"
+	OpCreate    = "create"
+	OpDelete    = "delete"
+	OpCmpEqual  = "equal"
+	OpCmpSubset = "subset"
 
 	DefaultCleanupTimeout = 5 * time.Minute
 )
