@@ -3,7 +3,7 @@
 set -x -e
 
 KWOK_REPO=kubernetes-sigs/kwok
-KWOK_RELEASE="v0.5.2"
+KWOK_RELEASE="v0.6.0"
 
 # Deploy KWOK controller
 kubectl apply -f https://github.com/${KWOK_REPO}/releases/download/${KWOK_RELEASE}/kwok.yaml
