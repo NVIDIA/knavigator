@@ -167,6 +167,13 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		}
 		return task, nil
 
+	case TaskCheckConfigmap:
+		task, err := newCheckConfigmapTask(eng.k8sClient, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return task, nil
+
 	case TaskSleep:
 		return newSleepTask(cfg)
 
