@@ -138,7 +138,7 @@ func TestCompareConfigMaps(t *testing.T) {
 				},
 			},
 			actual: map[string]string{"a": "b", "e": "f"},
-			err:    "CheckConfigmap/check: configmap default/test does not have key c",
+			err:    `CheckConfigmap/check: configmap default/test does not have key "c"`,
 		},
 		{
 			name: "Case 4: valid OpCmpEqual case",

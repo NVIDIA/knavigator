@@ -23,6 +23,7 @@ import (
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -104,10 +105,11 @@ func (task *CheckConfigmapTask) compareConfigMaps(data map[string]string) error 
 	for key, expected := range task.Data {
 		actual, ok := data[key]
 		if !ok {
-			return fmt.Errorf("%s: configmap %s/%s does not have key %s", task.ID(), task.Namespace, task.Name, key)
+			return fmt.Errorf("%s: configmap %s/%s does not have key %q", task.ID(), task.Namespace, task.Name, key)
 		}
 		if expected != actual {
-			return fmt.Errorf("%s: configmap %s/%s does not match value for key %s", task.ID(), task.Namespace, task.Name, key)
+			log.V(4).Infof("configmap mismatch: key: %q actual: %q expected: %q", key, actual, expected)
+			return fmt.Errorf("%s: configmap %s/%s does not match value for key %q", task.ID(), task.Namespace, task.Name, key)
 		}
 	}
 
