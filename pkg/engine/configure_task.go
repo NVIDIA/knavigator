@@ -222,7 +222,13 @@ func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 			log.Infof("Configmap %s %sd", cm.Name, op)
 
 		case OpDelete:
-			err := task.client.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{})
+			_, err := task.client.CoreV1().ConfigMaps(cm.Namespace).Get(ctx, cm.Name, metav1.GetOptions{})
+			if err == nil {
+				err = task.client.CoreV1().ConfigMaps(cm.Namespace).Delete(ctx, cm.Name, metav1.DeleteOptions{})
+			} else if errors.IsNotFound(err) {
+				log.V(4).Infof("Configmap %s does not exist; nothing to delete", cm.Name)
+				err = nil
+			}
 			if err != nil {
 				return fmt.Errorf("%s: failed to delete configmap %s: %v", task.ID(), cm.Name, err)
 			}
