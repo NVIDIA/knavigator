@@ -1,5 +1,7 @@
 # Demo: how to install, configure and use Knvavigator in a local k8s cluster, such as minikube or KinD
 
+# Create a minkube or kind cluster
+
 # Show the cluster infomation
 kubectl cluster-info
 
@@ -14,6 +16,10 @@ kubectl apply -f https://github.com/${KWOK_REPO}/releases/download/${KWOK_LATEST
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
 kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/general/pod-complete.yaml
+
+# Set up virtual nodes
+helm upgrade --install virtual-nodes charts/virtual-nodes -f charts/virtual-nodes/values-example.yaml
+kubectl get nodes
 
 # Build Knavigator
 make build
