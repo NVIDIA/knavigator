@@ -39,6 +39,7 @@ spec:
         annotations:
           {{- if .ttl }}
           pod-complete.stage.kwok.x-k8s.io/delay: "{{.ttl}}"
+          pod-complete.stage.kwok.x-k8s.io/jitter-delay: "{{.ttl}}"
           {{- end }}
       spec:
         containers:
