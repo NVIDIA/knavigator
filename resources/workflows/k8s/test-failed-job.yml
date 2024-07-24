@@ -52,8 +52,8 @@ tasks:
       failureReason: nccl-test-failed
       failureMessage: "nccl test failed"
       failureExitCode: 1
-      failureDelay: 1000
-      failureJitterDelay: 5000
+      failureDelay: "5s" 
+      failureJitterDelay: "5s"
 - id: status
   type: CheckPod
   params:
