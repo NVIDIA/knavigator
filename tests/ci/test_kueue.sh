@@ -8,7 +8,7 @@ export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
 ${REPO_HOME}/scripts/install_kwok.sh
 
 # Install Kueue
-KUEUE_VERSION=v0.7.0
+KUEUE_VERSION=v0.8.0
 
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
 
