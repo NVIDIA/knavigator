@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -43,10 +44,11 @@ type ConfigureTask struct {
 }
 
 type configureTaskParams struct {
-	Nodes      []virtualNode `yaml:"nodes"`
-	Namespaces []namespace   `yaml:"namespaces"`
-	ConfigMaps []configmap   `yaml:"configmaps"`
-	Timeout    time.Duration `yaml:"timeout"`
+	Nodes           []virtualNode   `yaml:"nodes"`
+	Namespaces      []namespace     `yaml:"namespaces"`
+	ConfigMaps      []configmap     `yaml:"configmaps"`
+	PriorityClasses []priorityClass `yaml:"priorityClasses"`
+	Timeout         time.Duration   `yaml:"timeout"`
 }
 
 type virtualNode struct {
@@ -67,6 +69,12 @@ type configmap struct {
 	Namespace string            `yaml:"namespace"`
 	Data      map[string]string `yaml:"data"`
 	Op        string            `yaml:"op"`
+}
+
+type priorityClass struct {
+	Name  string `yaml:"name"`
+	Value *int32 `yaml:"value,omitempty"`
+	Op    string `yaml:"op"`
 }
 
 func newConfigureTask(client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
@@ -117,6 +125,18 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 		}
 	}
 
+	for _, pc := range task.PriorityClasses {
+		switch pc.Op {
+		case OpCreate:
+			if pc.Value == nil {
+				return fmt.Errorf("%s: must provide value when creating PriorityClass", task.ID())
+			}
+		case OpDelete:
+			// nop
+		default:
+			return fmt.Errorf("%s: invalid PriorityClass operation %s; supported: %s, %s", task.ID(), pc.Op, OpCreate, OpDelete)
+		}
+	}
 	if task.Timeout == 0 {
 		return fmt.Errorf("%s: missing parameter 'timeout'", task.ID())
 	}
@@ -131,7 +151,7 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 
 	errs := make(chan error)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	go func() {
 		wg.Wait()
@@ -141,6 +161,11 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 	go func() {
 		defer wg.Done()
 		errs <- task.updateNamespaces(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		errs <- task.updatePriorityClasses(ctx)
 	}()
 
 	go func() {
@@ -189,6 +214,47 @@ func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
 				return fmt.Errorf("%s: failed to delete namespace %s: %v", task.ID(), ns.Name, err)
 			}
 			log.Infof("Namespace %s deleted", ns.Name)
+		}
+	}
+
+	return nil
+}
+
+func (task *ConfigureTask) updatePriorityClasses(ctx context.Context) error {
+	for _, pc := range task.PriorityClasses {
+		log.Infof("%s PriorityClass %s", pc.Op, pc.Name)
+
+		switch pc.Op {
+		case OpCreate:
+			newObj := &schedulingv1.PriorityClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: pc.Name,
+				},
+				Value: *pc.Value,
+			}
+
+			curObj, err := task.client.SchedulingV1().PriorityClasses().Get(ctx, pc.Name, metav1.GetOptions{})
+			if err == nil {
+				if curObj.Value == newObj.Value {
+					log.Infof("PriorityClass %s with value %d already exist", curObj.Name, curObj.Value)
+				} else {
+					log.Infof("Updating PriorityClass %s with value %d", newObj.Name, newObj.Value)
+					_, err = task.client.SchedulingV1().PriorityClasses().Update(ctx, newObj, metav1.UpdateOptions{})
+				}
+			} else if errors.IsNotFound(err) {
+				log.Infof("Creating PriorityClass %s with value %d", newObj.Name, newObj.Value)
+				_, err = task.client.SchedulingV1().PriorityClasses().Create(ctx, newObj, metav1.CreateOptions{})
+			}
+			if err != nil {
+				return fmt.Errorf("%s: failed to create PriorityClass %s: %v", task.ID(), pc.Name, err)
+			}
+
+		case OpDelete:
+			err := task.client.SchedulingV1().PriorityClasses().Delete(ctx, pc.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return fmt.Errorf("%s: failed to delete PriorityClass %s: %v", task.ID(), pc.Name, err)
+			}
+			log.Infof("PriorityClass %s deleted", pc.Name)
 		}
 	}
 

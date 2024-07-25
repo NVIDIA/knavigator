@@ -27,6 +27,7 @@ import (
 
 func TestNewConfigureTask(t *testing.T) {
 	taskID := "configure"
+	var priority90 int32 = 90
 	testCases := []struct {
 		name       string
 		simClients bool
@@ -82,7 +83,27 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: invalid configmap operation BAD; supported: create, delete",
 		},
 		{
-			name:       "Case 6: Valid parameters with default",
+			name:       "Case 6a: Invalid priority class op",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":         "1m",
+				"namespaces":      []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"priorityClasses": []interface{}{map[string]interface{}{"name": "high-priority", "op": "BAD"}},
+			},
+			err: "Configure/configure: invalid PriorityClass operation BAD; supported: create, delete",
+		},
+		{
+			name:       "Case 6b: Missing PriorityClass value",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":         "1m",
+				"namespaces":      []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"priorityClasses": []interface{}{map[string]interface{}{"name": "high-priority", "op": "create"}},
+			},
+			err: "Configure/configure: must provide value when creating PriorityClass",
+		},
+		{
+			name:       "Case 7: Valid parameters with default",
 			simClients: true,
 			params:     map[string]interface{}{"timeout": "1m"},
 			task: &ConfigureTask{
@@ -97,7 +118,7 @@ func TestNewConfigureTask(t *testing.T) {
 			},
 		},
 		{
-			name:       "Case 7: Valid parameters without default",
+			name:       "Case 8: Valid parameters without default",
 			simClients: true,
 			params: map[string]interface{}{
 				"timeout": "1m",
@@ -116,6 +137,10 @@ func TestNewConfigureTask(t *testing.T) {
 						"op":        "create",
 						"data":      map[string]string{"key": "value"},
 					},
+				},
+				"priorityClasses": []interface{}{
+					map[string]interface{}{"name": "high-priority", "op": "create", "value": 90},
+					map[string]interface{}{"name": "low-priority", "op": "delete"},
 				},
 			},
 			task: &ConfigureTask{
@@ -149,8 +174,19 @@ func TestNewConfigureTask(t *testing.T) {
 						{
 							Name:      "cm1",
 							Namespace: "default",
-							Op:        "create",
+							Op:        OpCreate,
 							Data:      map[string]string{"key": "value"},
+						},
+					},
+					PriorityClasses: []priorityClass{
+						{
+							Name:  "high-priority",
+							Value: &priority90,
+							Op:    OpCreate,
+						},
+						{
+							Name: "low-priority",
+							Op:   OpDelete,
 						},
 					},
 				},
