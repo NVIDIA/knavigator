@@ -47,6 +47,13 @@ tasks:
       op: create
     - name: team-b
       op: create
+    priorityClasses:
+    - name: high-priority
+      value: 90
+      op: create
+    - name: low-priority
+      value: 30
+      op: create
     timeout: 1m
 - id: create-resource-flavor
   type: SubmitObj
