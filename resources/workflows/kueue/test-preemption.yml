@@ -59,6 +59,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-resource-flavor
+    canExist: true
     params:
       name: "gpu-node"
       nodeLabels:
@@ -67,6 +68,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-cluster-queue
+    canExist: true
     params:
       name: team-a-cq
       cohort: team-ab
@@ -78,6 +80,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-cluster-queue
+    canExist: true
     params:
       name: team-b-cq
       cohort: team-ab
@@ -89,6 +92,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-local-queue
+    canExist: true
     params:
       name: team-a-queue
       namespace: team-a
@@ -97,6 +101,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-local-queue
+    canExist: true
     params:
       name: team-b-queue
       namespace: team-b

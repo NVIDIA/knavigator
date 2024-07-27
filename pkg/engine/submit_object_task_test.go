@@ -241,6 +241,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 			name: "Case 5: Pod count evaluation",
 			params: map[string]interface{}{
 				"refTaskId": "register",
+				"canExist":  true,
 				"count":     2,
 				"params":    params,
 			},
@@ -260,6 +261,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 				submitObjTaskParams: submitObjTaskParams{
 					RefTaskID: "register",
 					Count:     2,
+					CanExist:  true,
 					Params:    params,
 				},
 				client: testDynamicClient,
