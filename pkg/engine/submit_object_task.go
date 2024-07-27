@@ -44,6 +44,8 @@ type submitObjTaskParams struct {
 	RefTaskID string `yaml:"refTaskId"`
 	// Count: number of objects to submit; default 1.
 	Count int `yaml:"count"`
+	// CanExist: true is an object can exist
+	CanExist bool `yaml:"canExist"`
 	// Params: a map of key:value pairs to be used when executing object and name templates.
 	Params map[string]interface{} `yaml:"params"`
 }
@@ -130,6 +132,14 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 				"metadata":   obj.Metadata,
 				"spec":       obj.Spec,
 			},
+		}
+
+		if task.CanExist {
+			_, err := task.client.Resource(regObjParams.gvr).Namespace(obj.Metadata.Namespace).Get(ctx, obj.Metadata.Name, metav1.GetOptions{})
+			if err == nil {
+				log.V(4).Infof("Object %s/%s already exist", obj.Kind, obj.Metadata.Name)
+				return nil
+			}
 		}
 
 		if _, err := task.client.Resource(regObjParams.gvr).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {

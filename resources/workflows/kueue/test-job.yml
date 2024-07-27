@@ -47,6 +47,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-resource-flavor
+    canExist: true
     params:
       name: "gpu-node"
       nodeLabels:
@@ -55,6 +56,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-cluster-queue
+    canExist: true
     params:
       name: team
       flavor: gpu-node
@@ -65,6 +67,7 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-local-queue
+    canExist: true
     params:
       name: team-queue
       namespace: default
