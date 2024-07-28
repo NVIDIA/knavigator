@@ -1,18 +1,15 @@
 #! /bin/bash
 
-set -x -e
+set -xe
 
-export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+source $REPO_HOME/scripts/env.sh
 
 # Install KWOK node simulator
-${REPO_HOME}/scripts/install_kwok.sh
+deploy_kwok
 
 # Install Kueue
-KUEUE_VERSION=v0.8.0
-
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
-
-kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
+deploy_kueue
 
 # Run knavigator with an example test
 ${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/kueue/test-job.yml -cleanup
