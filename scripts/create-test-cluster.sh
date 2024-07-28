@@ -25,18 +25,19 @@ else
   kind create cluster
 fi
 
+deploy_prometheus
+
+deploy_kwok
+
+echo ""
+printYellow "Select workload manager or leave it blank to skip:"
 cat << EOF
-Select workload manager or leave it blank to skip, then press <RETURN>.
   1: jobset (https://github.com/kubernetes-sigs/jobset)
   2: kueue (https://github.com/kubernetes-sigs/kueue)
   3: volcano (https://github.com/volcano-sh/volcano)
   4: yunikorn (https://github.com/apache/yunikorn-core)
 EOF
 read -p "> " choice
-
-deploy_prometheus
-
-deploy_kwok
 
 case "$choice" in
   1)
