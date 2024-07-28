@@ -1,11 +1,12 @@
 #! /bin/bash
 
-set -x -e
+set -xe
 
-export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+source $REPO_HOME/scripts/env.sh
 
 # Install KWOK node simulator
-${REPO_HOME}/scripts/install_kwok.sh
+deploy_kwok
 
 # Run knavigator with an example test
 ${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/k8s/test-job.yml

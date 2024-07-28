@@ -10,7 +10,7 @@ Knavigator operates alongside the Prometheus node-resource-exporter. Additionall
 helm repo add --force-update prometheus-community \
   https://prometheus-community.github.io/helm-charts
 
-helm install -n prometheus --create-namespace kube-prometheus-stack \
+helm install -n monitoring --create-namespace kube-prometheus-stack \
   prometheus-community/kube-prometheus-stack \
   --set alertmanager.enabled=false \
   --set defaultRules.rules.alertmanager=false \

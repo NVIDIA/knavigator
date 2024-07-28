@@ -1,17 +1,15 @@
 #! /bin/bash
 
-set -x -e
+set -xe
 
-export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+source $REPO_HOME/scripts/env.sh
 
 # Install KWOK node simulator
-${REPO_HOME}/scripts/install_kwok.sh
+deploy_kwok
 
 # Install YuniKorn
-helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
-helm install yunikorn yunikorn/yunikorn -n yunikorn --create-namespace --wait
-
-kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=60s
+deploy_yunikorn
 
 # Run knavigator with an example test
 ${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/yunikorn/test-job.yml -cleanup

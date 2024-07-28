@@ -1,18 +1,15 @@
 #! /bin/bash
 
-set -x -e
+set -xe
 
-export REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../)
+source $REPO_HOME/scripts/env.sh
 
 # Install KWOK node simulator
-${REPO_HOME}/scripts/install_kwok.sh
+deploy_kwok
 
 # Install JobSet
-JOBSET_VERSION=v0.5.2
-
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
-
-kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
+deploy_jobset
 
 # Run knavigator with an example test
 ${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/k8s/test-jobset.yml -cleanup
