@@ -17,17 +17,34 @@ kind: Job
 metadata:
   name: "{{._NAME_}}"
   namespace: default
-  labels:
-    kueue.x-k8s.io/queue-name: team-queue
 spec:
   completions: {{.replicas}}
   parallelism: {{.replicas}}
-  completionMode: Indexed
   template:
     metadata:
+      labels:
+        applicationId: "test-{{._NAME_}}"
+        queue: root.sandbox
       annotations:
-        pod-complete.stage.kwok.x-k8s.io/delay: "30s"
+        yunikorn.apache.org/task-group-name: group-{{._NAME_}}
+        yunikorn.apache.org/schedulingPolicyParameters: "gangSchedulingStyle=Hard"
+        yunikorn.apache.org/task-groups: |-
+          [{
+            "name": "group-{{._NAME_}}",
+            "minMember": {{.replicas}},
+            "minResource": {
+              "cpu": "1",
+              "memory": "500M",
+              "nvidia.com/gpu": "8"
+            },
+            "nodeSelector": {},
+            "tolerations": [],
+            "affinity": {}
+          }]
+        pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+        pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
     spec:
+      schedulerName: yunikorn
       containers:
       - name: test
         image: ubuntu

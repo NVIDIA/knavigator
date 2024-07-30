@@ -42,6 +42,7 @@ fi
 deploy_prometheus
 
 deploy_kwok
+kubectl apply -f $REPO_HOME/charts/overrides/kwok/pod-complete.yaml
 
 echo ""
 printYellow "Select workload manager or leave it blank to skip:"

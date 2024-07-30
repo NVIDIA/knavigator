@@ -36,7 +36,8 @@ spec:
         template:
           metadata:
             annotations:
-              pod-complete.stage.kwok.x-k8s.io/delay: "30s"
+              pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+              pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
           spec:
             schedulerName: default-scheduler
             containers:

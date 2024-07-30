@@ -1,0 +1,137 @@
+name: test-gang-scheduling
+tasks:
+- id: register-trainingworkload
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/runai/trainingworkload.yml"
+    nameFormat: "twl{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-0-0"
+    podCount: 1
+- id: register-distributedworkload
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/runai/distributedworkload.yml"
+    nameFormat: "dwl{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
+    podCount: "{{.workers}} + 1"
+#
+### Benchmark test
+#
+- id: job1
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 1
+    params:
+      workers: 31
+      ttl: 30s
+- id: job2
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 2
+    params:
+      workers: 15
+      ttl: 30s
+- id: job3
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 3
+    params:
+      workers: 9
+      ttl: 30s
+- id: job3.1
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 1
+    params:
+      workers: 1
+      ttl: 30s
+- id: job4
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 4
+    params:
+      workers: 7
+      ttl: 30s
+- id: job5
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 5
+    params:
+      workers: 5
+      ttl: 30s
+- id: job5.1
+  type: SubmitObj
+  params:
+    refTaskId: register-trainingworkload
+    count: 2
+    params:
+      ttl: 30s
+- id: job6
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 6
+    params:
+      workers: 4
+      ttl: 30s
+- id: job6.1
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 1
+    params:
+      workers: 1
+      ttl: 30s
+- id: job7
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 7
+    params:
+      workers: 3
+      ttl: 30s
+- id: job7.1
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 1
+    params:
+      workers: 1
+      ttl: 30s
+- id: job7.2
+  type: SubmitObj
+  params:
+    refTaskId: register-trainingworkload
+    count: 2
+    params:
+      ttl: 30s
+- id: job8
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 8
+    params:
+     workers: 3
+     ttl: 30s
+- id: job9
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 9
+    params:
+      workers: 2
+      ttl: 30s
+- id: job9.1
+  type: SubmitObj
+  params:
+    refTaskId: register-distributedworkload
+    count: 1
+    params:
+      workers: 4
+      ttl: 30s
