@@ -38,10 +38,10 @@ tasks:
     count: 1
     params:
       namespace: default
-      parallelism: 1
-      completions: 1
+      parallelism: 2
+      completions: 2
       backoffLimit: 0
-      completionMode: NonIndexed
+      completionMode: Indexed
       image: ubuntu
       cpu: 100m
       memory: 512M
@@ -52,11 +52,11 @@ tasks:
       failureReason: nccl-test-failed
       failureMessage: "nccl test failed"
       failureExitCode: 1
-      failureDelay: 1000
-      failureJitterDelay: 5000
+      failureDelay: "1s"
+      failureJitterDelay: "1s"
 - id: status
   type: CheckPod
   params:
     refTaskId: job
     status: Failed
-    timeout: 10s
+    timeout: 5s
