@@ -1,3 +1,17 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -63,6 +77,8 @@ function deploy_prometheus() {
     prometheus-community/kube-prometheus-stack \
     --version=$PROMETHEUS_STACK_VERSION --wait \
     --set alertmanager.enabled=false \
+    --set grafana.enabled=false \
+    --set nodeExporter.enabled=false \
     --set defaultRules.rules.alertmanager=false \
     --set defaultRules.rules.nodeExporterAlerting=false \
     --set defaultRules.rules.nodeExporterRecording=false \
@@ -77,12 +93,6 @@ function deploy_prometheus() {
 
 # https://github.com/kubernetes-sigs/jobset
 JOBSET_VERSION=v0.5.2
-# https://github.com/kubernetes-sigs/kueue
-KUEUE_VERSION=v0.8.0
-# https://github.com/volcano-sh/volcano
-VOLCANO_VERSION=v1.9.0
-# https://github.com/apache/yunikorn-core
-YUNIKORN_VERSION=v1.5.1
 
 function deploy_jobset() {
   printGreen Deploying jobset
@@ -91,12 +101,18 @@ function deploy_jobset() {
   kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
 }
 
+# https://github.com/kubernetes-sigs/kueue
+KUEUE_VERSION=v0.8.0
+
 function deploy_kueue() {
   printGreen Deploying kueue
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
   kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
 }
+
+# https://github.com/volcano-sh/volcano
+VOLCANO_VERSION=v1.9.0
 
 function deploy_volcano() {
   printGreen Deploying volcano
@@ -115,6 +131,9 @@ function deploy_volcano() {
   sleep 10
 }
 
+# https://github.com/apache/yunikorn-core
+YUNIKORN_VERSION=v1.5.1
+
 function deploy_yunikorn() {
   printGreen Deploying yunikorn
 
@@ -124,4 +143,46 @@ function deploy_yunikorn() {
     --version=$YUNIKORN_VERSION --wait
 
   kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=60s
+}
+
+# https://www.run.ai/
+TRAINING_OPERATOR_VERSION=v1.8.0
+MPI_OPERATOR_VERSION=v0.4.0
+RUNAI_VERSION=2.17.50
+
+function deploy_runai() {
+  printGreen Deploying run:ai
+
+  if [[ -z "$RUNAI_CONTROL_PLANE_URL" ]] || [[ -z "$RUNAI_CLIENT_SECRET" ]] || [[ -z "$RUNAI_CLUSTER_ID" ]]; then
+    printRed "
+Run:ai deployment requires environment variables:
+  RUNAI_CONTROL_PLANE_URL : control plane URL
+  RUNAI_CLIENT_SECRET     : client secret
+  RUNAI_CLUSTER_ID        : cluster UID"
+    exit 1
+  fi
+
+  kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=$TRAINING_OPERATOR_VERSION"
+
+  kubectl patch deployment training-operator -n kubeflow --type='json' \
+    -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args", "value": ["--enable-scheme=tfjob", "--enable-scheme=pytorchjob", "--enable-scheme=xgboostjob"]}]'
+
+  kubectl delete crd mpijobs.kubeflow.org
+
+  kubectl apply -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
+
+  openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes -out certificate.pem -keyout private_key.pem -subj "/CN=$RUNAI_CONTROL_PLANE_URL"
+
+  kubectl create ns runai
+
+  kubectl create secret tls runai-cluster-domain-tls-secret -n runai --cert certificate.pem --key private_key.pem
+
+  helm repo add --force-update runai https://runai.jfrog.io/artifactory/api/helm/run-ai-charts
+
+  helm upgrade --install runai-cluster runai/runai-cluster -n runai \
+    --version="$RUNAI_VERSION" --create-namespace --wait \
+    --set controlPlane.url=$RUNAI_CONTROL_PLANE_URL \
+    --set controlPlane.clientSecret=$RUNAI_CLIENT_SECRET \
+    --set cluster.uid=$RUNAI_CLUSTER_ID \
+    --set cluster.url=https://example.com
 }

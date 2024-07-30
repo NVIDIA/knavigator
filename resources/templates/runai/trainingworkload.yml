@@ -1,0 +1,37 @@
+apiVersion: run.ai/v2alpha1
+kind: TrainingWorkload
+metadata:
+  name: "{{._NAME_}}"
+  namespace: runai-{{.project}}
+  annotations:
+    clusterId: {{.clusterId}}
+  labels:
+    project: {{.project}}
+spec:
+  name:
+    value: "{{._NAME_}}"
+  image:
+    value: {{.image}}
+  imagePullPolicy:
+    value: IfNotPresent
+  active:
+    value: true
+  annotations:
+    items:
+      clusterId:
+        value: {{.clusterId}}
+      {{- if .ttl }}
+      pod-complete.stage.kwok.x-k8s.io/delay:
+        value: "{{.ttl}}"
+      pod-complete.stage.kwok.x-k8s.io/jitter-delay:
+        value: "{{.ttl}}"
+      {{- end }}
+  cpu:
+    value: "{{.cpu}}"
+  memory:
+    value: "{{.memory}}"
+  gpuDevices:
+    value: {{.gpu}}
+  nodePools:
+    value: default
+  usage: Submit

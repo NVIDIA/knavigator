@@ -26,3 +26,4 @@ We have tested several of these and offer templates and workflows to support the
 * [Volcano](./examples/volcano/volcano.md)
 * [Kueue](./examples/kueue/kueue.md)
 * [YuniKorn](./examples/yunikorn/yunikorn.md)
+* [Run:ai](./examples/runai/runai.md)
