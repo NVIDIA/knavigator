@@ -13,6 +13,8 @@ helm repo add --force-update prometheus-community \
 helm install -n monitoring --create-namespace kube-prometheus-stack \
   prometheus-community/kube-prometheus-stack \
   --set alertmanager.enabled=false \
+  --set grafana.enabled=false \
+  --set nodeExporter.enabled=false \
   --set defaultRules.rules.alertmanager=false \
   --set defaultRules.rules.nodeExporterAlerting=false \
   --set defaultRules.rules.nodeExporterRecording=false \
@@ -29,6 +31,7 @@ Some of the tested frameworks are:
 - [Volcano](https://volcano.sh/en/docs/installation/)
 - [Kueue](https://kueue.sigs.k8s.io/docs/installation/)
 - [Apache YuniKorn](https://yunikorn.apache.org/docs/)
+- [Run:ai](https://www.run.ai/)
 
 ## KWOK integration
 
