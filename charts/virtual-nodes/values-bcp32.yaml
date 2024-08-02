@@ -1,0 +1,22 @@
+nodes:
+- type: dgxa100.40g
+  count: 32
+  annotations: {}
+  labels:
+    nvidia.com/gpu.count: "8"
+    nodeGroup: "gpu"
+    nodeType:  "gpu"
+    nodeInstance: dgxa100.40g.8.norm
+    gpu_affinity_capable: "true"
+    node-role.bcp.ngc.nvidia.com/role: user-workload
+    pod_gpu_size.static: dynamic
+    preempt_upon_cordon: "true"
+  conditions:
+  - message: Filesystem is not read-only
+    reason: FilesystemIsNotReadOnly
+    status: "False"
+    type: ReadonlyFilesystem
+  - message: kernel has no deadlock
+    reason: KernelHasNoDeadlock
+    status: "False"
+    type: KernelDeadlock
