@@ -27,6 +27,10 @@
   {{- $resources = set $resources "memory"              "1Ti"  }}
   {{- $resources = set $resources "nvidia.com/gpu"      8      }}
   {{- $resources = set $resources "nvidia.com/mlnxnics" 16     }}
+  {{- $resources = set $resources "intel.com/mlnx_sriov_rdma1" "1"  }}
+  {{- $resources = set $resources "intel.com/mlnx_sriov_rdma2" "1"  }}
+  {{- $resources = set $resources "intel.com/mlnx_sriov_rdma3" "1"  }}
+  {{- $resources = set $resources "intel.com/mlnx_sriov_rdma4" "1"  }}
   {{- $resources = set $resources "ephemeral-storage"   "15Ti" }}
   {{- $params = set $params "resources" $resources }}
 
