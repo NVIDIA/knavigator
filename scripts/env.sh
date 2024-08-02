@@ -60,7 +60,7 @@ function deploy_kwok() {
   kubectl apply -f https://github.com/${KWOK_REPO}/releases/download/${KWOK_RELEASE}/stage-fast.yaml
   kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
   kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
-  kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/general/pod-complete.yaml
+  #kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/general/pod-complete.yaml
 }
 
 # Prometheus
@@ -85,7 +85,7 @@ function deploy_prometheus() {
     --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
     --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false
 
-  kubectl -n monitoring wait --for=condition=ready pod -l app.kubernetes.io/instance=kube-prometheus-stack --timeout=3m
+  kubectl -n monitoring wait --for=condition=ready pod -l app.kubernetes.io/instance=kube-prometheus-stack --timeout=300s
 }
 
 # Tested workload managers
@@ -98,7 +98,8 @@ function deploy_jobset() {
   printGreen Deploying jobset
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
-  kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
+
+  kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
 }
 
 # https://github.com/kubernetes-sigs/kueue
@@ -108,7 +109,8 @@ function deploy_kueue() {
   printGreen Deploying kueue
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
-  kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=60s
+
+  kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
 }
 
 # https://github.com/volcano-sh/volcano
@@ -123,7 +125,7 @@ function deploy_volcano() {
     --version=$VOLCANO_VERSION --wait
 
   for app in volcano-admission volcano-controller volcano-scheduler; do
-    kubectl -n volcano-system wait --for=condition=ready pod -l app=$app --timeout=60s
+    kubectl -n volcano-system wait --for=condition=ready pod -l app=$app --timeout=300s
   done
 
   # Wait until volcano webhook is ready
@@ -142,7 +144,7 @@ function deploy_yunikorn() {
   helm upgrade --install yunikorn yunikorn/yunikorn -n yunikorn --create-namespace \
     --version=$YUNIKORN_VERSION --wait
 
-  kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=60s
+  kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=300s
 }
 
 # https://www.run.ai/

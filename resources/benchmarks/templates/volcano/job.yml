@@ -36,7 +36,8 @@ spec:
       metadata:
         name: test
         annotations:
-          pod-complete.stage.kwok.x-k8s.io/delay: "30s"
+          pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+          pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
       spec:
         containers:
         - name: job
@@ -51,4 +52,3 @@ spec:
               cpu: 100m
               memory: 256M
               nvidia.com/gpu: "8"
-      restartPolicy: OnFailure

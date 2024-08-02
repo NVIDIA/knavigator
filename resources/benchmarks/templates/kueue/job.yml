@@ -1,4 +1,3 @@
-
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,18 +17,18 @@ kind: Job
 metadata:
   name: "{{._NAME_}}"
   namespace: default
+  labels:
+    kueue.x-k8s.io/queue-name: team-queue
 spec:
   completions: {{.replicas}}
   parallelism: {{.replicas}}
+  completionMode: Indexed
   template:
     metadata:
-      labels:
-        applicationId: "test-{{._NAME_}}"
-        queue: root.sandbox
       annotations:
-        pod-complete.stage.kwok.x-k8s.io/delay: "30s"
+        pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+        pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
     spec:
-      schedulerName: yunikorn
       containers:
       - name: test
         image: ubuntu

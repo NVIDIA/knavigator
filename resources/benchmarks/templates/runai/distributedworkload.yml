@@ -1,0 +1,64 @@
+apiVersion: run.ai/v2alpha1
+kind: DistributedWorkload
+metadata:
+  name: "{{._NAME_}}"
+  namespace: runai-<RUNAI_PROJECT>
+  annotations:
+    clusterId: <RUNAI_CLUSTER_ID>
+  labels:
+    project: <RUNAI_PROJECT>
+masterSpec:
+  name:
+    value: "{{._NAME_}}"
+  image:
+    value: ubuntu
+  imagePullPolicy:
+    value: Always
+  cpu:
+    value: 100m
+  memory:
+    value: 256M
+  gpuDevices:
+    value: 8
+  largeShm:
+    value: false
+  nodePools:
+    value: default
+  runAsUser:
+    value: true
+  usage: Submit
+  autoDeletionTimeAfterCompletionSeconds:
+    value: 2592000
+spec:
+  annotations:
+    items:
+      clusterId:
+        value: <RUNAI_CLUSTER_ID>
+      pod-complete.stage.kwok.x-k8s.io/delay:
+        value: {{.ttl}}
+      pod-complete.stage.kwok.x-k8s.io/jitter-delay:
+        value: {{.ttl}}
+  name:
+    value: "{{._NAME_}}"
+  jobType: MPIJob
+  image:
+    value: ubuntu
+  imagePullPolicy:
+    value: Always
+  cpu:
+    value: 100m
+  memory:
+    value: 256M
+  gpuDevices:
+    value: 8
+  workers:
+    value: {{.workers}}
+  largeShm:
+    value: false
+  nodePools:
+    value: default
+  runAsUser:
+    value: true
+  usage: Submit
+  autoDeletionTimeAfterCompletionSeconds:
+    value: 2592000

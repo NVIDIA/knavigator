@@ -23,18 +23,12 @@ Navigate to the Run:ai portal and create a new project. Upon creating the projec
 
 This script will deploy a `kind` cluster if necessary, followed by deploying `KWOK` and `Prometheus`. It will then prompt you to select a workload manager. Choose the `run:ai` option.
 
-4. **Update KWOK stage**:
 
-Update the pod-complete stage by running the following command
-```bash
-kubectl apply -f ./charts/overrides/kwok/pod-complete.yaml
-```
-
-5. **Replace cluster UID and project name in the sample workflow files**:
+4. **Replace cluster UID and project name in the sample workflow files**:
 
 Update the sample workflow files [test-trainingworkload.yml](../../../resources/workflows/runai/test-trainingworkload.yml#L40-L41) and [test-distributedworkload.yml](../../../resources/workflows/runai/test-distributedworkload.yml#L40-L41) by replacing `<RUNAI_CLUSTER_ID>` with the cluster UID and `<RUNAI_PROJECT>` with the project name.
 
-6. **Run the workflows**
+5. **Run the workflows**
 
 Run a Run:ai training workload: 
 ```bash
