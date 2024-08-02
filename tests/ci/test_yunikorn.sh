@@ -12,4 +12,4 @@ deploy_kwok
 deploy_yunikorn
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/yunikorn/test-job.yml -cleanup
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/yunikorn/test-job.yml -v 4 -cleanup

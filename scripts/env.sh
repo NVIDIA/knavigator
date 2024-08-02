@@ -134,7 +134,7 @@ function deploy_volcano() {
 }
 
 # https://github.com/apache/yunikorn-core
-YUNIKORN_VERSION=v1.5.1
+YUNIKORN_VERSION=v1.5.2
 
 function deploy_yunikorn() {
   printGreen Deploying yunikorn

@@ -12,4 +12,4 @@ deploy_kwok
 deploy_volcano
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/volcano/test-job.yml
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/volcano/test-job.yml -v 4 -cleanup
