@@ -1,0 +1,50 @@
+name: config-kueue
+tasks:
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/cluster-queue.yml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yml"
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/kueue/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-[0-9]-.*"
+    podCount: "{{.replicas}}"
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    canExist: true
+    params:
+      name: "gpu-node"
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+- id: create-cluster-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: team
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      gpu: 256
+- id: create-local-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: team-queue
+      namespace: default
+      clusterQueue: team

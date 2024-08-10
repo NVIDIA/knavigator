@@ -1,0 +1,135 @@
+name: test-gang-scheduling
+tasks:
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 32
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 5s
+- id: job1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 32
+      ttl: 30s
+- id: job2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 16
+      ttl: 30s
+- id: job3
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 3
+    params:
+      replicas: 10
+      ttl: 30s
+- id: job3.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2
+      ttl: 30s
+- id: job4
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 4
+    params:
+      replicas: 8
+      ttl: 30s
+- id: job5
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 5
+    params:
+      replicas: 6
+      ttl: 30s
+- id: job5.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 1
+      ttl: 30s
+- id: job6
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 6
+    params:
+      replicas: 5
+      ttl: 30s
+- id: job6.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2
+      ttl: 30s
+- id: job7
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 7
+    params:
+      replicas: 4
+      ttl: 30s
+- id: job7.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 2
+      ttl: 30s
+- id: job7.2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 2
+    params:
+      replicas: 1
+      ttl: 30s
+- id: job8
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 8
+    params:
+     replicas: 4
+     ttl: 30s
+- id: job9
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 9
+    params:
+      replicas: 3
+      ttl: 30s
+- id: job9.1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 5
+      ttl: 30s
