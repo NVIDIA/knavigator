@@ -1,0 +1,9 @@
+name: config-jobset
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/k8s/jobset.yml"
+    nameFormat: "jobset{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-workers-[0-9]+-[0-9]+-.+"
+    podCount: "{{.replicas}}"

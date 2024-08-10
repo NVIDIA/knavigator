@@ -1,5 +1,14 @@
-name: test-gang-scheduling
+name: test-gang-scheduling-runai
 tasks:
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 32
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
 - id: register-trainingworkload
   type: RegisterObj
   params:

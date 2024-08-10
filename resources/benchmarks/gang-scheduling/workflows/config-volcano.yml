@@ -1,0 +1,31 @@
+name: config-volcano
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/volcano/job.yml"
+    nameFormat: "j{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-test-[0-9]+"
+    podCount: "{{.replicas}}"
+- id: configure
+  type: Configure
+  params:
+    configmaps:
+    - name: volcano-scheduler-configmap
+      namespace: volcano-system
+      op: create
+      data:
+        volcano-scheduler.conf: |
+          actions: "enqueue, allocate, backfill"
+          tiers:
+          - plugins:
+            - name: priority
+            - name: gang
+            - name: conformance
+          - plugins:
+            - name: drf
+            - name: predicates
+            - name: proportion
+            - name: nodeorder
+            - name: binpack
+    timeout: 1m
