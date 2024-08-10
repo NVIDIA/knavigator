@@ -36,10 +36,10 @@ tasks:
     params:
       name: team
       flavor: gpu-node
-      cpu: 8
-      memory: 36Gi
-      pods: 32
-      gpu: 256
+      cpu: 50
+      memory: 360Gi
+      pods: 500
+      gpu: 4000
 - id: create-local-queue
   type: SubmitObj
   params:

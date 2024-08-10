@@ -1,0 +1,29 @@
+name: config-yunikorn
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/yunikorn/job.yml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-.*"
+    podCount: "{{.replicas}}"
+- id: configure
+  type: Configure
+  params:
+    configmaps:
+    - name: yunikorn-configs
+      namespace: yunikorn
+      op: create
+      data:
+        queues.yaml: |
+          partitions:
+            - name: default
+              queues:
+              - name: root
+                queues:
+                - name: sandbox
+                  submitacl: '*'
+                  resources:
+                    max:
+                      {memory: 360Gi, vcore: 50000m, nvidia.com/gpu: 4000}
+    timeout: 1m

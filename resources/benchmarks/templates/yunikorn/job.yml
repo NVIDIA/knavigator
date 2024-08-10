@@ -33,8 +33,8 @@ spec:
             "name": "group-{{._NAME_}}",
             "minMember": {{.replicas}},
             "minResource": {
-              "cpu": "1",
-              "memory": "500M",
+              "cpu": "100m",
+              "memory": "250M",
               "nvidia.com/gpu": "8"
             },
             "nodeSelector": {},
@@ -52,10 +52,10 @@ spec:
         resources:
           limits:
             cpu: 100m
-            memory: 256M
+            memory: 250M
             nvidia.com/gpu: "8"
           requests:
             cpu: 100m
-            memory: 256M
+            memory: 250M
             nvidia.com/gpu: "8"
       restartPolicy: Never

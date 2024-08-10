@@ -1,0 +1,31 @@
+name: test-scaling
+tasks:
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 500
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 5m
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 5s
+- id: job1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 500
+    params:
+      replicas: 1
+      ttl: 2m
+- id: job2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 500
+      ttl: 2m

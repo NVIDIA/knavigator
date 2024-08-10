@@ -75,6 +75,7 @@ tasks:
       flavor: gpu-node
       cpu: 8
       memory: 36Gi
+      pods: 4
       gpu: 16
 - id: create-cluster-queue-b
   type: SubmitObj
@@ -87,6 +88,7 @@ tasks:
       flavor: gpu-node
       cpu: 8
       memory: 36Gi
+      pods: 4
       gpu: 16
 - id: create-local-queue-a
   type: SubmitObj
