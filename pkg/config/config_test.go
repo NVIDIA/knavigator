@@ -95,7 +95,7 @@ func TestWorkflowPaths(t *testing.T) {
 	}{
 		{
 			name: "Case 1: Empty string",
-			err:  "stat : no such file or directory",
+			err:  "empty filepaths",
 		},
 		{
 			name:  "Case 2: Wrong path",
@@ -104,21 +104,82 @@ func TestWorkflowPaths(t *testing.T) {
 		},
 		{
 			name:  "Case 3: Valid input",
-			paths: "../../resources/workflows/volcano,../../resources/workflows/test-custom-resource.yml",
-			count: 2,
+			paths: "../../resources/workflows/volcano,../../resources/workflows/k8s/{test-job.yml,test-jobset.yml}",
+			count: 3,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := NewFromPaths(tc.paths)
 			if len(tc.err) != 0 {
-				require.Error(t, err)
-				require.Equal(t, err.Error(), tc.err)
+				require.EqualError(t, err, tc.err)
 				require.Nil(t, c)
 			} else {
-				require.Nil(t, err)
+				require.NoError(t, err)
 				require.NotNil(t, c)
 				require.Equal(t, tc.count, len(c))
+			}
+		})
+	}
+}
+
+func TestParsePaths(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input string
+		paths []string
+		err   string
+	}{
+		{
+			name:  "Case 1a: valid, multi string",
+			input: "a/b/c, dd/ee/{f,g,e},/x/y/zz",
+			paths: []string{"a/b/c", "dd/ee/f", "dd/ee/g", "dd/ee/e", "/x/y/zz"},
+		},
+		{
+			name:  "Case 1b: valid, single string",
+			input: "a/b/c",
+			paths: []string{"a/b/c"},
+		},
+		{
+			name:  "Case 1c: valid, multiple braces",
+			input: "dd/{ee}/{f,g,e}/xx/{yy,zz}",
+			paths: []string{"dd/ee/f/xx/yy", "dd/ee/f/xx/zz", "dd/ee/g/xx/yy", "dd/ee/g/xx/zz", "dd/ee/e/xx/yy", "dd/ee/e/xx/zz"},
+		},
+		{
+			name:  "Case 2a: unbalanced braces",
+			input: "a/b/c{{",
+			err:   `unbalanced braces in "a/b/c{{"`,
+		},
+		{
+			name:  "Case 2b: unbalanced braces",
+			input: "a/b/c}",
+			err:   `unbalanced braces in "a/b/c}"`,
+		},
+		{
+			name:  "Case 2c: unbalanced braces",
+			input: "a/b/c{",
+			err:   `unbalanced braces in "a/b/c{"`,
+		},
+		{
+			name:  "Case 3: single character",
+			input: "a",
+			paths: []string{"a"},
+		},
+		{
+			name:  "Case 4: empty string",
+			input: "",
+			paths: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			paths, err := parsePaths(tc.input)
+			if len(tc.err) != 0 {
+				require.EqualError(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.paths, paths)
 			}
 		})
 	}

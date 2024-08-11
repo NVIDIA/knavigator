@@ -72,10 +72,18 @@ func NewFromFile(path string) (*Workflow, error) {
 }
 
 func NewFromPaths(paths string) ([]*Workflow, error) {
-	cfgPaths := strings.Split(paths, ",")
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("empty filepaths")
+	}
+
+	files, err := parsePaths(paths)
+	if err != nil {
+		return nil, err
+	}
+
 	configs := []*Workflow{}
 	var cfg *Workflow
-	for _, path := range cfgPaths {
+	for _, path := range files {
 		fileInfo, err := os.Stat(path)
 		if err != nil {
 			return nil, err
@@ -119,4 +127,59 @@ func (c *Workflow) validate() error {
 		}
 	}
 	return nil
+}
+
+func parsePaths(paths string) ([]string, error) {
+	start, n := 0, len(paths)
+	braces := false
+	ret := []string{}
+
+	for i := 1; i < n; i++ {
+		switch paths[i] {
+		case '{':
+			if braces {
+				return nil, fmt.Errorf("unbalanced braces in %q", paths)
+			}
+			braces = true
+		case '}':
+			if !braces {
+				return nil, fmt.Errorf("unbalanced braces in %q", paths)
+			}
+			braces = false
+		case ',':
+			if !braces {
+				ret = append(ret, expandBraces(strings.TrimSpace(paths[start:i]))...)
+				start = i + 1
+			}
+		}
+	}
+	if braces {
+		return nil, fmt.Errorf("unbalanced braces in %q", paths)
+	}
+	if start < n {
+		ret = append(ret, expandBraces(strings.TrimSpace(paths[start:n]))...)
+	}
+
+	return ret, nil
+}
+
+func expandBraces(pattern string) []string {
+	start := strings.Index(pattern, "{")
+	if start == -1 {
+		return []string{pattern}
+	}
+	end := strings.Index(pattern[start:], "}")
+	if end == -1 {
+		return []string{pattern}
+	}
+	end += start
+	prefix := pattern[:start]
+	suffix := pattern[end+1:]
+	parts := strings.Split(pattern[start+1:end], ",")
+
+	var res []string
+	for _, part := range parts {
+		res = append(res, expandBraces(prefix+part+suffix)...)
+	}
+	return res
 }
