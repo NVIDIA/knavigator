@@ -103,7 +103,54 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: must provide value when creating PriorityClass",
 		},
 		{
-			name:       "Case 7: Valid parameters with default",
+			name:       "Case 7a: Missing deployment namespace",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":            "1m",
+				"namespaces":         []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"deploymentRestarts": []interface{}{map[string]interface{}{"name": "deploy"}},
+			},
+			err: "Configure/configure: must provide namespace when restarting deployment",
+		},
+		{
+			name:       "Case 7b: Missing deployment name and labels",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":            "1m",
+				"namespaces":         []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"deploymentRestarts": []interface{}{map[string]interface{}{"namespace": "name"}},
+			},
+			err: "Configure/configure: must provide either name or labels when restarting deployment",
+		},
+		{
+			name:       "Case 7c: Both deployment name and labels are present",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":    "1m",
+				"namespaces": []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"deploymentRestarts": []interface{}{map[string]interface{}{
+					"namespace": "name",
+					"name":      "deploy",
+					"labels":    map[string]interface{}{"key": "value"},
+				}},
+			},
+			err: "Configure/configure: must provide either name or labels when restarting deployment",
+		},
+		{
+			name:       "Case 7d: Missing deployment label",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout":    "1m",
+				"namespaces": []interface{}{map[string]interface{}{"name": "ns", "op": "create"}},
+				"deploymentRestarts": []interface{}{map[string]interface{}{
+					"namespace": "name",
+					"labels":    map[string]interface{}{"": "value"},
+				}},
+			},
+			err: "Configure/configure: must provide non-empty label name when restarting deployment",
+		},
+		{
+			name:       "Case 8: Valid parameters with default",
 			simClients: true,
 			params:     map[string]interface{}{"timeout": "1m"},
 			task: &ConfigureTask{
@@ -118,7 +165,7 @@ func TestNewConfigureTask(t *testing.T) {
 			},
 		},
 		{
-			name:       "Case 8: Valid parameters without default",
+			name:       "Case 9: Valid parameters without default",
 			simClients: true,
 			params: map[string]interface{}{
 				"timeout": "1m",
@@ -141,6 +188,10 @@ func TestNewConfigureTask(t *testing.T) {
 				"priorityClasses": []interface{}{
 					map[string]interface{}{"name": "high-priority", "op": "create", "value": 90},
 					map[string]interface{}{"name": "low-priority", "op": "delete"},
+				},
+				"deploymentRestarts": []interface{}{
+					map[string]interface{}{"namespace": "ns1", "name": "deploy1"},
+					map[string]interface{}{"namespace": "ns2", "labels": map[string]interface{}{"key": "value"}},
 				},
 			},
 			task: &ConfigureTask{
@@ -187,6 +238,16 @@ func TestNewConfigureTask(t *testing.T) {
 						{
 							Name: "low-priority",
 							Op:   OpDelete,
+						},
+					},
+					DeploymentRestarts: []deploymentRestart{
+						{
+							Namespace: "ns1",
+							Name:      "deploy1",
+						},
+						{
+							Namespace: "ns2",
+							Labels:    map[string]string{"key": "value"},
 						},
 					},
 				},

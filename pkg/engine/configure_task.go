@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
@@ -44,11 +46,13 @@ type ConfigureTask struct {
 }
 
 type configureTaskParams struct {
-	Nodes           []virtualNode   `yaml:"nodes"`
-	Namespaces      []namespace     `yaml:"namespaces"`
-	ConfigMaps      []configmap     `yaml:"configmaps"`
-	PriorityClasses []priorityClass `yaml:"priorityClasses"`
-	Timeout         time.Duration   `yaml:"timeout"`
+	Nodes              []virtualNode       `yaml:"nodes"`
+	Namespaces         []namespace         `yaml:"namespaces"`
+	ConfigMaps         []configmap         `yaml:"configmaps"`
+	PriorityClasses    []priorityClass     `yaml:"priorityClasses"`
+	DeploymentRestarts []deploymentRestart `yaml:"deploymentRestarts"`
+
+	Timeout time.Duration `yaml:"timeout"`
 }
 
 type virtualNode struct {
@@ -75,6 +79,12 @@ type priorityClass struct {
 	Name  string `yaml:"name"`
 	Value *int32 `yaml:"value,omitempty"`
 	Op    string `yaml:"op"`
+}
+
+type deploymentRestart struct {
+	Name      string            `yaml:"name,omitempty"`
+	Namespace string            `yaml:"namespace"`
+	Labels    map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 }
 
 func newConfigureTask(client *kubernetes.Clientset, cfg *config.Task) (*ConfigureTask, error) {
@@ -137,6 +147,23 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 			return fmt.Errorf("%s: invalid PriorityClass operation %s; supported: %s, %s", task.ID(), pc.Op, OpCreate, OpDelete)
 		}
 	}
+
+	for _, dr := range task.DeploymentRestarts {
+		if len(dr.Namespace) == 0 {
+			return fmt.Errorf("%s: must provide namespace when restarting deployment", task.ID())
+		}
+		if (len(dr.Name) != 0 && len(dr.Labels) != 0) || (len(dr.Name) == 0 && len(dr.Labels) == 0) {
+			return fmt.Errorf("%s: must provide either name or labels when restarting deployment", task.ID())
+		}
+		if len(dr.Name) == 0 {
+			for key := range dr.Labels {
+				if len(key) == 0 {
+					return fmt.Errorf("%s: must provide non-empty label name when restarting deployment", task.ID())
+				}
+			}
+		}
+	}
+
 	if task.Timeout == 0 {
 		return fmt.Errorf("%s: missing parameter 'timeout'", task.ID())
 	}
@@ -145,7 +172,7 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 }
 
 // Exec implements Runnable interface
-func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
+func (task *ConfigureTask) Exec(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, task.Timeout)
 	defer cancel()
 
@@ -178,14 +205,19 @@ func (task *ConfigureTask) Exec(ctx context.Context) (err error) {
 		errs <- task.updateVirtualNodes(ctx)
 	}()
 
+	var err error
 	for e := range errs {
 		if e != nil {
-			log.Errorf("configuration error: %v", err)
+			log.Errorf("configuration error: %v", e)
 			err = e
 		}
 	}
 
-	return
+	if err != nil {
+		return err
+	}
+
+	return task.restartDeployments(ctx)
 }
 
 func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
@@ -299,6 +331,71 @@ func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 				return fmt.Errorf("%s: failed to delete configmap %s: %v", task.ID(), cm.Name, err)
 			}
 			log.Infof("Configmap %s deleted", cm.Name)
+		}
+	}
+
+	return nil
+}
+
+func (task *ConfigureTask) restartDeployments(ctx context.Context) error {
+	for _, dr := range task.DeploymentRestarts {
+		dClient := task.client.AppsV1().Deployments(dr.Namespace)
+
+		dName := dr.Name
+		if len(dName) == 0 {
+			labels := make([]string, 0, len(dr.Labels))
+			for key, val := range dr.Labels {
+				labels = append(labels, key+"="+val)
+			}
+			lbl := strings.Join(labels, ",")
+
+			list, err := dClient.List(ctx, metav1.ListOptions{LabelSelector: lbl})
+			if err != nil {
+				log.InfoS("Warning: skipping restart of deployment", "labels", lbl, "error", err.Error())
+				return nil
+			}
+
+			if len(list.Items) == 0 {
+				log.InfoS("Warning: no deployment to restart", "labels", lbl)
+				return nil
+			}
+
+			if len(list.Items) != 1 {
+				return fmt.Errorf("expected 1 deployment with labels %s, not %d", lbl, len(list.Items))
+			}
+
+			dName = list.Items[0].Name
+		}
+		log.Infof("Restarting deployment %s", dName)
+
+		update := fmt.Sprintf(`{"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": "%s"}}}}}`,
+			time.Now().Format("2006-01-02T15:04:05-07:00"))
+
+		_, err := dClient.Patch(ctx, dName, k8stypes.StrategicMergePatchType, []byte(update), metav1.PatchOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to update deployment %s: %s", dName, err.Error())
+		}
+
+		delay := 5 * time.Second
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		for {
+			select {
+			case <-timer.C:
+				d, err := dClient.Get(ctx, dName, metav1.GetOptions{})
+				if err != nil {
+					log.Errorf("failed to get status for deployment %s : %v", dName, err)
+				} else if d.Status.UnavailableReplicas != 0 {
+					log.V(4).Infof("Restarting deployment %s: %d unavailable replicas", dName, d.Status.UnavailableReplicas)
+				} else {
+					log.Infof("Restarted deployment %s", dName)
+					return nil
+				}
+				timer.Reset(delay)
+
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 
