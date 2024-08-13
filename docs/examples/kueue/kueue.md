@@ -6,7 +6,7 @@ Install `kueue` by following these [instructions](https://kueue.sigs.k8s.io/docs
 KUEUE_VERSION=v0.8.0
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
 
-kubectl apply -f charts/overrides/kueue/priority.yml
+kubectl apply -f charts/overrides/kueue/priority.yaml
 ```
 
 Run a kueue job: 

@@ -44,6 +44,29 @@ function fail_if_command_not_found() {
   fi
 }
 
+### wait for specific number of pods in a namespace
+function wait_for_pods() {
+  local namespace=$1
+  local pods=$2
+  local wait_time=60
+  local sleep_interval=5
+  local elapsed_time=0
+
+  while true; do
+    count=$(kubectl get pods -n $namespace --no-headers 2>/dev/null | wc -l)
+    if [ "$count" -eq $pods ]; then
+      break
+    fi
+    echo "current pods $count, expecting $pods"
+
+    sleep "$sleep_interval"
+    elapsed_time=$((elapsed_time + sleep_interval))
+    if [ "$elapsed_time" -gt "$wait_time" ]; then
+      exit 1
+    fi
+  done
+}
+
 # KWOK
 #
 
@@ -99,6 +122,11 @@ function deploy_jobset() {
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
 
+  kubectl -n jobset-system patch deploy jobset-controller-manager \
+    --patch-file=$REPO_HOME/charts/overrides/kwok-affinity-deployment-patch.yaml
+
+  wait_for_pods "jobset-system" 1
+
   kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
 }
 
@@ -109,6 +137,11 @@ function deploy_kueue() {
   printGreen Deploying kueue
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
+
+  kubectl -n kueue-system patch deployment kueue-controller-manager \
+    --patch-file=$REPO_HOME/charts/overrides/kwok-affinity-deployment-patch.yaml
+
+  wait_for_pods "kueue-system" 1
 
   kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
 }
@@ -122,7 +155,8 @@ function deploy_volcano() {
   helm repo add --force-update volcano-sh https://volcano-sh.github.io/helm-charts
 
   helm upgrade --install volcano volcano-sh/volcano -n volcano-system --create-namespace \
-    --version=$VOLCANO_VERSION --wait
+    --version=$VOLCANO_VERSION --wait \
+    --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 
   for app in volcano-admission volcano-controller volcano-scheduler; do
     kubectl -n volcano-system wait --for=condition=ready pod -l app=$app --timeout=300s
@@ -142,7 +176,8 @@ function deploy_yunikorn() {
   helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
 
   helm upgrade --install yunikorn yunikorn/yunikorn -n yunikorn --create-namespace \
-    --version=$YUNIKORN_VERSION --wait
+    --version=$YUNIKORN_VERSION --wait \
+    --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 
   kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=300s
 }
@@ -186,5 +221,6 @@ Run:ai deployment requires environment variables:
     --set controlPlane.url=$RUNAI_CONTROL_PLANE_URL \
     --set controlPlane.clientSecret=$RUNAI_CLIENT_SECRET \
     --set cluster.uid=$RUNAI_CLUSTER_ID \
-    --set cluster.url=https://example.com
+    --set cluster.url=https://example.com \
+    --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 }
