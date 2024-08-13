@@ -62,6 +62,7 @@ tasks:
       flavor: gpu-node
       cpu: 8
       memory: 36Gi
+      pods: 4
       gpu: 32
 - id: create-local-queue
   type: SubmitObj

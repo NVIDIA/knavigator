@@ -22,7 +22,7 @@ spec:
   cohort: {{.cohort}}
   {{- end }}
   resourceGroups:
-  - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+  - coveredResources: ["cpu", "memory", "pods", "nvidia.com/gpu"]
     flavors:
     - name: {{.flavor}}
       resources:
@@ -30,6 +30,8 @@ spec:
         nominalQuota: {{.cpu}}
       - name: "memory"
         nominalQuota: {{.memory}}
+      - name: "pods"
+        nominalQuota: {{.pods}}
       - name: "nvidia.com/gpu"
         nominalQuota: {{.gpu}}
   preemption:

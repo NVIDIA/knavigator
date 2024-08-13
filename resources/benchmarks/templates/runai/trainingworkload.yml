@@ -27,7 +27,7 @@ spec:
   cpu:
     value: 100m
   memory:
-    value: 256M
+    value: 250M
   gpuDevices:
     value: 8
   nodePools:

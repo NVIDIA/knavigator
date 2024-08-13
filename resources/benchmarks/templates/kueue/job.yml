@@ -25,7 +25,7 @@ spec:
   suspend: true
   completions: {{.replicas}}
   parallelism: {{.replicas}}
-  completionMode: Indexed
+  completionMode: NonIndexed
   template:
     metadata:
       annotations:
