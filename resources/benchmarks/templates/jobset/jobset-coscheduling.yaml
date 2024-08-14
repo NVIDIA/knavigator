@@ -70,7 +70,7 @@ spec:
                       - key: scheduling.x-k8s.io/pod-group
                         operator: In
                         values:
-                        - pg-{{._NAME_}}
+                        - {{._NAME_}}
                     topologyKey: kubernetes.io/hostname
             restartPolicy: Never
             containers:

@@ -1,0 +1,81 @@
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: {{._NAME_}}
+  namespace: runai-<RUNAI_PROJECT>
+  labels:
+    project: <RUNAI_PROJECT>
+    runai/queue: <RUNAI_PROJECT>
+spec:
+  slotsPerWorker: 1
+  runPolicy:
+    cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        metadata:
+          annotations:
+            pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+            pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
+          labels:
+            app: {{._NAME_}}
+        spec:
+          schedulerName: runai-scheduler
+          containers:
+          - image: runai/mpi-launcher:latest
+            name: mpi-launcher
+            resources:
+              limits:
+                cpu: 100m
+                memory: 250M
+                nvidia.com/gpu: 8
+    Worker:
+      replicas: {{.workers}}
+      template:
+        metadata:
+          annotations:
+            pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+            pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
+          labels:
+            app: {{._NAME_}}
+        spec:
+          affinity:
+            podAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 20
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                        - key: app
+                          operator: In
+                          values:
+                            - {{._NAME_}}
+                    topologyKey: net-layer-3
+                - weight: 70
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                        - key: app
+                          operator: In
+                          values:
+                            - {{._NAME_}}
+                    topologyKey: net-layer-2
+                - weight: 90
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                        - key: app
+                          operator: In
+                          values:
+                            - {{._NAME_}}
+                    topologyKey: net-layer-1
+          schedulerName: runai-scheduler
+          containers:
+          - image: runai/mpi-worker:latest
+            name: mpi-worker
+            resources:
+              limits:
+                cpu: 100m
+                memory: 250M
+                nvidia.com/gpu: 8

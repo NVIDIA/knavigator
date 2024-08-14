@@ -1,0 +1,145 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-nw-topo-nodes
+description: |
+  Create a 12-nodes cluster with a tree-like network topology
+  and mark 5 nodes as busy:
+            __________ sw31 __________
+           /            |             \
+       sw21            sw22            sw23
+       /  \            /  \            /  \
+   sw11    sw12    sw13    sw14    sw15    sw16
+    /\      /\      /\      /\      /\      /\
+  n1  n2  n3  n4  n5  n6  n7  n8  n9 n10 n11 n12
+  x       x           x                  x   x
+  Then deploy a 3-replicas job. The optimal nodes from the
+  network topology perspective for this job are nodes n5, n7, n8.
+tasks:
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n1
+        net-layer-1: sw11
+        net-layer-2: sw21
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n2
+        net-layer-1: sw11
+        net-layer-2: sw21
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n3
+        net-layer-1: sw12
+        net-layer-2: sw21
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n4
+        net-layer-1: sw12
+        net-layer-2: sw21
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n5
+        net-layer-1: sw13
+        net-layer-2: sw22
+        net-layer-3: sw31
+        net-optimal: true
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n6
+        net-layer-1: sw13
+        net-layer-2: sw22
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n7
+        net-layer-1: sw14
+        net-layer-2: sw22
+        net-layer-3: sw31
+        net-optimal: true
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n8
+        net-layer-1: sw14
+        net-layer-2: sw22
+        net-layer-3: sw31
+        net-optimal: true
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n9
+        net-layer-1: sw15
+        net-layer-2: sw23
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n10
+        net-layer-1: sw15
+        net-layer-2: sw23
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n11
+        net-layer-1: sw16
+        net-layer-2: sw23
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        node-id: n12
+        net-layer-1: sw16
+        net-layer-2: sw23
+        net-layer-3: sw31
+        nvidia.com/gpu.count: "8"
+    timeout: 5m
+- id: update
+  type: UpdateNodes
+  params:
+    selectors:
+    - node-id: n1
+    - node-id: n3
+    - node-id: n6
+    - node-id: n11
+    - node-id: n12
+    state:
+      spec:
+        unschedulable: true
