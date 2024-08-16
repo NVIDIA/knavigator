@@ -83,7 +83,7 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 
 	// TODO: add TweakListOptionsFunc for the CR
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(task.client, 0, info.Namespace, nil)
-	informer := factory.ForResource(info.GVR).Informer()
+	informer := factory.ForResource(info.GVR[task.Index]).Informer()
 
 	done := make(chan struct{})
 	defer close(done)
@@ -91,12 +91,12 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			log.V(4).Infof("Informer added %s %s", info.GVR.Resource, resource.GetName())
+			log.V(4).Infof("Informer added %s %s", info.GVR[task.Index].Resource, resource.GetName())
 			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
 		},
 		UpdateFunc: func(_, obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			log.V(4).Infof("Informer updated %s %s", info.GVR.Resource, resource.GetName())
+			log.V(4).Infof("Informer updated %s %s", info.GVR[task.Index].Resource, resource.GetName())
 			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
 		},
 	})
@@ -112,10 +112,10 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 		log.V(4).Infof("Wait for completion with informers")
 		select {
 		case <-ctx.Done():
-			log.Errorf("Validation failed for %s %v, err: %v", info.GVR.Resource, nameMap.Keys(), err)
+			log.Errorf("Validation failed for %s %v, err: %v", info.GVR[task.Index].Resource, nameMap.Keys(), err)
 			err = ctx.Err()
 		case <-done:
-			log.Infof("Validation passed for %s", info.GVR.Resource)
+			log.Infof("Validation passed for %s", info.GVR[task.Index].Resource)
 			err = nil
 		}
 	}
@@ -132,10 +132,10 @@ func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMa
 	}
 
 	if invalid := nameMap.Keys(); len(invalid) != 0 {
-		return fmt.Errorf("%s: failed to validate %s %v", task.ID(), info.GVR.Resource, nameMap.Keys())
+		return fmt.Errorf("%s: failed to validate %s %v", task.ID(), info.GVR[task.Index].Resource, nameMap.Keys())
 	}
 
-	log.Infof("Validation passed for %s", info.GVR.Resource)
+	log.Infof("Validation passed for %s", info.GVR[task.Index].Resource)
 	return nil
 }
 
@@ -152,12 +152,13 @@ func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info
 
 // checkState validates state conformance and removes object name from the map if succeeded
 func (task *CheckObjTask) checkState(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap) error {
-	cr, err := task.client.Resource(info.GVR).Namespace(info.Namespace).Get(ctx, name, metav1.GetOptions{})
+	gvr := info.GVR[task.Index]
+	cr, err := task.client.Resource(gvr).Namespace(info.Namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("%s: failed to get %s %s: %v", task.ID(), info.GVR.Resource, name, err)
+		return fmt.Errorf("%s: failed to get %s %s: %v", task.ID(), gvr.Resource, name, err)
 	}
 	if !utils.IsSubset(cr.Object, task.State) {
-		return fmt.Errorf("%s: state mismatch in %s %s", task.ID(), info.GVR.Resource, name)
+		return fmt.Errorf("%s: state mismatch in %s %s", task.ID(), gvr.Resource, name)
 	}
 
 	nameMap.Delete(name)

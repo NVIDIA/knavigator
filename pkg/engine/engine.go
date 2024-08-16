@@ -296,9 +296,11 @@ func (eng *Eng) DeleteAllObjects(ctx context.Context) {
 	for _, objInfo := range eng.objInfoMap {
 		ns := objInfo.Namespace
 		for _, name := range objInfo.Names {
-			err := eng.dynamicClient.Resource(objInfo.GVR).Namespace(ns).Delete(ctx, name, deletions)
-			if err != nil {
-				log.Infof("Warning: cannot delete object %s: %v", name, err)
+			for i := range objInfo.GVR {
+				err := eng.dynamicClient.Resource(objInfo.GVR[i]).Namespace(ns).Delete(ctx, name, deletions)
+				if err != nil {
+					log.Infof("Warning: cannot delete object %s: %v", name, err)
+				}
 			}
 		}
 	}

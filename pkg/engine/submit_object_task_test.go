@@ -89,7 +89,7 @@ func TestNewSubmitObjTask(t *testing.T) {
 		refTaskID    string
 		err          string
 		task         *SubmitObjTask
-		objs         []GenericObject
+		objs         [][]*GenericObject
 		names        []string
 		podCount     int
 		podRegexp    []string
@@ -166,17 +166,19 @@ func TestNewSubmitObjTask(t *testing.T) {
 				},
 				client: testDynamicClient,
 			},
-			objs: []GenericObject{
+			objs: [][]*GenericObject{
 				{
-					TypeMeta: TypeMeta{
-						APIVersion: "example.com/v1",
-						Kind:       "MyObject",
+					{
+						TypeMeta: TypeMeta{
+							APIVersion: "example.com/v1",
+							Kind:       "MyObject",
+						},
+						Metadata: objectMeta{
+							Name:      "job1",
+							Namespace: "default",
+						},
+						Spec: spec,
 					},
-					Metadata: objectMeta{
-						Name:      "job1",
-						Namespace: "default",
-					},
-					Spec: spec,
 				},
 			},
 			names:     []string{"job1"},
@@ -209,28 +211,32 @@ func TestNewSubmitObjTask(t *testing.T) {
 				},
 				client: testDynamicClient,
 			},
-			objs: []GenericObject{
+			objs: [][]*GenericObject{
 				{
-					TypeMeta: TypeMeta{
-						APIVersion: "example.com/v1",
-						Kind:       "MyObject",
+					{
+						TypeMeta: TypeMeta{
+							APIVersion: "example.com/v1",
+							Kind:       "MyObject",
+						},
+						Metadata: objectMeta{
+							Name:      "job1",
+							Namespace: "default",
+						},
+						Spec: spec,
 					},
-					Metadata: objectMeta{
-						Name:      "job1",
-						Namespace: "default",
-					},
-					Spec: spec,
 				},
 				{
-					TypeMeta: TypeMeta{
-						APIVersion: "example.com/v1",
-						Kind:       "MyObject",
+					{
+						TypeMeta: TypeMeta{
+							APIVersion: "example.com/v1",
+							Kind:       "MyObject",
+						},
+						Metadata: objectMeta{
+							Name:      "job2",
+							Namespace: "default",
+						},
+						Spec: spec,
 					},
-					Metadata: objectMeta{
-						Name:      "job2",
-						Namespace: "default",
-					},
-					Spec: spec,
 				},
 			},
 			names:     []string{"job1", "job2"},
@@ -266,28 +272,32 @@ func TestNewSubmitObjTask(t *testing.T) {
 				},
 				client: testDynamicClient,
 			},
-			objs: []GenericObject{
+			objs: [][]*GenericObject{
 				{
-					TypeMeta: TypeMeta{
-						APIVersion: "example.com/v1",
-						Kind:       "MyObject",
+					{
+						TypeMeta: TypeMeta{
+							APIVersion: "example.com/v1",
+							Kind:       "MyObject",
+						},
+						Metadata: objectMeta{
+							Name:      "job1",
+							Namespace: "default",
+						},
+						Spec: spec,
 					},
-					Metadata: objectMeta{
-						Name:      "job1",
-						Namespace: "default",
-					},
-					Spec: spec,
 				},
 				{
-					TypeMeta: TypeMeta{
-						APIVersion: "example.com/v1",
-						Kind:       "MyObject",
+					{
+						TypeMeta: TypeMeta{
+							APIVersion: "example.com/v1",
+							Kind:       "MyObject",
+						},
+						Metadata: objectMeta{
+							Name:      "job2",
+							Namespace: "default",
+						},
+						Spec: spec,
 					},
-					Metadata: objectMeta{
-						Name:      "job2",
-						Namespace: "default",
-					},
-					Spec: spec,
 				},
 			},
 			names:     []string{"job1", "job2"},
@@ -326,7 +336,8 @@ func TestNewSubmitObjTask(t *testing.T) {
 
 				require.Equal(t, tc.task, task)
 
-				tc.regObjParams.objTpl, err = template.ParseFiles(tc.regObjParams.Template)
+				tc.regObjParams.objTpl = make([]*template.Template, 1)
+				tc.regObjParams.objTpl[0], err = template.ParseFiles(tc.regObjParams.Template)
 				require.NoError(t, err)
 
 				if len(tc.regObjParams.PodNameFormat) != 0 {

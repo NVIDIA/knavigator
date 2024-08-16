@@ -62,9 +62,13 @@ func (t *BaseTask) ID() string {
 }
 
 type StateParams struct {
-	RefTaskID string                 `yaml:"refTaskId"`
-	State     map[string]interface{} `yaml:"state"`
-	Timeout   time.Duration          `yaml:"timeout"`
+	// RefTaskID is the ID for the task from which the object was submitted
+	RefTaskID string `yaml:"refTaskId"`
+	// Index refers to the position of the object within the template file,
+	// or it defaults to zero if the template file contains only a single object.
+	Index   int                    `yaml:"index,omitempty"`
+	State   map[string]interface{} `yaml:"state"`
+	Timeout time.Duration          `yaml:"timeout"`
 }
 
 type TypeMeta struct {
@@ -92,8 +96,8 @@ type RegisterObjParams struct {
 	PodCount string `yaml:"podCount,omitempty"`
 
 	// derived
-	gvr         schema.GroupVersionResource
-	objTpl      *template.Template
+	gvr         []schema.GroupVersionResource
+	objTpl      []*template.Template
 	podNameTpl  *template.Template
 	podCountTpl *template.Template
 }
@@ -102,13 +106,13 @@ type RegisterObjParams struct {
 type ObjInfo struct {
 	Names     []string
 	Namespace string
-	GVR       schema.GroupVersionResource
+	GVR       []schema.GroupVersionResource
 	PodCount  int
 	PodRegexp []string
 }
 
 // NewObjInfo creates new ObjInfo
-func NewObjInfo(names []string, ns string, gvr schema.GroupVersionResource, podCount int, podRegexp ...string) *ObjInfo {
+func NewObjInfo(names []string, ns string, gvr []schema.GroupVersionResource, podCount int, podRegexp ...string) *ObjInfo {
 	return &ObjInfo{
 		Names:     names,
 		Namespace: ns,

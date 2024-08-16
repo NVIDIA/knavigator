@@ -68,17 +68,18 @@ func (task *UpdateObjTask) Exec(ctx context.Context) error {
 		return fmt.Errorf("%s: failed to generate patch: %v", task.ID(), err)
 	}
 
+	gvr := info.GVR[task.Index]
 	for _, name := range info.Names {
 		if patch.Root != nil {
-			_, err = task.client.Resource(info.GVR).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Root, metav1.PatchOptions{})
+			_, err = task.client.Resource(gvr).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Root, metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("%s: failed to patch %s %s: %v", task.ID(), info.GVR.Resource, name, err)
+				return fmt.Errorf("%s: failed to patch %s %s: %v", task.ID(), gvr.Resource, name, err)
 			}
 		}
 		if patch.Status != nil {
-			_, err = task.client.Resource(info.GVR).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Root, metav1.PatchOptions{}, "status")
+			_, err = task.client.Resource(gvr).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Root, metav1.PatchOptions{}, "status")
 			if err != nil {
-				return fmt.Errorf("%s: failed to patch status %s %s: %v", task.ID(), info.GVR.Resource, name, err)
+				return fmt.Errorf("%s: failed to patch status %s %s: %v", task.ID(), gvr.Resource, name, err)
 			}
 		}
 	}

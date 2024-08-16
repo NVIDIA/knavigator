@@ -117,10 +117,12 @@ func TestNewRegisterObjTask(t *testing.T) {
 					PodCount:      "2",
 				},
 				client: testDiscoveryClient,
-				gvk: schema.GroupVersionKind{
-					Group:   "example.com",
-					Version: "v1",
-					Kind:    "MyObject",
+				gvk: []schema.GroupVersionKind{
+					{
+						Group:   "example.com",
+						Version: "v1",
+						Kind:    "MyObject",
+					},
 				},
 			},
 		},
