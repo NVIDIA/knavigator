@@ -224,3 +224,13 @@ Run:ai deployment requires environment variables:
     --set cluster.url=https://example.com \
     --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 }
+
+SCHEDULER_PLUGINS_VERSION=v0.29.7
+function deploy_scheduler_plugins() {
+  printGreen Deploying scheduler-plugins
+
+  helm upgrade --install --repo https://scheduler-plugins.sigs.k8s.io scheduler-plugins scheduler-plugins \
+    -n scheduler-plugins --create-namespace --version $SCHEDULER_PLUGINS_VERSION \
+    --set-json 'scheduler.affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}' \
+    --set-json 'controller.affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
+}

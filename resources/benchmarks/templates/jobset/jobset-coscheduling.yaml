@@ -1,0 +1,89 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: {{._NAME_}}
+  namespace: default
+spec:
+  minMember: {{.replicas}}
+---
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: "{{._NAME_}}"
+  namespace: default
+  labels:
+    kueue.x-k8s.io/queue-name: team-queue
+spec:
+  successPolicy:
+    operator: All
+    targetReplicatedJobs:
+    - workers
+  replicatedJobs:
+  - name: workers
+    template:
+      metadata:
+        annotations:
+          kueue.x-k8s.io/job-min-parallelism: "1"
+      spec:
+        backoffLimit: 0
+        completions: {{.replicas}}
+        parallelism: {{.replicas}}
+        completionMode: NonIndexed
+        template:
+          metadata:
+            annotations:
+              pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+              pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
+            labels:
+              scheduling.x-k8s.io/pod-group: {{._NAME_}}
+          spec:
+            schedulerName: scheduler-plugins-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: kubernetes.io/role
+                      operator: In
+                      values:
+                      - agent
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                      - key: scheduling.x-k8s.io/pod-group
+                        operator: In
+                        values:
+                        - pg-{{._NAME_}}
+                    topologyKey: kubernetes.io/hostname
+            restartPolicy: Never
+            containers:
+            - name: test
+              image: ubuntu
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 250M
+                  nvidia.com/gpu: "8"
+                requests:
+                  cpu: 100m
+                  memory: 250M
+                  nvidia.com/gpu: "8"
+              securityContext:
+                runAsUser: 0
