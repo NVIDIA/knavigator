@@ -63,6 +63,7 @@
 {{- end }}
 
 {{- $count := ($node.count | int) }}
+{{- $suffix := ( randAlphaNum 6 | lower ) }}
 {{- range until $count }}
 ---
 apiVersion: v1
@@ -78,7 +79,7 @@ metadata:
     beta.kubernetes.io/arch: amd64
     beta.kubernetes.io/os: linux
     kubernetes.io/arch: amd64
-    kubernetes.io/hostname: virtual-{{ $node.type }}-{{.}}
+    kubernetes.io/hostname: virtual-{{ $node.type }}-{{ $suffix }}
     kubernetes.io/os: linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
@@ -86,7 +87,7 @@ metadata:
     {{ $key }}: {{ $value | quote }}
     {{- end }}
     type: kwok
-  name: virtual-{{ $node.type }}-{{.}}
+  name: virtual-{{ $node.type }}-{{ $suffix }}
 status:
   conditions:
   - message: kubelet has sufficient memory available
