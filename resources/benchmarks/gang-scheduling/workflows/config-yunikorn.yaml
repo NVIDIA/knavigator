@@ -1,9 +1,10 @@
 name: config-yunikorn
+description: register, deploy and configure yunikorn custom resources
 tasks:
 - id: register
   type: RegisterObj
   params:
-    template: "resources/benchmarks/templates/yunikorn/job.yml"
+    template: "resources/benchmarks/templates/yunikorn/job.yaml"
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-.*"
     podCount: "{{.replicas}}"

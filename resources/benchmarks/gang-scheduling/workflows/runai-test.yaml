@@ -12,14 +12,14 @@ tasks:
 - id: register-trainingworkload
   type: RegisterObj
   params:
-    template: "resources/benchmarks/templates/runai/trainingworkload.yml"
+    template: "resources/benchmarks/templates/runai/trainingworkload.yaml"
     nameFormat: "twl{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-0-0"
     podCount: 1
 - id: register-distributedworkload
   type: RegisterObj
   params:
-    template: "resources/benchmarks/templates/runai/distributedworkload.yml"
+    template: "resources/benchmarks/templates/runai/distributedworkload.yaml"
     nameFormat: "dwl{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
     podCount: "{{.workers}} + 1"

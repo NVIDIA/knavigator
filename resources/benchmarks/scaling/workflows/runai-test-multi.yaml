@@ -1,0 +1,11 @@
+name: test-scaling
+description: deploy a 500-replicas job
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    refTaskId: register-mpi
+    count: 1
+    params:
+     workers: 499
+     ttl: 2m
