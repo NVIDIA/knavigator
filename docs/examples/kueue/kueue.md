@@ -11,10 +11,10 @@ kubectl apply -f charts/overrides/kueue/priority.yaml
 
 Run a kueue job: 
 ```bash
-./bin/knavigator -workflow resources/workflows/kueue/test-job.yml -cleanup
+./bin/knavigator -workflow resources/workflows/kueue/test-job.yaml -cleanup
 ```
 
 Run a preemption workflow with kueue: 
 ```bash
-./bin/knavigator -workflow resources/workflows/kueue/test-preemption.yml -cleanup
+./bin/knavigator -workflow resources/workflows/kueue/test-preemption.yaml -cleanup
 ```

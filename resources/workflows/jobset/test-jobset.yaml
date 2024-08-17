@@ -18,7 +18,7 @@ tasks:
 - id: register
   type: RegisterObj
   params:
-    template: "resources/templates/k8s/jobset.yml"
+    template: "resources/templates/jobset/jobset.yaml"
     nameFormat: "jobset{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-workers-[0-9]+-[0-9]+-.+"
     podCount: "{{.replicas}}"
@@ -47,10 +47,10 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
-      ttl: "10s"
+      ttl: "20s"
 - id: status
   type: CheckPod
   params:
     refTaskId: jobset
     status: Running
-    timeout: 5s
+    timeout: 10s

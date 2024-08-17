@@ -88,7 +88,7 @@ tasks:
       cpu: 100m
       memory: 512M
       gpu: 8
-      ttl: "10s"
+      ttl: "20s"
 - id: status
   type: CheckObj
   params:
@@ -96,10 +96,10 @@ tasks:
     state:
       status:
         active: 3
-    timeout: 5s
+    timeout: 10s
 - id: status
   type: CheckPod
   params:
     refTaskId: job
     status: Running
-    timeout: 5s
+    timeout: 10s
