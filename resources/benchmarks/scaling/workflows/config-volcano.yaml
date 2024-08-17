@@ -1,9 +1,10 @@
 name: config-volcano
+description: register, deploy and configure volcano custom resources
 tasks:
 - id: register
   type: RegisterObj
   params:
-    template: "resources/benchmarks/templates/volcano/job.yml"
+    template: "resources/benchmarks/templates/volcano/job.yaml"
     nameFormat: "j{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-test-[0-9]+"
     podCount: "{{.replicas}}"

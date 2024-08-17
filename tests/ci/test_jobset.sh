@@ -12,4 +12,4 @@ deploy_kwok
 deploy_jobset
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/k8s/test-jobset.yml -cleanup
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/k8s/test-jobset.yml -v 4 -cleanup

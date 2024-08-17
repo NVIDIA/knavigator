@@ -1,21 +1,22 @@
 name: config-kueue
+description: register, deploy and configure kueue custom resources
 tasks:
 - id: register-cluster-queue
   type: RegisterObj
   params:
-    template: "resources/templates/kueue/cluster-queue.yml"
+    template: "resources/templates/kueue/cluster-queue.yaml"
 - id: register-local-queue
   type: RegisterObj
   params:
-    template: "resources/templates/kueue/local-queue.yml"
+    template: "resources/templates/kueue/local-queue.yaml"
 - id: register-resource-flavor
   type: RegisterObj
   params:
-    template: "resources/templates/kueue/resource-flavor.yml"
+    template: "resources/templates/kueue/resource-flavor.yaml"
 - id: register
   type: RegisterObj
   params:
-    template: "resources/benchmarks/templates/kueue/job.yml"
+    template: "resources/benchmarks/templates/kueue/job.yaml"
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-[0-9]-.*"
     podCount: "{{.replicas}}"

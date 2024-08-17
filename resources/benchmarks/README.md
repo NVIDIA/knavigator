@@ -18,36 +18,36 @@ Run:ai requires additional customization and thus has a separate workflow
 
 ## Gang Scheduling Benchmark Test
 
-The gang-scheduling benchmark workflow operates on 32 virtual GPU nodes, submitting a burst of 53 jobs with replica numbers ranging from 1 to 32 in a [predetermined order](gang-scheduling/workflows/run-test-common.yml).
+The gang-scheduling benchmark workflow operates on 32 virtual GPU nodes, submitting a burst of 53 jobs with replica numbers ranging from 1 to 32 in a [predetermined order](gang-scheduling/workflows/run-test.yaml).
 
 #### Example
 
 To run the benchmark test for Kueue:
 
 ```bash
-./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-kueue.yml,run-test-common.yml}'
+./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-kueue.yaml,run-test.yaml}'
 ```
 
 #### Run:ai
 
 ```bash
-./bin/knavigator -workflow resources/benchmarks/gang-scheduling/workflows/run-test-runai.yml
+./bin/knavigator -workflow resources/benchmarks/gang-scheduling/workflows/runai-test.yaml
 ```
 
 ## Scaling Benchmark Test
 
-The scaling benchmark workflow operates on 500 virtual GPU nodes, submitting [two workloads](workflows/run-test-common.yml) one after another. The first workload is a job with 500 replicas, the second workload is 500 single node jobs started simultaneously.
+The scaling benchmark workflow operates on 500 virtual GPU nodes with tho workflows. The first [workflow](scaling/workflows/run-test-multi.yaml) submits is a job with 500 replicas, the second [workflow](scaling/workflows/run-test-single.yaml) submits a batch of 500 single-node jobs.
 
 ### Example
 
 To run the benchmark test for Volcano:
 
 ```bash
-./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-volcano.yml,run-test-common.yml}'
+./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-volcano.yaml,run-test-multi.yaml}'
 ```
 
 ### Run:ai
 
 ```bash
-./bin/knavigator -workflow resources/benchmarks/scaling/workflows/run-test-runai.yml
+./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-runai.yaml,runai-test-single.yaml}'
 ```

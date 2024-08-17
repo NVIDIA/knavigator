@@ -53,3 +53,4 @@ Here's a demo showing how to install and configure `Knavigator`, and run an exam
 - [Getting started](docs/getting_started.md)
 - [Task management](docs/task_management.md)
 - [Metrics and Dashboards](docs/metrics.md)
+- [Benchmarking](resources/benchmarks/README.md)

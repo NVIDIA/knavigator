@@ -1,0 +1,10 @@
+name: test-scaling
+description: deploy 500 single-replica jobs
+tasks:
+- id: job
+  type: SubmitObj
+  params:
+    refTaskId: register-trainingworkload
+    count: 500
+    params:
+      ttl: 2m
