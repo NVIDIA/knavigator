@@ -15,10 +15,10 @@ kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/release
 
 Run a jobset with workers: 
 ```shell
-./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset.yml
+./bin/knavigator -workflow ./resources/workflows/jobset/test-jobset.yaml
 ```
 
 Run a jobset with a driver and workers:
 ```shell
-./bin/knavigator -workflow ./resources/workflows/k8s/test-jobset-with-driver.yml
+./bin/knavigator -workflow ./resources/workflows/jobset/test-jobset-with-driver.yaml
 ```

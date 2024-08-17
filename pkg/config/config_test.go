@@ -104,7 +104,7 @@ func TestWorkflowPaths(t *testing.T) {
 		},
 		{
 			name:  "Case 3: Valid input",
-			paths: "../../resources/workflows/volcano,../../resources/workflows/k8s/{test-job.yml,test-jobset.yml}",
+			paths: "../../resources/workflows/volcano,../../resources/workflows/kueue/{test-job.yaml,test-preemption.yaml}",
 			count: 3,
 		},
 	}

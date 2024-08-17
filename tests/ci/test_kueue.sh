@@ -12,4 +12,4 @@ deploy_kwok
 deploy_kueue
 
 # Run knavigator with an example test
-${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/kueue/test-job.yml -v 4 -cleanup
+${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/kueue/test-job.yaml -v 4 -cleanup
