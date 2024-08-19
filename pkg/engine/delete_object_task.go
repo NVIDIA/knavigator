@@ -86,16 +86,18 @@ func (task *DeleteObjTask) Exec(ctx context.Context) error {
 		return err
 	}
 
-	log.V(4).Infof("Deleting objects %s %v", info.GVR.String(), info.Names)
+	prop := v1.DeletePropagationBackground
+	opt := v1.DeleteOptions{
+		PropagationPolicy: &prop,
+	}
 
 	for _, name := range info.Names {
-		prop := v1.DeletePropagationBackground
-		opt := v1.DeleteOptions{
-			PropagationPolicy: &prop,
-		}
-		err = task.client.Resource(info.GVR).Namespace(info.Namespace).Delete(ctx, name, opt)
-		if err != nil {
-			return err
+		for i := range info.GVR {
+			log.V(4).Infof("Deleting objects %s %v", info.GVR[i].String(), info.Names)
+			err = task.client.Resource(info.GVR[i]).Namespace(info.Namespace).Delete(ctx, name, opt)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

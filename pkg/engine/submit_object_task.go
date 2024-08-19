@@ -124,57 +124,61 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		return err
 	}
 
-	for _, obj := range objs {
-		crd := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"apiVersion": obj.APIVersion,
-				"kind":       obj.Kind,
-				"metadata":   obj.Metadata,
-				"spec":       obj.Spec,
-			},
-		}
-
-		if task.CanExist {
-			_, err := task.client.Resource(regObjParams.gvr).Namespace(obj.Metadata.Namespace).Get(ctx, obj.Metadata.Name, metav1.GetOptions{})
-			if err == nil {
-				log.V(4).Infof("Object %s/%s already exist", obj.Kind, obj.Metadata.Name)
-				return nil
+	for _, arr := range objs {
+		for i, obj := range arr {
+			crd := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": obj.APIVersion,
+					"kind":       obj.Kind,
+					"metadata":   obj.Metadata,
+					"spec":       obj.Spec,
+				},
 			}
-		}
 
-		if _, err := task.client.Resource(regObjParams.gvr).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {
-			return err
+			if task.CanExist {
+				_, err := task.client.Resource(regObjParams.gvr[i]).Namespace(obj.Metadata.Namespace).Get(ctx, obj.Metadata.Name, metav1.GetOptions{})
+				if err == nil {
+					log.V(4).Infof("Object %s/%s already exist", obj.Kind, obj.Metadata.Name)
+					return nil
+				}
+			}
+
+			if _, err := task.client.Resource(regObjParams.gvr[i]).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {
+				return err
+			}
 		}
 	}
 
 	return task.accessor.SetObjInfo(task.taskID,
-		NewObjInfo(names, objs[0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
+		NewObjInfo(names, objs[0][0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
 }
 
-func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([]GenericObject, []string, int, []string, error) {
+func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([][]*GenericObject, []string, int, []string, error) {
 	names, err := utils.GenerateNames(regObjParams.NameFormat, task.Count, task.Params)
 	if err != nil {
 		return nil, nil, 0, nil, fmt.Errorf("%s: failed to generate object names: %v", task.ID(), err)
 	}
 
-	objs := make([]GenericObject, task.Count)
+	objs := make([][]*GenericObject, task.Count)
 	podRegexp := []string{}
 
 	for i := 0; i < task.Count; i++ {
 		if len(names[i]) != 0 {
 			task.Params["_NAME_"] = names[i]
 		}
-		data, err := utils.ExecTemplate(regObjParams.objTpl, task.Params)
-		if err != nil {
-			return nil, nil, 0, nil, err
-		}
-
-		if err = yaml.Unmarshal(data, &objs[i]); err != nil {
-			return nil, nil, 0, nil, err
+		objs[i] = make([]*GenericObject, len(regObjParams.objTpl))
+		for j, objTpl := range regObjParams.objTpl {
+			data, err := utils.ExecTemplate(objTpl, task.Params)
+			if err != nil {
+				return nil, nil, 0, nil, err
+			}
+			if err = yaml.Unmarshal(data, &objs[i][j]); err != nil {
+				return nil, nil, 0, nil, err
+			}
 		}
 
 		if regObjParams.podNameTpl != nil {
-			data, err = utils.ExecTemplate(regObjParams.podNameTpl, task.Params)
+			data, err := utils.ExecTemplate(regObjParams.podNameTpl, task.Params)
 			if err != nil {
 				return nil, nil, 0, nil, err
 			}
