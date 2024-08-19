@@ -3,7 +3,17 @@ entries:
   virtual-nodes:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2024-05-20T11:54:06.455677-07:00"
+    created: "2024-08-19T11:07:16.516022-07:00"
+    description: A Helm chart for deploying virtual nodes in Kubernetes
+    digest: a0d72afa689851bc52dc28f2140a0f8db76076c33bf9168880843367fc044f8f
+    name: virtual-nodes
+    type: application
+    urls:
+    - https://nvidia.github.io/knavigator/helm-charts/virtual-nodes-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2024-08-19T11:07:16.515787-07:00"
     description: A Helm chart for deploying virtual nodes in Kubernetes
     digest: 60f6a71121b47e9fb8906f62e09c58796c6383e54bb72db6dfa0d27671906d8c
     name: virtual-nodes
@@ -11,4 +21,4 @@ entries:
     urls:
     - https://nvidia.github.io/knavigator/helm-charts/virtual-nodes-0.1.0.tgz
     version: 0.1.0
-generated: "2024-05-20T11:54:06.454812-07:00"
+generated: "2024-08-19T11:07:16.513624-07:00"
