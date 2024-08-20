@@ -144,7 +144,8 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 			}
 
 			if _, err := task.client.Resource(regObjParams.gvr[i]).Namespace(obj.Metadata.Namespace).Create(ctx, crd, metav1.CreateOptions{}); err != nil {
-				return err
+				return fmt.Errorf("%s: failed to create resource %s %s: %v",
+					task.ID(), regObjParams.gvr[i].String(), crd.GetName(), err)
 			}
 		}
 	}

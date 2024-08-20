@@ -33,10 +33,10 @@ if kind get clusters > /dev/null 2>&1; then
   read -p "> " choice
   if [[ "$choice" == "y" ]]; then
     kind delete cluster
-    kind create cluster
+    kind create cluster --image=kindest/node:v1.29.7
   fi
 else
-  kind create cluster
+  kind create cluster --image=kindest/node:v1.29.7
 fi
 
 deploy_prometheus
@@ -52,6 +52,7 @@ cat << EOF
   3: volcano (https://github.com/volcano-sh/volcano)
   4: yunikorn (https://github.com/apache/yunikorn-core)
   5: run:ai (https://www.run.ai)
+  6: combined: coscheduler plugin + jobset + kueue
 EOF
 read -p "> " choice
 
@@ -70,6 +71,11 @@ case "$choice" in
     ;;
   5)
     deploy_runai
+    ;;
+  6)
+    deploy_scheduler_plugins
+    deploy_jobset
+    deploy_kueue
     ;;
 esac
 

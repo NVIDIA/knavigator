@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: test-scaling-single-node-jobs
-description: deploy 500 single-replica jobs
+name: config-nodes
 tasks:
-- id: job
-  type: SubmitObj
+- id: configure
+  type: Configure
   params:
-    refTaskId: register
-    count: 500
-    params:
-      replicas: 1
-      ttl: 2m
+    nodes:
+    - type: dgxa100.80g
+      count: 32
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m

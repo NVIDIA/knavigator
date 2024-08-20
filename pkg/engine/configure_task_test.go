@@ -240,7 +240,7 @@ func TestNewConfigureTask(t *testing.T) {
 							Op:   OpDelete,
 						},
 					},
-					DeploymentRestarts: []deploymentRestart{
+					DeploymentRestarts: []*deploymentRestart{
 						{
 							Namespace: "ns1",
 							Name:      "deploy1",

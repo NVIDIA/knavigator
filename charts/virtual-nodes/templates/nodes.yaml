@@ -63,8 +63,8 @@
 {{- end }}
 
 {{- $count := ($node.count | int) }}
-{{- $suffix := ( randAlphaNum 6 | lower ) }}
 {{- range until $count }}
+{{- $suffix := ( randAlphaNum 6 | lower ) }}
 ---
 apiVersion: v1
 kind: Node

@@ -46,11 +46,11 @@ type ConfigureTask struct {
 }
 
 type configureTaskParams struct {
-	Nodes              []virtualNode       `yaml:"nodes"`
-	Namespaces         []namespace         `yaml:"namespaces"`
-	ConfigMaps         []configmap         `yaml:"configmaps"`
-	PriorityClasses    []priorityClass     `yaml:"priorityClasses"`
-	DeploymentRestarts []deploymentRestart `yaml:"deploymentRestarts"`
+	Nodes              []virtualNode        `yaml:"nodes"`
+	Namespaces         []namespace          `yaml:"namespaces"`
+	ConfigMaps         []configmap          `yaml:"configmaps"`
+	PriorityClasses    []priorityClass      `yaml:"priorityClasses"`
+	DeploymentRestarts []*deploymentRestart `yaml:"deploymentRestarts"`
 
 	Timeout time.Duration `yaml:"timeout"`
 }
@@ -217,7 +217,13 @@ func (task *ConfigureTask) Exec(ctx context.Context) error {
 		return err
 	}
 
-	return task.restartDeployments(ctx)
+	for _, dr := range task.DeploymentRestarts {
+		if err = task.restartDeployment(ctx, dr); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (task *ConfigureTask) updateNamespaces(ctx context.Context) error {
@@ -337,69 +343,65 @@ func (task *ConfigureTask) updateConfigmaps(ctx context.Context) error {
 	return nil
 }
 
-func (task *ConfigureTask) restartDeployments(ctx context.Context) error {
-	for _, dr := range task.DeploymentRestarts {
-		dClient := task.client.AppsV1().Deployments(dr.Namespace)
+func (task *ConfigureTask) restartDeployment(ctx context.Context, dr *deploymentRestart) error {
+	dClient := task.client.AppsV1().Deployments(dr.Namespace)
 
-		dName := dr.Name
-		if len(dName) == 0 {
-			labels := make([]string, 0, len(dr.Labels))
-			for key, val := range dr.Labels {
-				labels = append(labels, key+"="+val)
-			}
-			lbl := strings.Join(labels, ",")
-
-			list, err := dClient.List(ctx, metav1.ListOptions{LabelSelector: lbl})
-			if err != nil {
-				log.InfoS("Warning: skipping restart of deployment", "labels", lbl, "error", err.Error())
-				return nil
-			}
-
-			if len(list.Items) == 0 {
-				log.InfoS("Warning: no deployment to restart", "labels", lbl)
-				return nil
-			}
-
-			if len(list.Items) != 1 {
-				return fmt.Errorf("expected 1 deployment with labels %s, not %d", lbl, len(list.Items))
-			}
-
-			dName = list.Items[0].Name
+	dName := dr.Name
+	if len(dName) == 0 {
+		labels := make([]string, 0, len(dr.Labels))
+		for key, val := range dr.Labels {
+			labels = append(labels, key+"="+val)
 		}
-		log.Infof("Restarting deployment %s", dName)
+		lbl := strings.Join(labels, ",")
 
-		update := fmt.Sprintf(`{"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": "%s"}}}}}`,
-			time.Now().Format("2006-01-02T15:04:05-07:00"))
-
-		_, err := dClient.Patch(ctx, dName, k8stypes.StrategicMergePatchType, []byte(update), metav1.PatchOptions{})
+		list, err := dClient.List(ctx, metav1.ListOptions{LabelSelector: lbl})
 		if err != nil {
-			return fmt.Errorf("failed to update deployment %s: %s", dName, err.Error())
+			log.InfoS("Warning: skipping restart of deployment", "labels", lbl, "error", err.Error())
+			return nil
 		}
 
-		delay := 5 * time.Second
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		for {
-			select {
-			case <-timer.C:
-				d, err := dClient.Get(ctx, dName, metav1.GetOptions{})
-				if err != nil {
-					log.Errorf("failed to get status for deployment %s : %v", dName, err)
-				} else if d.Status.UnavailableReplicas != 0 {
-					log.V(4).Infof("Restarting deployment %s: %d unavailable replicas", dName, d.Status.UnavailableReplicas)
-				} else {
-					log.Infof("Restarted deployment %s", dName)
-					return nil
-				}
-				timer.Reset(delay)
-
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+		if len(list.Items) == 0 {
+			log.InfoS("Warning: no deployment to restart", "labels", lbl)
+			return nil
 		}
+
+		if len(list.Items) != 1 {
+			return fmt.Errorf("expected 1 deployment with labels %s, not %d", lbl, len(list.Items))
+		}
+
+		dName = list.Items[0].Name
+	}
+	log.Infof("Restarting deployment %s", dName)
+
+	update := fmt.Sprintf(`{"spec": {"template": {"metadata": {"annotations": {"kubectl.kubernetes.io/restartedAt": "%s"}}}}}`,
+		time.Now().Format("2006-01-02T15:04:05-07:00"))
+
+	_, err := dClient.Patch(ctx, dName, k8stypes.StrategicMergePatchType, []byte(update), metav1.PatchOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update deployment %s: %s", dName, err.Error())
 	}
 
-	return nil
+	delay := 5 * time.Second
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			d, err := dClient.Get(ctx, dName, metav1.GetOptions{})
+			if err != nil {
+				log.Errorf("failed to get status for deployment %s : %v", dName, err)
+			} else if d.Status.UnavailableReplicas != 0 {
+				log.V(4).Infof("Restarting deployment %s: %d unavailable replicas", dName, d.Status.UnavailableReplicas)
+			} else {
+				log.Infof("Restarted deployment %s", dName)
+				return nil
+			}
+			timer.Reset(delay)
+
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
