@@ -1,0 +1,114 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-kueue
+tasks:
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/cluster-queue.yaml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yaml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yaml"
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/jobset/jobset-coscheduling.yaml"
+    nameFormat: "jobset{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-workers-[0-9]+-[0-9]+-.+"
+    podCount: "{{.replicas}}"
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    canExist: true
+    params:
+      name: "gpu-node"
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+- id: create-cluster-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: team
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      pods: 32
+      gpu: 256
+- id: create-local-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: team-queue
+      namespace: default
+      clusterQueue: team
+- id: configure
+  type: Configure
+  params:
+    configmaps:
+    - name: scheduler-config
+      namespace: scheduler-plugins
+      op: create
+      data:
+        scheduler-config.yaml: |
+          apiVersion: kubescheduler.config.k8s.io/v1
+          kind: KubeSchedulerConfiguration
+          leaderElection:
+            leaderElect: false
+          profiles:
+          - schedulerName: scheduler-plugins-scheduler
+            plugins:
+              multiPoint:
+                enabled:
+                - name: Coscheduling
+                - name: CapacityScheduling
+                - name: NetworkOverhead
+                  weight: 5
+                disabled:
+                - name: NodeResourcesFit
+              queueSort:
+                enabled:
+                - name: TopologicalSort
+                disabled:
+                - name: "*"
+            pluginConfig:
+            - name: Coscheduling
+              args:
+                permitWaitingTimeSeconds: 10
+            - name: TopologicalSort
+              args:
+                namespaces:
+                - "default"
+            - name: NetworkOverhead
+              args:
+                namespaces:
+                - "default"
+                weightsName: "UserDefined"
+                networkTopologyName: "net-topology-test"
+    deploymentRestarts:
+    - namespace: scheduler-plugins
+      name: scheduler-plugins-controller
+    - namespace: scheduler-plugins
+      name: scheduler-plugins-scheduler
+    timeout: 2m

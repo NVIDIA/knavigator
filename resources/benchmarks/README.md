@@ -28,7 +28,7 @@ To run the benchmark test for Kueue:
 ./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,config-kueue.yaml,run-test.yaml}'
 ```
 
-#### Run:ai
+To run the benchmark test for Run:ai
 
 ```bash
 ./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,runai-test.yaml}'
@@ -46,8 +46,25 @@ To run the benchmark test for Volcano:
 ./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-volcano.yaml,run-test-multi.yaml}'
 ```
 
-### Run:ai
+To run the benchmark test for Run:ai
 
 ```bash
 ./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-runai.yaml,runai-test-single.yaml}'
+```
+
+## Network Topology Benchmark Test
+
+The network topology benchmark workflow runs on 12 virtual GPU nodes, arranged to simulate a tree-like network topology.
+Out of these, 5 nodes are marked as busy, leaving 7 nodes available. The workflow submits a job with 3 replicas.
+
+From a network connectivity standpoint, the optimal assignment would be nodes n5, n7, and n8, as shown in the following diagram.
+
+![network aware scheduling](../../docs/assets/network-aware-scheduling.png)
+
+### Example
+
+To run the benchmark test for Run:ai
+
+```bash
+./bin/knavigator -workflow 'resources/benchmarks/nwtopo/workflows/{config-nodes.yaml,runai-test.yaml}'
 ```
