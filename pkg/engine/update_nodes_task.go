@@ -42,7 +42,7 @@ type UpdateNodesTask struct {
 type nodeStateParams struct {
 	StateParams `yaml:",inline"`
 
-	Selector *utils.NameSelector `yaml:"selector"`
+	Selectors []map[string]string `yaml:"selectors"`
 }
 
 func newUpdateNodesTask(client *kubernetes.Clientset, cfg *config.Task) (*UpdateNodesTask, error) {
@@ -74,12 +74,10 @@ func (p *nodeStateParams) validate(taskType, taskID string, params map[string]in
 		return fmt.Errorf("failed to parse parameters in %s task %s: %v", taskType, taskID, err)
 	}
 
-	if p.Selector == nil {
-		return fmt.Errorf("missing node selector in %s task %s", taskType, taskID)
+	if len(p.Selectors) == 0 {
+		return fmt.Errorf("missing node selectors in %s task %s", taskType, taskID)
 	}
-	if err = p.Selector.Finalize(); err != nil {
-		return fmt.Errorf("failed to parse parameters in %s task %s: %v", taskType, taskID, err)
-	}
+
 	if len(p.State) == 0 {
 		return fmt.Errorf("missing state parameters in %s task %s", taskType, taskID)
 	}
@@ -100,21 +98,31 @@ func (task *UpdateNodesTask) Exec(ctx context.Context) error {
 		return fmt.Errorf("%s: failed to generate patch: %v", task.ID(), err)
 	}
 
-	matcher := task.Selector.Matcher()
 	for _, node := range nodeList.Items {
-		if matcher.IsMatch(node.Name) {
-			if patch.Root != nil {
-				if _, err := nodeClient.Patch(ctx, node.Name, types.MergePatchType, patch.Root, metav1.PatchOptions{}); err != nil {
-					return err
+		for _, selector := range task.Selectors {
+			if isMapSubset(node.Labels, selector) {
+				if patch.Root != nil {
+					if _, err := nodeClient.Patch(ctx, node.Name, types.MergePatchType, patch.Root, metav1.PatchOptions{}); err != nil {
+						return err
+					}
 				}
-			}
-			if patch.Status != nil {
-				if _, err := nodeClient.PatchStatus(ctx, node.Name, patch.Status); err != nil {
-					return err
+				if patch.Status != nil {
+					if _, err := nodeClient.PatchStatus(ctx, node.Name, patch.Status); err != nil {
+						return err
+					}
 				}
 			}
 		}
 	}
 
 	return nil
+}
+
+func isMapSubset(mapSet, mapSubset map[string]string) bool {
+	for key, value := range mapSubset {
+		if v, ok := mapSet[key]; !ok || v != value {
+			return false
+		}
+	}
+	return true
 }
