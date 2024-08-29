@@ -25,13 +25,13 @@ The gang-scheduling benchmark workflow operates on 32 virtual GPU nodes, submitt
 To run the benchmark test for Kueue:
 
 ```bash
-./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,config-kueue.yaml,run-test.yaml}'
+./scripts/benchmarks/gang-scheduling/run-kueue.sh
 ```
 
 To run the benchmark test for Run:ai
 
 ```bash
-./bin/knavigator -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,runai-test.yaml}'
+./scripts/benchmarks/gang-scheduling/run-runai.sh
 ```
 
 ## Scaling Benchmark Test
