@@ -21,7 +21,7 @@ tasks:
     count: 1
     params:
       replicas: 32
-      ttl: 30s
+      ttl: 2m
 - id: job2
   type: SubmitObj
   params:
@@ -29,7 +29,7 @@ tasks:
     count: 2
     params:
       replicas: 16
-      ttl: 30s
+      ttl: 2m
 - id: job3
   type: SubmitObj
   params:
@@ -37,7 +37,7 @@ tasks:
     count: 3
     params:
       replicas: 10
-      ttl: 30s
+      ttl: 2m
 - id: job3.1
   type: SubmitObj
   params:
@@ -45,7 +45,7 @@ tasks:
     count: 1
     params:
       replicas: 2
-      ttl: 30s
+      ttl: 2m
 - id: job4
   type: SubmitObj
   params:
@@ -53,7 +53,7 @@ tasks:
     count: 4
     params:
       replicas: 8
-      ttl: 30s
+      ttl: 2m
 - id: job5
   type: SubmitObj
   params:
@@ -61,7 +61,7 @@ tasks:
     count: 5
     params:
       replicas: 6
-      ttl: 30s
+      ttl: 2m
 - id: job5.1
   type: SubmitObj
   params:
@@ -69,7 +69,7 @@ tasks:
     count: 2
     params:
       replicas: 1
-      ttl: 30s
+      ttl: 2m
 - id: job6
   type: SubmitObj
   params:
@@ -77,7 +77,7 @@ tasks:
     count: 6
     params:
       replicas: 5
-      ttl: 30s
+      ttl: 2m
 - id: job6.1
   type: SubmitObj
   params:
@@ -85,7 +85,7 @@ tasks:
     count: 1
     params:
       replicas: 2
-      ttl: 30s
+      ttl: 2m
 - id: job7
   type: SubmitObj
   params:
@@ -93,7 +93,7 @@ tasks:
     count: 7
     params:
       replicas: 4
-      ttl: 30s
+      ttl: 2m
 - id: job7.1
   type: SubmitObj
   params:
@@ -101,7 +101,7 @@ tasks:
     count: 1
     params:
       replicas: 2
-      ttl: 30s
+      ttl: 2m
 - id: job7.2
   type: SubmitObj
   params:
@@ -109,7 +109,7 @@ tasks:
     count: 2
     params:
       replicas: 1
-      ttl: 30s
+      ttl: 2m
 - id: job8
   type: SubmitObj
   params:
@@ -117,7 +117,7 @@ tasks:
     count: 8
     params:
      replicas: 4
-     ttl: 30s
+     ttl: 2m
 - id: job9
   type: SubmitObj
   params:
@@ -125,7 +125,7 @@ tasks:
     count: 9
     params:
       replicas: 3
-      ttl: 30s
+      ttl: 2m
 - id: job9.1
   type: SubmitObj
   params:
@@ -133,4 +133,4 @@ tasks:
     count: 1
     params:
       replicas: 5
-      ttl: 30s
+      ttl: 2m
