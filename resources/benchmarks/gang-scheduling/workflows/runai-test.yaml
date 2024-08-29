@@ -38,7 +38,7 @@ tasks:
     count: 1
     params:
       workers: 31
-      ttl: 30s
+      ttl: 2m
 - id: job2
   type: SubmitObj
   params:
@@ -46,7 +46,7 @@ tasks:
     count: 2
     params:
       workers: 15
-      ttl: 30s
+      ttl: 2m
 - id: job3
   type: SubmitObj
   params:
@@ -54,7 +54,7 @@ tasks:
     count: 3
     params:
       workers: 9
-      ttl: 30s
+      ttl: 2m
 - id: job3.1
   type: SubmitObj
   params:
@@ -62,7 +62,7 @@ tasks:
     count: 1
     params:
       workers: 1
-      ttl: 30s
+      ttl: 2m
 - id: job4
   type: SubmitObj
   params:
@@ -70,7 +70,7 @@ tasks:
     count: 4
     params:
       workers: 7
-      ttl: 30s
+      ttl: 2m
 - id: job5
   type: SubmitObj
   params:
@@ -78,14 +78,14 @@ tasks:
     count: 5
     params:
       workers: 5
-      ttl: 30s
+      ttl: 2m
 - id: job5.1
   type: SubmitObj
   params:
     refTaskId: register-trainingworkload
     count: 2
     params:
-      ttl: 30s
+      ttl: 2m
 - id: job6
   type: SubmitObj
   params:
@@ -93,7 +93,7 @@ tasks:
     count: 6
     params:
       workers: 4
-      ttl: 30s
+      ttl: 2m
 - id: job6.1
   type: SubmitObj
   params:
@@ -101,7 +101,7 @@ tasks:
     count: 1
     params:
       workers: 1
-      ttl: 30s
+      ttl: 2m
 - id: job7
   type: SubmitObj
   params:
@@ -109,7 +109,7 @@ tasks:
     count: 7
     params:
       workers: 3
-      ttl: 30s
+      ttl: 2m
 - id: job7.1
   type: SubmitObj
   params:
@@ -117,14 +117,14 @@ tasks:
     count: 1
     params:
       workers: 1
-      ttl: 30s
+      ttl: 2m
 - id: job7.2
   type: SubmitObj
   params:
     refTaskId: register-trainingworkload
     count: 2
     params:
-      ttl: 30s
+      ttl: 2m
 - id: job8
   type: SubmitObj
   params:
@@ -132,7 +132,7 @@ tasks:
     count: 8
     params:
      workers: 3
-     ttl: 30s
+     ttl: 2m
 - id: job9
   type: SubmitObj
   params:
@@ -140,7 +140,7 @@ tasks:
     count: 9
     params:
       workers: 2
-      ttl: 30s
+      ttl: 2m
 - id: job9.1
   type: SubmitObj
   params:
@@ -148,4 +148,4 @@ tasks:
     count: 1
     params:
       workers: 4
-      ttl: 30s
+      ttl: 2m
