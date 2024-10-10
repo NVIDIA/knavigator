@@ -115,7 +115,7 @@ function deploy_prometheus() {
 #
 
 # https://github.com/kubernetes-sigs/jobset
-JOBSET_VERSION=v0.5.2
+JOBSET_VERSION=v0.6.0
 
 function deploy_jobset() {
   printGreen Deploying jobset
@@ -131,7 +131,7 @@ function deploy_jobset() {
 }
 
 # https://github.com/kubernetes-sigs/kueue
-KUEUE_VERSION=v0.8.0
+KUEUE_VERSION=v0.8.1
 
 function deploy_kueue() {
   printGreen Deploying kueue
@@ -147,7 +147,7 @@ function deploy_kueue() {
 }
 
 # https://github.com/volcano-sh/volcano
-VOLCANO_VERSION=v1.9.0
+VOLCANO_VERSION=v1.10.0
 
 function deploy_volcano() {
   printGreen Deploying volcano
@@ -168,7 +168,7 @@ function deploy_volcano() {
 }
 
 # https://github.com/apache/yunikorn-core
-YUNIKORN_VERSION=v1.5.2
+YUNIKORN_VERSION=v1.6.0
 
 function deploy_yunikorn() {
   printGreen Deploying yunikorn
