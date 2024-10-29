@@ -71,7 +71,7 @@ function wait_for_pods() {
 #
 
 KWOK_REPO=kubernetes-sigs/kwok
-KWOK_RELEASE="v0.6.0"
+KWOK_RELEASE="v0.6.1"
 
 function deploy_kwok() {
   printGreen Deploying KWOK
@@ -108,14 +108,14 @@ function deploy_prometheus() {
     --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
     --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false
 
-  kubectl -n monitoring wait --for=condition=ready pod -l app.kubernetes.io/instance=kube-prometheus-stack --timeout=300s
+  kubectl -n monitoring wait --for=condition=ready pod -l app.kubernetes.io/instance=kube-prometheus-stack --timeout=600s
 }
 
 # Tested workload managers
 #
 
 # https://github.com/kubernetes-sigs/jobset
-JOBSET_VERSION=v0.6.0
+JOBSET_VERSION=v0.7.0
 
 function deploy_jobset() {
   printGreen Deploying jobset
@@ -127,7 +127,7 @@ function deploy_jobset() {
 
   wait_for_pods "jobset-system" 1
 
-  kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
+  kubectl -n jobset-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=600s
 }
 
 # https://github.com/kubernetes-sigs/kueue
@@ -143,7 +143,7 @@ function deploy_kueue() {
 
   wait_for_pods "kueue-system" 1
 
-  kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=300s
+  kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=600s
 }
 
 # https://github.com/volcano-sh/volcano
@@ -159,7 +159,7 @@ function deploy_volcano() {
     --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 
   for app in volcano-admission volcano-controller volcano-scheduler; do
-    kubectl -n volcano-system wait --for=condition=ready pod -l app=$app --timeout=300s
+    kubectl -n volcano-system wait --for=condition=ready pod -l app=$app --timeout=600s
   done
 
   # Wait until volcano webhook is ready
@@ -179,13 +179,13 @@ function deploy_yunikorn() {
     --version=$YUNIKORN_VERSION --wait \
     --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 
-  kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=300s
+  kubectl -n yunikorn wait --for=condition=ready pod -l app=yunikorn --timeout=600s
 }
 
 # https://www.run.ai/
 TRAINING_OPERATOR_VERSION=v1.8.0
 MPI_OPERATOR_VERSION=v0.4.0
-RUNAI_VERSION=2.17.50
+RUNAI_VERSION=2.18.49
 
 function deploy_runai() {
   printGreen Deploying run:ai
