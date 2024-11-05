@@ -13,14 +13,14 @@
 # limitations under the License.
 
 name: config-nodes
-description: create 500 virtual GPU nodes
+description: create 700 virtual GPU nodes
 tasks:
 - id: configure
   type: Configure
   params:
     nodes:
     - type: dgxa100.80g
-      count: 500
+      count: 700
       labels:
         nvidia.com/gpu.count: "8"
     timeout: 5m
