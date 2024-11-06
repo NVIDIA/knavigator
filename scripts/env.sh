@@ -131,7 +131,7 @@ function deploy_jobset() {
 }
 
 # https://github.com/kubernetes-sigs/kueue
-KUEUE_VERSION=v0.8.1
+KUEUE_VERSION=v0.9.0
 
 function deploy_kueue() {
   printGreen Deploying kueue

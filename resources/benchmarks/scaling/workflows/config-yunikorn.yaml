@@ -40,5 +40,5 @@ tasks:
                   submitacl: '*'
                   resources:
                     max:
-                      {memory: 360Gi, vcore: 50000m, nvidia.com/gpu: 4000}
+                      {memory: 360Gi, vcore: 70000m, nvidia.com/gpu: 5600}
     timeout: 1m

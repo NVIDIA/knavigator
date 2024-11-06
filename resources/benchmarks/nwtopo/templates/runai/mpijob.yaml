@@ -43,15 +43,6 @@ spec:
           affinity:
             podAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 20
-                  podAffinityTerm:
-                    labelSelector:
-                      matchExpressions:
-                        - key: app
-                          operator: In
-                          values:
-                            - {{._NAME_}}
-                    topologyKey: net-layer-3
                 - weight: 70
                   podAffinityTerm:
                     labelSelector:

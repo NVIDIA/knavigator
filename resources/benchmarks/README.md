@@ -36,7 +36,7 @@ To run the benchmark test for Run:ai
 
 ## Scaling Benchmark Test
 
-The scaling benchmark workflow operates on 500 virtual GPU nodes with tho workflows. The first [workflow](scaling/workflows/run-test-multi.yaml) submits is a job with 500 replicas, the second [workflow](scaling/workflows/run-test-single.yaml) submits a batch of 500 single-node jobs.
+The scaling benchmark workflow operates on 700 virtual GPU nodes with tho workflows. The first [workflow](scaling/workflows/run-test-multi.yaml) submits is a job with 700 replicas, the second [workflow](scaling/workflows/run-test-single.yaml) submits a batch of 700 single-node jobs.
 
 ### Example
 
