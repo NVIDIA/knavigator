@@ -1,0 +1,53 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-network-topology
+description: deploy a 3-replicas job
+tasks:
+- id: job1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 6
+      ttl: 2m
+- id: sleep
+  type: Sleep
+  params:
+    timeout: 1s
+- id: job2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 6
+      ttl: 2m
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job1
+    status: Running
+    timeout: 5s
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job2
+    status: Running
+    timeout: 5s
+
+# validation:
+# for node in $(kubectl get pods -l app=jobset1 -o custom-columns=NODE:.spec.nodeName --no-headers); do kubectl get no $node -o yaml | grep accelerator; done
+# for node in $(kubectl get pods -l app=jobset2 -o custom-columns=NODE:.spec.nodeName --no-headers); do kubectl get no $node -o yaml | grep accelerator; done

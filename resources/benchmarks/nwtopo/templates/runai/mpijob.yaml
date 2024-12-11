@@ -51,7 +51,7 @@ spec:
                           operator: In
                           values:
                             - {{._NAME_}}
-                    topologyKey: net-layer-2
+                    topologyKey: network.topology.kubernetes.io/spine
                 - weight: 90
                   podAffinityTerm:
                     labelSelector:
@@ -60,7 +60,7 @@ spec:
                           operator: In
                           values:
                             - {{._NAME_}}
-                    topologyKey: net-layer-1
+                    topologyKey: network.topology.kubernetes.io/block
           schedulerName: runai-scheduler
           containers:
           - image: runai/mpi-worker:latest
