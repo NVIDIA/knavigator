@@ -16,12 +16,12 @@ name: config-nw-topo-nodes
 description: |
   Create a 12-nodes cluster with a tree-like network topology
   and mark 5 nodes as busy:
-            __________ sw31 __________
-           /            |             \
-       sw21            sw22            sw23
-       /  \            /  \            /  \
-   sw11    sw12    sw13    sw14    sw15    sw16
-    /\      /\      /\      /\      /\      /\
+                  _____ sw31 ______
+                 /                 \
+             sw21                   sw22
+           /     \                /      \
+      sw11        sw12        sw13        sw14
+    /  |  \     /  |  \     /  |  \     /  |  \
   n1  n2  n3  n4  n5  n6  n7  n8  n9 n10 n11 n12
   |___|___|___|___|___|   |___|___|___|___|___|
             |                       |
@@ -57,7 +57,7 @@ tasks:
       labels:
         node-id: n3
         network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw12
+        network.topology.kubernetes.io/block: sw11
         network.topology.kubernetes.io/spine: sw21
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
@@ -75,8 +75,8 @@ tasks:
       labels:
         node-id: n5
         network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw13
-        network.topology.kubernetes.io/spine: sw22
+        network.topology.kubernetes.io/block: sw12
+        network.topology.kubernetes.io/spine: sw21
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
@@ -84,8 +84,8 @@ tasks:
       labels:
         node-id: n6
         network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw13
-        network.topology.kubernetes.io/spine: sw22
+        network.topology.kubernetes.io/block: sw12
+        network.topology.kubernetes.io/spine: sw21
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
@@ -93,7 +93,7 @@ tasks:
       labels:
         node-id: n7
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw14
+        network.topology.kubernetes.io/block: sw13
         network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
@@ -102,7 +102,7 @@ tasks:
       labels:
         node-id: n8
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw14
+        network.topology.kubernetes.io/block: sw13
         network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
@@ -111,8 +111,8 @@ tasks:
       labels:
         node-id: n9
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw15
-        network.topology.kubernetes.io/spine: sw23
+        network.topology.kubernetes.io/block: sw13
+        network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
@@ -120,8 +120,8 @@ tasks:
       labels:
         node-id: n10
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw15
-        network.topology.kubernetes.io/spine: sw23
+        network.topology.kubernetes.io/block: sw14
+        network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
@@ -129,8 +129,8 @@ tasks:
       labels:
         node-id: n11
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw16
-        network.topology.kubernetes.io/spine: sw23
+        network.topology.kubernetes.io/block: sw14
+        network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
@@ -138,8 +138,8 @@ tasks:
       labels:
         node-id: n12
         network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw16
-        network.topology.kubernetes.io/spine: sw23
+        network.topology.kubernetes.io/block: sw14
+        network.topology.kubernetes.io/spine: sw22
         network.topology.kubernetes.io/datacenter: sw31
         nvidia.com/gpu.count: "8"
     timeout: 5m
