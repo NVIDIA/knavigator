@@ -44,25 +44,14 @@ spec:
             schedulerName: default-scheduler
             affinity:
               podAffinity:
-                preferredDuringSchedulingIgnoredDuringExecution:
-                  - weight: 70
-                    podAffinityTerm:
-                      labelSelector:
-                        matchExpressions:
-                          - key: app
-                            operator: In
-                            values:
-                              - {{._NAME_}}
-                      topologyKey: network.topology.kubernetes.io/spine
-                  - weight: 90
-                    podAffinityTerm:
-                      labelSelector:
-                        matchExpressions:
-                          - key: app
-                            operator: In
-                            values:
-                              - {{._NAME_}}
-                      topologyKey: network.topology.kubernetes.io/block
+                requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                      - {{._NAME_}}
+                  topologyKey: network.topology.kubernetes.io/accelerator
             containers:
             - name: test
               image: ubuntu
