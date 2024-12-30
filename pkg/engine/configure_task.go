@@ -452,7 +452,7 @@ func runCommand(ctx context.Context, exe string, args []string) error {
 		return err
 	}
 
-	log.V(4).Infof(stdout.String())
+	log.V(4).Info(stdout.String())
 
 	return nil
 }

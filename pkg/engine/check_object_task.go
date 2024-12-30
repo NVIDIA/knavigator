@@ -127,7 +127,7 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMap *utils.SyncMap) error {
 	for _, name := range info.Names {
 		if err := task.checkState(ctx, name, info, nameMap); err != nil {
-			log.V(4).Infof(err.Error())
+			log.V(4).Info(err.Error())
 		}
 	}
 
@@ -141,7 +141,7 @@ func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMa
 
 func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap, done chan struct{}) {
 	if err := task.checkState(ctx, name, info, nameMap); err != nil {
-		log.V(4).Infof(err.Error())
+		log.V(4).Info(err.Error())
 		return
 	}
 
