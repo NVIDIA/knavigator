@@ -9,7 +9,7 @@ spec:
       serviceAccountName: knavigator
       containers:
       - name: knavigator
-        image: ghcr.io/nvidia/knavigator:3527c8c
+        image: ghcr.io/nvidia/knavigator:ff4aeb1
         imagePullPolicy: Always
         command:
         - /usr/local/bin/knavigator

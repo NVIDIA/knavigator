@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: prometheus
+  name: {{ include "node-resource-exporter.fullname" . }}
+  namespace: {{.Release.Namespace}}
+spec:
+  endpoints:
+  - interval: 10s
+    port: metrics
+    scheme: http
+  namespaceSelector:
+    matchNames:
+    - {{.Release.Namespace}}
+  selector:
+    matchLabels:
+      {{- include "node-resource-exporter.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -14,7 +14,7 @@
 
 LINTER_BIN ?= golangci-lint
 DOCKER_BIN ?= docker
-TARGETS := knavigator klient
+TARGETS := knavigator klient node-resource-exporter
 CMD_DIR := ./cmd
 OUTPUT_DIR := ./bin
 
