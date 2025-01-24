@@ -10,7 +10,8 @@
 
 Install [JobSet API](https://github.com/kubernetes-sigs/jobset) in your cluster:
 ```shell
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/v0.5.2/manifests.yaml
+JOBSET_VERSION=v0.8.1
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
 ```
 
 Run a jobset with workers: 

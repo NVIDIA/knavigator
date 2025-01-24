@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: test-kai-mpijob
-description: submit and validate an mpijob with kai scheduler
+name: test-kai-job
+description: submit and validate a job with kai scheduler
 tasks:
 - id: register-queue
   type: RegisterObj
   params:
     template: "resources/templates/kai/queue.yaml"
-- id: register-mpijob
+- id: register-job
   type: RegisterObj
   params:
-    template: "resources/templates/kai/mpijob.yaml"
-    nameFormat: "mpijob{{._ENUM_}}"
-    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
-    podCount: "{{.workers}} + 1"
+    template: "resources/templates/kai/job.yaml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
+    podCount: "{{.replicas}}"
 - id: configure
   type: Configure
   params:
@@ -39,24 +39,26 @@ tasks:
   type: SubmitObj
   params:
     refTaskId: register-queue
+    canExist: true
     params:
       name: default
 - id: test-queue
   type: SubmitObj
   params:
     refTaskId: register-queue
+    canExist: true
     params:
       name: test
       parentQueue: default
-- id: mpijob
+- id: job
   type: SubmitObj
   params:
-    refTaskId: register-mpijob
+    refTaskId: register-job
     count: 1
     params:
       namespace: default
       queue: test
-      workers: 2
+      replicas: 3
       image: ubuntu
       cpu: 100m
       memory: 250M
@@ -65,6 +67,6 @@ tasks:
 - id: status
   type: CheckPod
   params:
-    refTaskId: mpijob
+    refTaskId: job
     status: Running
     timeout: 10s
