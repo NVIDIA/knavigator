@@ -51,7 +51,7 @@ spec:
                       operator: In
                       values:
                       - {{._NAME_}}
-                  topologyKey: network.topology.kubernetes.io/accelerator
+                  topologyKey: network.topology.nvidia.com/accelerator
             containers:
             - name: test
               image: ubuntu

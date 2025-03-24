@@ -38,108 +38,108 @@ tasks:
       count: 1
       labels:
         node-id: n1
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw11
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw11
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n2
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw11
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw11
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n3
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw11
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw11
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n4
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw12
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw12
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n5
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw12
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw12
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n6
-        network.topology.kubernetes.io/accelerator: nvl1
-        network.topology.kubernetes.io/block: sw12
-        network.topology.kubernetes.io/spine: sw21
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl1
+        network.topology.nvidia.com/block: sw12
+        network.topology.nvidia.com/spine: sw21
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n7
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw13
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw13
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n8
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw13
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw13
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n9
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw13
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw13
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n10
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw14
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw14
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n11
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw14
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw14
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     - type: dgxa100.80g
       count: 1
       labels:
         node-id: n12
-        network.topology.kubernetes.io/accelerator: nvl2
-        network.topology.kubernetes.io/block: sw14
-        network.topology.kubernetes.io/spine: sw22
-        network.topology.kubernetes.io/datacenter: sw31
+        network.topology.nvidia.com/accelerator: nvl2
+        network.topology.nvidia.com/block: sw14
+        network.topology.nvidia.com/spine: sw22
+        network.topology.nvidia.com/datacenter: sw31
         nvidia.com/gpu.count: "8"
     timeout: 5m
