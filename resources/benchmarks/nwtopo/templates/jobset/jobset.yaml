@@ -53,7 +53,7 @@ spec:
                             operator: In
                             values:
                               - {{._NAME_}}
-                      topologyKey: network.topology.kubernetes.io/spine
+                      topologyKey: network.topology.nvidia.com/spine
                   - weight: 90
                     podAffinityTerm:
                       labelSelector:
@@ -62,7 +62,7 @@ spec:
                             operator: In
                             values:
                               - {{._NAME_}}
-                      topologyKey: network.topology.kubernetes.io/block
+                      topologyKey: network.topology.nvidia.com/block
             containers:
             - name: test
               image: ubuntu
