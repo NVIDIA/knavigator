@@ -27,3 +27,4 @@ We have tested several of these and offer templates and workflows to support the
 * [Kueue](./examples/kueue/kueue.md)
 * [YuniKorn](./examples/yunikorn/yunikorn.md)
 * [Run:ai](./examples/runai/runai.md)
+* [Kai](./examples/kai/kai.md)

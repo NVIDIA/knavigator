@@ -231,6 +231,27 @@ Run:ai deployment requires environment variables:
     --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
 }
 
+# https://github.com/NVIDIA/KAI-Scheduler/
+TRAINING_OPERATOR_VERSION=v1.8.0
+MPI_OPERATOR_VERSION=v0.4.0
+function deploy_kai() {
+  printGreen Deploying kai
+
+  kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=$TRAINING_OPERATOR_VERSION"
+
+  kubectl patch deployment training-operator -n kubeflow --type='json' \
+    -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args", "value": ["--enable-scheme=tfjob", "--enable-scheme=pytorchjob", "--enable-scheme=xgboostjob"]}]'
+
+  kubectl delete crd mpijobs.kubeflow.org
+
+  kubectl apply -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
+
+  helm repo add --force-update nvidia-k8s https://helm.ngc.nvidia.com/nvidia/k8s
+  helm repo update
+  helm upgrade --install kai-scheduler nvidia-k8s/kai-scheduler -n kai-scheduler \
+    --create-namespace --wait --set "global.registry=nvcr.io/nvidia/k8s"
+}
+
 SCHEDULER_PLUGINS_VERSION=v0.29.7
 function deploy_scheduler_plugins() {
   printGreen Deploying scheduler-plugins
