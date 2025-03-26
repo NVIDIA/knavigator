@@ -1,0 +1,70 @@
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-kai-mpijob
+description: register, deploy and configure run:ai custom resources
+tasks:
+- id: register-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kai/queue.yaml"
+- id: register-mpijob
+  type: RegisterObj
+  params:
+    template: "resources/templates/kai/mpijob.yaml"
+    nameFormat: "mpijob{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
+    podCount: "{{.workers}} + 1"
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 3
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
+- id: default-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    params:
+      name: default
+- id: test-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    params:
+      name: test
+      parentQueue: default
+- id: mpijob
+  type: SubmitObj
+  params:
+    refTaskId: register-mpijob
+    count: 1
+    params:
+      namespace: default
+      queue: test
+      workers: 2
+      image: ubuntu
+      cpu: 100m
+      memory: 250M
+      gpu: 8
+      ttl: "20s"
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: mpijob
+    status: Running
+    timeout: 10s
