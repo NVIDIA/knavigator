@@ -121,7 +121,7 @@ function deploy_prometheus() {
 #
 
 # https://github.com/kubernetes-sigs/jobset
-JOBSET_VERSION=v0.7.0
+JOBSET_VERSION=v0.7.3
 
 function deploy_jobset() {
   printGreen Deploying jobset
@@ -137,7 +137,7 @@ function deploy_jobset() {
 }
 
 # https://github.com/kubernetes-sigs/kueue
-KUEUE_VERSION=v0.9.0
+KUEUE_VERSION=v0.10.1
 
 function deploy_kueue() {
   printGreen Deploying kueue
