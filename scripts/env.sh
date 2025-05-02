@@ -69,12 +69,10 @@ function wait_for_pods() {
 
 # KWOK
 #
-
-KWOK_REPO=kubernetes-sigs/kwok
-KWOK_RELEASE="v0.6.1"
-
 function deploy_kwok() {
   printGreen Deploying KWOK
+  KWOK_REPO=kubernetes-sigs/kwok
+  KWOK_RELEASE="v0.6.1"
 
   # Deploy KWOK controller
   kubectl apply -f https://github.com/${KWOK_REPO}/releases/download/${KWOK_RELEASE}/kwok.yaml
@@ -88,11 +86,9 @@ function deploy_kwok() {
 
 # Prometheus
 #
-
-PROMETHEUS_STACK_VERSION=61.5.0
-
 function deploy_prometheus() {
   printGreen Deploying Prometheus
+  PROMETHEUS_STACK_VERSION=61.5.0
 
   helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
 
@@ -121,10 +117,9 @@ function deploy_prometheus() {
 #
 
 # https://github.com/kubernetes-sigs/jobset
-JOBSET_VERSION=v0.7.0
-
 function deploy_jobset() {
   printGreen Deploying jobset
+  JOBSET_VERSION=v0.8.1
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
 
@@ -137,10 +132,9 @@ function deploy_jobset() {
 }
 
 # https://github.com/kubernetes-sigs/kueue
-KUEUE_VERSION=v0.9.0
-
 function deploy_kueue() {
   printGreen Deploying kueue
+  KUEUE_VERSION=v0.11.4
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
 
@@ -153,10 +147,9 @@ function deploy_kueue() {
 }
 
 # https://github.com/volcano-sh/volcano
-VOLCANO_VERSION=v1.10.0
-
 function deploy_volcano() {
   printGreen Deploying volcano
+  VOLCANO_VERSION=v1.11.2
 
   helm repo add --force-update volcano-sh https://volcano-sh.github.io/helm-charts
 
@@ -174,10 +167,9 @@ function deploy_volcano() {
 }
 
 # https://github.com/apache/yunikorn-core
-YUNIKORN_VERSION=v1.6.0
-
 function deploy_yunikorn() {
   printGreen Deploying yunikorn
+  YUNIKORN_VERSION=v1.6.2
 
   helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
 
@@ -189,12 +181,11 @@ function deploy_yunikorn() {
 }
 
 # https://www.run.ai/
-TRAINING_OPERATOR_VERSION=v1.8.0
-MPI_OPERATOR_VERSION=v0.4.0
-RUNAI_VERSION=2.18.49
-
 function deploy_runai() {
   printGreen Deploying run:ai
+  TRAINING_OPERATOR_VERSION=v1.8.0
+  MPI_OPERATOR_VERSION=v0.4.0
+  RUNAI_VERSION=2.18.49
 
   if [[ -z "$RUNAI_CONTROL_PLANE_URL" ]] || [[ -z "$RUNAI_CLIENT_SECRET" ]] || [[ -z "$RUNAI_CLUSTER_ID" ]]; then
     printRed "
@@ -232,29 +223,21 @@ Run:ai deployment requires environment variables:
 }
 
 # https://github.com/NVIDIA/KAI-Scheduler/
-TRAINING_OPERATOR_VERSION=v1.8.0
-MPI_OPERATOR_VERSION=v0.4.0
 function deploy_kai() {
   printGreen Deploying kai
+  MPI_OPERATOR_VERSION=v0.6.0
+  KAI_VERSION=v0.4.7
 
-  kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=$TRAINING_OPERATOR_VERSION"
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
 
-  kubectl patch deployment training-operator -n kubeflow --type='json' \
-    -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args", "value": ["--enable-scheme=tfjob", "--enable-scheme=pytorchjob", "--enable-scheme=xgboostjob"]}]'
-
-  kubectl delete crd mpijobs.kubeflow.org
-
-  kubectl apply -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
-
-  helm repo add --force-update nvidia-k8s https://helm.ngc.nvidia.com/nvidia/k8s
-  helm repo update
-  helm upgrade --install kai-scheduler nvidia-k8s/kai-scheduler -n kai-scheduler \
-    --create-namespace --wait --set "global.registry=nvcr.io/nvidia/k8s"
+  helm upgrade --install kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler \
+    --version="$KAI_VERSION" --create-namespace --wait
 }
 
-SCHEDULER_PLUGINS_VERSION=v0.29.7
+
 function deploy_scheduler_plugins() {
   printGreen Deploying scheduler-plugins
+  SCHEDULER_PLUGINS_VERSION=v0.29.7
 
   helm upgrade --install --repo https://scheduler-plugins.sigs.k8s.io scheduler-plugins scheduler-plugins \
     -n scheduler-plugins --create-namespace --version $SCHEDULER_PLUGINS_VERSION \
