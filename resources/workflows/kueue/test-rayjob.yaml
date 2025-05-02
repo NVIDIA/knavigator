@@ -1,0 +1,103 @@
+# Copyright (c) 2024-2025, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-kueue-rayjob
+description: submit and validate rayjob with kueue
+tasks:
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/cluster-queue.yaml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yaml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yaml"
+- id: register-job
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/rayjob.yaml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-raycluster-.*"
+    podCount: "{{.workers}} + 1"
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 4
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    canExist: true
+    params:
+      name: "gpu-node"
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+- id: create-cluster-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: team
+      flavor: gpu-node
+      cpu: 8
+      memory: 36Gi
+      pods: 4
+      gpu: 32
+- id: create-local-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: team-queue
+      namespace: default
+      clusterQueue: team
+- id: job
+  type: SubmitObj
+  params:
+    refTaskId: register-job
+    count: 1
+    params:
+      queueName: team-queue
+      namespace: default
+      workers: 2
+      image: ubuntu
+      cpu: 100m
+      memory: 512M
+      gpu: 8
+      ttl: "20s"
+#- id: status
+#  type: CheckObj
+#  params:
+#    refTaskId: job
+#    state:
+#      status:
+#        active: 4
+#    timeout: 10s
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Running
+    timeout: 10s

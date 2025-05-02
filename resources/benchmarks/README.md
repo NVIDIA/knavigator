@@ -5,6 +5,7 @@ This directory contains benchmark tests for the following workload managers and 
 - Kueue
 - Volcano
 - Yunikorn
+- Kai
 - Run:ai
 
 The benchmark tests involve submitting workloads intended to evaluate the scheduler's performance under specific scenarios.

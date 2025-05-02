@@ -9,12 +9,17 @@ kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases
 kubectl apply -f charts/overrides/kueue/priority.yaml
 ```
 
-Run a kueue job: 
+Run a Job with kueue:
 ```bash
 ./bin/knavigator -workflow resources/workflows/kueue/test-job.yaml -cleanup
 ```
 
-Run a preemption workflow with kueue: 
+Run a preemption workflow with kueue:
 ```bash
 ./bin/knavigator -workflow resources/workflows/kueue/test-preemption.yaml -cleanup
+```
+
+Run a RayJob with kueue:
+```bash
+./bin/knavigator -workflow resources/workflows/kueue/test-rayjob.yaml -cleanup
 ```

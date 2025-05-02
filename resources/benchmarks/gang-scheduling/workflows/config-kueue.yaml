@@ -34,6 +34,20 @@ tasks:
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-[0-9]-.*"
     podCount: "{{.replicas}}"
+#- id: register-lw
+#  type: RegisterObj
+#  params:
+#    template: "resources/benchmarks/templates/kueue/rayjob.yaml"
+#    nameFormat: "job{{._ENUM_}}"
+#    podNameFormat: "{{._NAME_}}-raycluster-.*"
+#    podCount: "{{.workers}} + 1"
+- id: register-lw
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/kueue/mpijob.yaml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
+    podCount: "{{.workers}} + 1"
 - id: create-resource-flavor
   type: SubmitObj
   params:
