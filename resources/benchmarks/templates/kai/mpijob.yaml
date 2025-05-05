@@ -1,0 +1,48 @@
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: "{{._NAME_}}"
+  namespace: "default"
+  labels:
+    runai/queue: "test"
+spec:
+  slotsPerWorker: 1
+  runPolicy:
+    cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        metadata:
+          annotations:
+            pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+            pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
+        spec:
+          schedulerName: kai-scheduler
+          containers:
+          - image: busybox
+            name: mpi-launcher
+            resources:
+              limits:
+                cpu: 100m
+                memory: 250M
+                nvidia.com/gpu: "8"
+    Worker:
+      replicas: {{.workers}}
+      template:
+        metadata:
+          annotations:
+            pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+            pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
+          labels:
+            app: {{._NAME_}}
+        spec:
+          schedulerName: kai-scheduler
+          containers:
+          - image: busybox
+            name: mpi-worker
+            resources:
+              limits:
+                cpu: 100m
+                memory: 250M
+                nvidia.com/gpu: "8"

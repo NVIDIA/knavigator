@@ -26,6 +26,13 @@ tasks:
     nameFormat: "job{{._ENUM_}}"
     podNameFormat: "{{._NAME_}}-[a-z0-9]+"
     podCount: "{{.replicas}}"
+- id: register-lw
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/templates/kai/mpijob.yaml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
+    podCount: "{{.workers}} + 1"
 - id: default-queue
   type: SubmitObj
   params:

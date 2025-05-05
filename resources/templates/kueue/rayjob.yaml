@@ -1,0 +1,56 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: "{{._NAME_}}"
+  namespace: {{.namespace}}
+  labels:
+    kueue.x-k8s.io/queue-name: {{.queueName}}
+    {{- if .priority }}
+    kueue.x-k8s.io/priority-class: {{.priority}}
+    {{- end }}
+spec:
+  entrypoint: python /home/ray/samples/sample_code.py
+  shutdownAfterJobFinishes: true
+  runtimeEnvYAML: |
+    pip:
+      - requests==2.26.0
+    env_vars:
+      EXAMPLE_VAR: "value"
+  rayClusterSpec:
+    rayVersion: '2.9.0'
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      template:
+        spec:
+          containers:
+            - name: ray-head
+              image: {{.image}}
+              resources:
+                limits:
+                  cpu: "{{.cpu}}"
+                  memory: {{.memory}}
+                  nvidia.com/gpu: "{{.gpu}}"
+                requests:
+                  cpu: "{{.cpu}}"
+                  memory: {{.memory}}
+                  nvidia.com/gpu: "{{.gpu}}"
+    workerGroupSpecs:
+      - replicas: {{.workers}}
+        rayStartParams:
+          dashboard-host: '0.0.0.0'
+        groupName: test-group
+        template:
+          spec:
+            containers:
+              - name: ray-worker
+                image: {{.image}}
+                resources:
+                  limits:
+                    cpu: "{{.cpu}}"
+                    memory: {{.memory}}
+                    nvidia.com/gpu: "{{.gpu}}"
+                  requests:
+                    cpu: "{{.cpu}}"
+                    memory: {{.memory}}
+                    nvidia.com/gpu: "{{.gpu}}"

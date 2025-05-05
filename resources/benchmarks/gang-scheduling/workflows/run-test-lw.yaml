@@ -12,29 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: test-gang-scheduling-runai
+name: test-gang-scheduling-lw
 tasks:
-- id: register-trainingworkload
-  type: RegisterObj
-  params:
-    template: "resources/benchmarks/templates/runai/trainingworkload.yaml"
-    nameFormat: "twl{{._ENUM_}}"
-    podNameFormat: "{{._NAME_}}-0-0"
-    podCount: 1
-- id: register-distributedworkload
-  type: RegisterObj
-  params:
-    template: "resources/benchmarks/templates/runai/distributedworkload.yaml"
-    nameFormat: "dwl{{._ENUM_}}"
-    podNameFormat: "{{._NAME_}}-(launcher-[a-z0-9]+|worker-[0-9]+)"
-    podCount: "{{.workers}} + 1"
-#
-### Benchmark test
-#
 - id: job1
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 1
     params:
       workers: 31
@@ -42,7 +25,7 @@ tasks:
 - id: job2
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 2
     params:
       workers: 15
@@ -50,7 +33,7 @@ tasks:
 - id: job3
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 3
     params:
       workers: 9
@@ -58,7 +41,7 @@ tasks:
 - id: job3.1
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 1
     params:
       workers: 1
@@ -66,7 +49,7 @@ tasks:
 - id: job4
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 4
     params:
       workers: 7
@@ -74,7 +57,7 @@ tasks:
 - id: job5
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 5
     params:
       workers: 5
@@ -82,14 +65,15 @@ tasks:
 - id: job5.1
   type: SubmitObj
   params:
-    refTaskId: register-trainingworkload
+    refTaskId: register
     count: 2
     params:
+      replicas: 1
       ttl: 2m
 - id: job6
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 6
     params:
       workers: 4
@@ -97,7 +81,7 @@ tasks:
 - id: job6.1
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 1
     params:
       workers: 1
@@ -105,7 +89,7 @@ tasks:
 - id: job7
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 7
     params:
       workers: 3
@@ -113,7 +97,7 @@ tasks:
 - id: job7.1
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 1
     params:
       workers: 1
@@ -121,14 +105,15 @@ tasks:
 - id: job7.2
   type: SubmitObj
   params:
-    refTaskId: register-trainingworkload
+    refTaskId: register
     count: 2
     params:
+      replicas: 1
       ttl: 2m
 - id: job8
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 8
     params:
      workers: 3
@@ -136,7 +121,7 @@ tasks:
 - id: job9
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 9
     params:
       workers: 2
@@ -144,7 +129,7 @@ tasks:
 - id: job9.1
   type: SubmitObj
   params:
-    refTaskId: register-distributedworkload
+    refTaskId: register-lw
     count: 1
     params:
       workers: 4

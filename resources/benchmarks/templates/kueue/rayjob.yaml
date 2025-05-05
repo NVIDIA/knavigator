@@ -1,0 +1,68 @@
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: "{{._NAME_}}"
+  namespace: default
+  labels:
+    labels:
+    kueue.x-k8s.io/queue-name: team-queue
+  annotations:
+    kueue.x-k8s.io/job-group: group-{{._NAME_}}
+spec:
+  entrypoint: python /home/ray/samples/sample_code.py
+  shutdownAfterJobFinishes: true
+  runtimeEnvYAML: |
+    pip:
+      - requests==2.26.0
+    env_vars:
+      EXAMPLE_VAR: "value"
+  rayClusterSpec:
+    rayVersion: '2.9.0'
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      template:
+        metadata:
+          annotations:
+            {{- if .ttl }}
+            pod-complete.stage.kwok.x-k8s.io/delay: "{{.ttl}}"
+            pod-complete.stage.kwok.x-k8s.io/jitter-delay: "{{.ttl}}"
+            {{- end }}
+        spec:
+          containers:
+            - name: ray-head
+              image: busybox
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 256M
+                  nvidia.com/gpu: "8"
+                requests:
+                  cpu: 100m
+                  memory: 256M
+                  nvidia.com/gpu: "8"
+    workerGroupSpecs:
+      - replicas: {{.workers}}
+        rayStartParams:
+          dashboard-host: '0.0.0.0'
+        groupName: test-group
+        template:
+          metadata:
+            annotations:
+              {{- if .ttl }}
+              pod-complete.stage.kwok.x-k8s.io/delay: "{{.ttl}}"
+              pod-complete.stage.kwok.x-k8s.io/jitter-delay: "{{.ttl}}"
+              {{- end }}
+          spec:
+            containers:
+              - name: ray-worker
+                image: busybox
+                resources:
+                  limits:
+                    cpu: 100m
+                    memory: 256M
+                    nvidia.com/gpu: "8"
+                  requests:
+                    cpu: 100m
+                    memory: 256M
+                    nvidia.com/gpu: "8"

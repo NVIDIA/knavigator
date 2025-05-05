@@ -70,9 +70,9 @@ function wait_for_pods() {
 # KWOK
 #
 function deploy_kwok() {
-  printGreen Deploying KWOK
   KWOK_REPO=kubernetes-sigs/kwok
   KWOK_RELEASE="v0.6.1"
+  printGreen Deploying KWOK $KWOK_RELEASE
 
   # Deploy KWOK controller
   kubectl apply -f https://github.com/${KWOK_REPO}/releases/download/${KWOK_RELEASE}/kwok.yaml
@@ -87,8 +87,8 @@ function deploy_kwok() {
 # Prometheus
 #
 function deploy_prometheus() {
-  printGreen Deploying Prometheus
   PROMETHEUS_STACK_VERSION=61.5.0
+  printGreen Deploying Prometheus stack $PROMETHEUS_STACK_VERSION
 
   helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
 
@@ -118,8 +118,8 @@ function deploy_prometheus() {
 
 # https://github.com/kubernetes-sigs/jobset
 function deploy_jobset() {
-  printGreen Deploying jobset
   JOBSET_VERSION=v0.8.1
+  printGreen Deploying jobset $JOBSET_VERSION
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/jobset/releases/download/${JOBSET_VERSION}/manifests.yaml
 
@@ -133,8 +133,11 @@ function deploy_jobset() {
 
 # https://github.com/kubernetes-sigs/kueue
 function deploy_kueue() {
-  printGreen Deploying kueue
+  deploy_mpi_operator
+  deploy_kuberay_operator
+
   KUEUE_VERSION=v0.11.4
+  printGreen Deploying kueue $KUEUE_VERSION
 
   kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
 
@@ -148,8 +151,8 @@ function deploy_kueue() {
 
 # https://github.com/volcano-sh/volcano
 function deploy_volcano() {
-  printGreen Deploying volcano
   VOLCANO_VERSION=v1.11.2
+  printGreen Deploying volcano $VOLCANO_VERSION
 
   helm repo add --force-update volcano-sh https://volcano-sh.github.io/helm-charts
 
@@ -168,8 +171,8 @@ function deploy_volcano() {
 
 # https://github.com/apache/yunikorn-core
 function deploy_yunikorn() {
-  printGreen Deploying yunikorn
   YUNIKORN_VERSION=v1.6.2
+  printGreen Deploying yunikorn $YUNIKORN_VERSION
 
   helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
 
@@ -224,16 +227,14 @@ Run:ai deployment requires environment variables:
 
 # https://github.com/NVIDIA/KAI-Scheduler/
 function deploy_kai() {
-  printGreen Deploying kai
-  MPI_OPERATOR_VERSION=v0.6.0
-  KAI_VERSION=v0.4.7
+  deploy_mpi_operator
 
-  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
+  KAI_VERSION=v0.4.7
+  printGreen Deploying kai scheduler $KAI_VERSION
 
   helm upgrade --install kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -n kai-scheduler \
     --version="$KAI_VERSION" --create-namespace --wait
 }
-
 
 function deploy_scheduler_plugins() {
   printGreen Deploying scheduler-plugins
@@ -243,4 +244,20 @@ function deploy_scheduler_plugins() {
     -n scheduler-plugins --create-namespace --version $SCHEDULER_PLUGINS_VERSION \
     --set-json 'scheduler.affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}' \
     --set-json 'controller.affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}'
+}
+
+function deploy_mpi_operator() {
+  MPI_OPERATOR_VERSION=v0.6.0
+  printGreen Deploying mpi-operator $MPI_OPERATOR_VERSION
+  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
+}
+
+function deploy_kuberay_operator() {
+  RAY_VERSION=v1.3.2
+  printGreen Deploying kuberay-operator $RAY_VERSION
+
+  helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+  helm repo update
+  helm install kuberay-operator kuberay/kuberay-operator -n kuberay-system --create-namespace \
+    --version=$RAY_VERSION --wait
 }
