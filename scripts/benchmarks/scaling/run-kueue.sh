@@ -18,4 +18,4 @@ set -e
 
 REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../../)
 
-$REPO_HOME/bin/knavigator -workflow "$REPO_HOME/resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-kai.yaml,run-test-single.yaml}"
+$REPO_HOME/bin/knavigator -workflow "$REPO_HOME/resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-kueue.yaml,run-test-single.yaml}"
