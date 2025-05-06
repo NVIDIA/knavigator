@@ -15,7 +15,7 @@
 name: config-runai
 description: register, deploy and configure run:ai custom resources
 tasks:
-- id: register-trainingworkload
+- id: register
   type: RegisterObj
   params:
     template: "resources/benchmarks/templates/runai/trainingworkload.yaml"

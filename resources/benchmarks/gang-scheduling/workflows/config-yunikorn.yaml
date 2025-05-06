@@ -39,6 +39,6 @@ tasks:
                 - name: sandbox
                   submitacl: '*'
                   resources:
-                    max:
-                      {memory: 36Gi, vcore: 8000m, nvidia.com/gpu: 256}
+                    guaranteed: {memory: 36Gi, vcore: 8000m, nvidia.com/gpu: 256}
+                    max: {memory: 36Gi, vcore: 8000m, nvidia.com/gpu: 256}
     timeout: 1m

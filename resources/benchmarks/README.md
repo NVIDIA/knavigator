@@ -29,28 +29,16 @@ To run the benchmark test for Kueue:
 ./scripts/benchmarks/gang-scheduling/run-kueue.sh
 ```
 
-To run the benchmark test for Run:ai
-
-```bash
-./scripts/benchmarks/gang-scheduling/run-runai.sh
-```
-
 ## Scaling Benchmark Test
 
-The scaling benchmark workflow operates on 700 virtual GPU nodes with tho workflows. The first [workflow](scaling/workflows/run-test-multi.yaml) submits is a job with 700 replicas, the second [workflow](scaling/workflows/run-test-single.yaml) submits a batch of 700 single-node jobs.
+The scaling benchmark workflow operates on 700 virtual GPU nodes. The [workflow](scaling/workflows/run-test.yaml) submits a batch of 700 single-node jobs.
 
 ### Example
 
 To run the benchmark test for Volcano:
 
 ```bash
-./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-volcano.yaml,run-test-multi.yaml}'
-```
-
-To run the benchmark test for Run:ai
-
-```bash
-./bin/knavigator -workflow 'resources/benchmarks/scaling/workflows/{config-nodes.yaml,config-runai.yaml,runai-test-single.yaml}'
+./scripts/benchmarks/scaling/run-volcano.sh
 ```
 
 ## Network Topology Benchmark Test

@@ -13,13 +13,13 @@
 # limitations under the License.
 
 name: test-scaling
-description: deploy a 700-replicas job
+description: deploy 700 single-replica jobs
 tasks:
 - id: job
   type: SubmitObj
   params:
-    refTaskId: register-mpi
-    count: 1
+    refTaskId: register
+    count: 700
     params:
-     workers: 699
-     ttl: 5m
+      replicas: 1
+      ttl: 5m
