@@ -1,0 +1,175 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-gang-3
+description: test gang heterogeneous for yunikorn
+tasks:
+  - id: configure-nodes-cleanup
+    type: Configure
+    params:
+      nodes:
+        - type: test-gang
+          count: 0
+          resources:
+            cpu: 100100m
+            memory: 102450Mi
+            pods: 110
+      timeout: 5m
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: gang-test-small
+          count: 50
+          namePrefix: gang-test-small
+          resources:
+            cpu: 8100m
+            memory: "16050Mi"
+            pods: 310
+        - type: gang-test-medium
+          count: 50
+          namePrefix: gang-test-medium
+          resources:
+            cpu: 32100m
+            memory: "64050Mi"
+            pods: 310
+        - type: gang-test-big
+          count: 50
+          namePrefix: gang-test-big
+          resources:
+            cpu: 64100m
+            memory: "128050Mi"
+            pods: 310
+      timeout: 5m
+  - id: register-job
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/gang/templates/yunikorn/job-gang.yml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-.*"
+      podCount: "{{.parallelism}}"
+  - id: configure
+    type: Configure
+    description: set up yunikorn config
+    params:
+      configmaps:
+        - name: yunikorn-configs
+          namespace: yunikorn
+          op: create
+          data:
+            queues.yaml: |
+              partitions:
+                - name: default
+                  queues:
+                  - name: root
+                    queues:
+                    - name: sandbox
+                      submitacl: '*'
+                      properties:
+                        application.sort.policy: fifo
+                      resources:
+                        max:
+                          {memory: 10400Gi, vcore: 5200}
+      timeout: 1m
+  - id: main-loop
+    type: Repeat
+    params:
+      count: 50
+      interval: 2s
+      tasks:
+        - id: big-memory-job
+          type: SubmitObj
+          params:
+            refTaskId: register-job
+            count: 2
+            params:
+              jobName: big-memory-job
+              namespace: default
+              parallelism: 8
+              completions: 8
+              applicationId: big-memory-job
+              queue: root.sandbox
+              image: ubuntu
+              cpu: 3000m
+              memory: 8000Mi
+              ttl: 120s
+              jitter: 180s
+        - id: big-cpu-job
+          type: SubmitObj
+          params:
+            refTaskId: register-job
+            count: 2
+            params:
+              jobName: big-cpu-job
+              namespace: default
+              parallelism: 8
+              completions: 8
+              applicationId: big-cpu-job
+              queue: root.sandbox
+              image: ubuntu
+              cpu: 4000m
+              memory: 2000Mi
+              ttl: 120s
+              jitter: 180s
+        - id: small-balanced-job
+          type: SubmitObj
+          params:
+            refTaskId: register-job
+            count: 3
+            params:
+              jobName: small-balanced-job
+              namespace: default
+              parallelism: 3
+              completions: 3
+              applicationId: small-balanced-job
+              queue: root.sandbox
+              image: ubuntu
+              cpu: 1000m
+              memory: 1000Mi
+              ttl: 60s
+              jitter: 90s
+        - id: small-memory-job
+          type: SubmitObj
+          params:
+            refTaskId: register-job
+            count: 3
+            params:
+              jobName: small-memory-job
+              namespace: default
+              parallelism: 5
+              completions: 5
+              applicationId: small-memory-job
+              queue: root.sandbox
+              image: ubuntu
+              cpu: 1000m
+              memory: 3000Mi
+              ttl: 60s
+              jitter: 90s
+        - id: small-cpu-job
+          type: SubmitObj
+          params:
+            refTaskId: register-job
+            count: 3
+            params:
+              jobName: small-cpu-job
+              namespace: default
+              parallelism: 5
+              completions: 5
+              applicationId: small-cpu-job
+              queue: root.sandbox
+              image: ubuntu
+              cpu: 2000m
+              memory: 1000Mi
+              ttl: 60s
+              jitter: 90s

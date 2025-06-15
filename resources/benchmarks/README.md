@@ -1,14 +1,382 @@
-# Benchmarks
+# Kubernetes Scheduler Benchmarks
 
-This directory contains benchmarks for comparing and evaluating the performance of the following workload management systems and schedulers:
+This repository contains a comprehensive collection of benchmark scenarios designed to evaluate and compare the performance of various Kubernetes schedulers:
 
-- Kueue
-- Volcano
-- YuniKorn
+- **Kueue**
+- **Volcano** 
+- **YuniKorn**
+- **Default Kubernetes scheduler** (for selected tests)
+
+The benchmarks are organized into major scheduling concepts and capabilities, testing different aspects of scheduler functionality, performance, and resource management.
+
+## Prerequisites
+
+Before running the benchmarks, ensure you have the following tools installed:
+
+- **[kind](https://kind.sigs.k8s.io/)** - For creating local Kubernetes clusters
+- **[kubectl](https://kubernetes.io/docs/tasks/tools/)** - Kubernetes command-line tool
+- **[helm](https://helm.sh/)** - Kubernetes package manager
+- **[Go](https://golang.org/dl/)** - Go programming language v1.20+ (for building Knavigator)
+- **[make](https://www.gnu.org/software/make/#download)** - Build automation tool
+
+## Getting Started
+
+### 1. Build Knavigator
+
+First, build the Knavigator binary from the project root:
+
+```bash
+make build
+```
+
+This will create the `knavigator` binary in the `bin/` directory.
+
+### 2. Create Test Cluster
+
+Run the cluster creation script to set up a local Kubernetes environment with monitoring stack:
+
+```bash
+./scripts/create-test-cluster.sh
+```
+
+This script will:
+- Create a Kind cluster with dynamically calculated resources based on your host machine
+- Deploy KWOK (Kubernetes Without Kubelet) for simulating virtual nodes
+- Install Prometheus and Grafana for metrics collection
+- Deploy custom exporters for job and node metrics
+- Allow you to select and install one of the supported schedulers (Kueue, Volcano, or YuniKorn)
+- Import pre-configured Grafana dashboards for benchmark visualization
+
+**Note**: The script automatically detects your host's CPU and memory resources and configures the Kind cluster accordingly. For example, on a host with 16 CPUs and 64GB RAM, it might allocate 12 CPUs and 32GB RAM to the cluster.
+
+#### Scheduler Options
+
+During installation, you'll be prompted to select scheduler-specific features:
+
+**Kueue:**
+- Standard installation (default)
+- With Topology Aware Scheduling enabled
+
+**Volcano:**
+- Standard installation (default)  
+- With Network Topology Aware Scheduling enabled
+
+**YuniKorn:**
+- Standard installation with admission controller
+
+### 3. Access Monitoring Tools
+
+After cluster creation, start port forwarding to access the monitoring interfaces:
+
+```bash
+./monitoring-portforward.sh
+```
+
+This will expose:
+- **Grafana**: http://localhost:8080 (username: `admin`, password: `admin`)
+- **Prometheus**: http://localhost:9090
+
+Press `Ctrl+C` to stop port forwarding when done.
+
+### 4. Run Benchmarks
+
+Execute benchmark scenarios using Knavigator. Always run from the project root directory:
+
+```bash
+./bin/knavigator -workflow "resources/benchmarks/performance/workflows/volcano-v1-500-500.yaml"
+
+# Run with increased verbosity for debugging
+./bin/knavigator -workflow "resources/benchmarks/performance/workflows/volcano-v1-500-500.yaml" -v 4
+```
+
+**Tips:**
+- Add `-v 4` for detailed logging when debugging issues
+- Monitor progress in real-time through Grafana dashboards
+
+### 5. View Results
+
+Access Grafana at http://localhost:8080 to view real-time metrics and benchmark results:
+
+  - Use [knavigator - Performance](/dashboards/performance.json) while benchmarking:
+    - Performance, Scalability & Resource Utilization
+    - Topology Aware Scheduling
+    - Fair Share Scheduling  
+  - Use [knavigator - Performance (psocala version)](/dashboards/performance-psocala.json) while benchmarking:
+    - Backfilling 
+    - Gang Scheduling
+
+## Cleanup
+
+To delete the test cluster and free up resources:
+
+```bash
+kind delete cluster --name kind
+```
+
+To remove virtual nodes created by benchmarks:
+
+```bash
+kubectl delete node -l type=kwok
+```
+
+**Note**: Always clean up virtual nodes before switching schedulers or running different benchmark suites to avoid conflicts.
+
+## Important Notes
+
+- **Resource Requirements**: The test cluster requires significant resources. Ensure your host machine has at least 8 CPUs and 16GB RAM for basic tests. Larger benchmarks may require more resources.
+- **KWOK Nodes**: The benchmarks use KWOK to simulate virtual nodes. These nodes don't run actual containers but simulate pod lifecycle states, allowing for large-scale testing without massive resource requirements.
+- **Scheduler Selection**: You can only run one scheduler at a time. To switch schedulers, recreate the cluster and select a different option.
+- **Metrics Collection**: Prometheus scrapes metrics every 10 seconds. Allow sufficient time for metrics to be collected during benchmark runs.
+- **Working Directory**: Always run benchmarks from the project root directory where the Makefile is located to ensure correct path resolution.
+- **Component Versions**: The setup script uses specific versions:
+  - Kubernetes: v1.30.0
+  - KWOK: v0.6.1
+  - Kueue: v0.10.2
+  - Volcano: v1.11.0
+  - YuniKorn: v1.6.2
+  - Prometheus Stack: v70.4.2
+  - [node-resource-exporter](https://hub.docker.com/repository/docker/mateuszskowron21/node-resource-exporter/general): v1.12 
+  - [unified-job-exporter](https://hub.docker.com/repository/docker/mateuszskowron21/metrics-exporter/general): v1.24.3 
+
+## Repository Structure
+
+This benchmark suite is part of the Knavigator project. The key directories and files are:
+
+```
+.
+├── bin/                           # Knavigator binary (after building)
+├── scripts/
+│   ├── create-test-cluster.sh    # Main cluster setup script
+│   └── env.sh                    # Environment variables and functions
+├── monitoring-portforward.sh      # Port forwarding for Prometheus/Grafana
+├── dashboards/                    # Pre-configured Grafana dashboards
+├── manifests/                     # Kubernetes manifests for exporters
+├── resources/
+│   ├── templates/                 # Job templates for different schedulers
+│   └── benchmarks/
+│       ├── backfill/             # Backfill scheduling tests
+│       ├── gang/                 # Gang scheduling tests
+│       ├── performance/          # Performance and scalability tests
+│       ├── topology-aware/       # Network topology-aware scheduling tests
+│       └── fair-share/           # Fair resource sharing tests
+└── Makefile                      # Build configuration
+```
+
+---
+
+## 1. Backfill Scheduling
+
+The `backfill/` directory contains tests that assess the backfilling capabilities of different schedulers. Backfilling is a scheduling optimization that allows smaller, lower-priority jobs to run on available resources, even if higher-priority jobs are waiting.
+
+We distinguish between two types of backfilling:
+- **Greedy Backfill**: Fills resource gaps with any fitting jobs based on current availability
+- **HPC-like Backfill**: Uses estimated job runtimes to ensure backfilling won't delay higher-priority jobs
+
+### Test 1.1: HPC-like vs. Greedy Backfill Functionality
+
+**Directory:** `backfill/test1-hpc-backfill`
+
+**Goal:** Determine which type of backfill a scheduler implements
+
+**Setup:** Single worker node with 100 CPU and 100 GiB memory
+
+**Jobs:**
+- Job A: 60 CPU/GiB (60% of node), 1 minute runtime
+- Job B: 50 CPU/GiB (50% of node), 1.5 minutes runtime  
+- Job C: 50 CPU/GiB (50% of node), 0.5 minutes runtime
+
+**Test Flow:**
+1. Submit one Job B (starts immediately, uses 50% resources)
+2. After 10s: Submit Job A (pending - needs 60% resources)
+3. After 20s: Submit second Job B (HPC would reject, greedy would accept)
+4. After 30s: Submit Job C (HPC would accept due to short runtime)
+
+**Result:** All evaluated schedulers implement **greedy backfill** - the second Job B is scheduled immediately, delaying Job A.
+
+**Scripts to run**:
+
+```bash
+# For Kueue
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test1-hpc-backfill/run-test.yaml
+
+# For Volcano
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test1-hpc-backfill/run-test.yaml
+
+# For YuniKorn
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test1-hpc-backfill/run-test.yaml
+```
+
+### Test 1.2: Greedy Backfill Efficiency Benchmark
+
+**Directory:** `backfill/test2-backfill-performance`
+
+**Goal:** Measure performance and resource utilization of greedy backfill under load
+
+**Setup:** All jobs submitted before worker nodes are available, giving scheduler full workload visibility
+
+**Jobs:**
+- Job A: 60 CPU/GiB (60% of node), 4 minutes runtime
+- Job B: 30 CPU/GiB (30% of node), 1 minute runtime
+- Job C: 10 CPU/GiB (10% of node), 20 seconds runtime
+
+**Job Mix:** One "block" = 1 Job A + 4 Jobs B + 12 Jobs C (perfectly fills one node for 4 minutes)
+
+**Test Scales:**
+- Small: 10 nodes (`run-test-10x100.yaml`)
+- Medium: 35 nodes (`run-test-35x100.yaml`)
+- Large: 100 nodes (`run-test-100x100.yaml`)
+
+**Key Metrics:**
+- Turnaround time (first pod scheduled to last pod completed)
+- Average cluster utilization (CPU/memory)
+
+**Scripts to run**:
+
+```bash
+#For Vanilla Kubernetes (only queue-less setup)
+./bin/knavigator -workflow resources/benchmarks/backfill/k8s/test2-backfill-performance/run-test-10x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/k8s/test2-backfill-performance/run-test-35x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/k8s/test2-backfill-performance/run-test-100x100.yaml
+
+# For Kueue
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-10x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-10x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-35x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-35x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-100x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/kueue/test2-backfill-performance/run-test-100x100-multiple-queues.yaml
+
+# For Volcano
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-10x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-10x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-35x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-35x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-100x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/volcano/test2-backfill-performance/run-test-100x100-multiple-queues.yaml
+
+# For YuniKorn
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-10x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-10x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-35x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-35x100-multiple-queues.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-100x100.yaml
+./bin/knavigator -workflow resources/benchmarks/backfill/yunikorn/test2-backfill-performance/run-test-100x100-multiple-queues.yaml
+```
+
+---
+
+## 2. Gang Scheduling
+
+The `gang/` directory evaluates "all-or-nothing" scheduling for groups of tightly-coupled workloads. This ensures that all pods of a job start together or not at all, preventing resource deadlocks and partial execution.
+
+**Note:** Kueue requires **Topology Aware Scheduling (TAS)** to be enabled for true gang scheduling. Without TAS, Kueue uses a simple timeout-based mechanism.
+
+### Test 2.1: Gang Scheduling Functionality
+
+**Directory:** `gang/test1-gang-functionality`
+
+**Goal:** Verify correct implementation of all-or-nothing logic
+
+**Test Scenarios:**
+1. **Partial Resource Test:** Submit 8-pod job to cluster that can only fit 6 pods
+   - Expected: Job remains pending (no partial scheduling)
+2. **Blocking Job Test:** Large job consumes most resources, then smaller job submitted
+   - Expected: Second job waits until first completes
+
+**Result:** All evaluated schedulers (Kueue with TAS, Volcano, YuniKorn) pass functionality tests.
+
+**Scripts to run**:
+
+```bash
+# For Kueue
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test1-gang-functionality/run-test-standard-TAS.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test1-gang-functionality/run-test-standard-blocking-job-TAS.yaml
+
+# For Volcano
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test1-gang-functionality/run-test-standard.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test1-gang-functionality/run-test-standard-blocking-job.yaml
+
+# For YuniKorn
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test1-gang-functionality/run-test-standard.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test1-gang-functionality/run-test-standard-blocking-job.yaml
+```
+
+### Test 2.2: Homogeneous Cluster & Workload Benchmark
+
+**Directory:** `gang/test2-homogeneous`
+
+**Goal:** Measure scheduling efficiency with uniform nodes and workloads
+
+**Setup:** Homogeneous nodes (100 CPU/100 GiB), pods request 1 CPU/1 GiB each
+
+**Test Matrix:**
+- Cluster sizes: 20 nodes, 100 nodes
+- Job granularities: 
+  - Fine-grained: 500 jobs × 10 pods
+  - Coarse-grained: 50 jobs × 100 pods
+
+**Pod Runtime:** Randomized 180-240 seconds
+
+**Scripts to run**:
+
+```bash
+# For Kueue
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test2-homogeneous/run-test-small-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test2-homogeneous/run-test-small-cluster-100-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test2-homogeneous/run-test-big-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test2-homogeneous/run-test-big-cluster-100-pods.yaml
+
+# For Volcano
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test2-homogeneous/run-test-small-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test2-homogeneous/run-test-small-cluster-100-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test2-homogeneous/run-test-big-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test2-homogeneous/run-test-big-cluster-100-pods.yaml
+
+# For YuniKorn
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test2-homogeneous/run-test-small-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test2-homogeneous/run-test-small-cluster-100-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test2-homogeneous/run-test-big-cluster-10-pods.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test2-homogeneous/run-test-big-cluster-100-pods.yaml
+```
+
+### Test 2.3: Heterogeneous Cluster & Workload Benchmark
+
+**Directory:** `gang/test3-heterogeneous`
+
+**Goal:** Assess performance with diverse node types and job requirements
+
+**Node Types:**
+- Small: 8 CPU/16 GiB
+- Medium: 32 CPU/64 GiB
+- Large: 64 CPU/128 GiB
+
+**Workload:** Five job types with varying resource requests, pod counts, and runtimes submitted in batches every 2 seconds
+
+**Test Variants:**
+- Standard: 650 jobs (`run-test-standard.yaml`)
+- Extensive: 1300 jobs (`run-test-large.yaml`)
+
+**Scripts to run**:
+
+```bash
+# For Kueue
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test3-heterogeneous/run-test-standard-TAS.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/kueue/test3-heterogeneous/run-test-large-TAS.yaml
+
+# For Volcano
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test3-heterogeneous/run-test-standard.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/volcano/test3-heterogeneous/run-test-large.yaml
+
+# For YuniKorn
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test3-heterogeneous/run-test-standard.yaml
+./bin/knavigator -workflow resources/benchmarks/gang/yunikorn/test3-heterogeneous/run-test-large.yaml
+```
+
+---
 
 ## Performance, Scalability & Resource Utilization
 
-Performance benchmarks provide a comprehensive evaluation of scheduler frameworks across different workload patterns, measuring throughput, scalability, and resource utilization efficiency. These tests simulate various scenarios that may occur in real production environments. All scenarios in this group use identical nodes with the following resources: **128 CPU cores**, **1TB RAM**, and **8 GPU accelerators**.
+The `performance/` directory contains benchmarks evaluating scheduler performance across different workload patterns, measuring throughput, scalability, and resource utilization efficiency. These tests simulate various scenarios that may occur in real production environments. All scenarios in this group use identical nodes with the following resources: **128 CPU cores**, **1TB RAM**, and **8 GPU accelerators**.
 
 ### V1: Large Number of Identical, Single-Pod Tasks
 
@@ -168,9 +536,11 @@ Each test configuration uses:
 ./bin/knavigator -workflow "resources/benchmarks/performance/workflows/v3/yunikorn-v3-500-300.yaml"
 ```
 
+---
+
 ## Topology Awareness
 
-Topology Awareness benchmarks evaluate the scheduler's ability to intelligently place pods based on network topology. This functionality is crucial for distributed workloads, such as deep learning training, where communication latency between pods can significantly impact performance.
+The `topology-aware/` directory evaluates intelligent pod placement based on network topology. This functionality is crucial for distributed workloads, such as deep learning training, where communication latency between pods can significantly impact performance.
 
 The tests create a simulated network topology with different layers (datacenter, spine, block) and verify how well the scheduler can place pods to minimize network distances between cooperating pods.
 
@@ -502,9 +872,11 @@ graph TD
 ./bin/knavigator -workflow 'resources/benchmarks/topology-aware/workflows/volcano-v4.yaml'
 ```
 
+---
+
 ## Fair Share
 
-Benchmarks in this section evaluate schedulers' ability to fairly distribute cluster resources among different user groups (tenants) or job queues. They test various aspects of fair share mechanisms, including:
+The `fair-share/` directory evaluates schedulers' ability to fairly distribute cluster resources among different user groups (tenants) or job queues. They test various aspects of fair share mechanisms, including:
 
 1. **Equal sharing** with identical weights (F1)
 2. **Proportional sharing** based on defined weights (F2)

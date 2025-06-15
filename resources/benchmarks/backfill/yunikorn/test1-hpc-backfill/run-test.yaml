@@ -1,0 +1,136 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-backfill-1
+description: test backfill for yunikorn
+tasks:
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 1
+          resources:
+            cpu: 100100m
+            memory: 100050Mi
+            pods: 110
+      timeout: 5m
+  - id: register
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/yunikorn/job.yml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-.*"
+      podCount: "{{.parallelism}}"
+  - id: configure
+    type: Configure
+    description: set up yunikorn config
+    params:
+      configmaps:
+        - name: yunikorn-configs
+          namespace: yunikorn
+          op: create
+          data:
+            queues.yaml: |
+              partitions:
+                - name: default
+                  queues:
+                  - name: root
+                    queues:
+                    - name: sandbox
+                      submitacl: '*'
+                      resources:
+                        max:
+                          {memory: 100000Mi, vcore: 100}
+      timeout: 1m
+  - id: jobB-1
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 1
+      params:
+        jobName: job-b-1
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-b-1
+        queue: root.sandbox
+        image: ubuntu
+        cpu: 50
+        memory: 50000Mi
+        ttl: 1.5m
+  - id: sleep
+    type: Sleep
+    description: wait for job-a submission
+    params:
+      timeout: 10s
+  - id: jobA
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 1
+      params:
+        jobName: job-a
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-a
+        queue: root.sandbox
+        image: ubuntu
+        cpu: 60
+        memory: 60000Mi
+        ttl: 1m
+  - id: sleep
+    type: Sleep
+    description: wait for the second job-b submission
+    params:
+      timeout: 20s
+  - id: jobB-2
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 1
+      params:
+        jobName: job-b-2
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-b-2
+        queue: root.sandbox
+        image: ubuntu
+        cpu: 50
+        memory: 50000Mi
+        ttl: 1.5m
+  - id: sleep
+    type: Sleep
+    description: wait for job-c submission
+    params:
+      timeout: 10s
+  - id: jobC
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 1
+      params:
+        jobName: job-c
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-c
+        queue: root.sandbox
+        image: ubuntu
+        cpu: 50
+        memory: 50000Mi
+        ttl: 0.5m
+        priorityClass: high-priority

@@ -1,0 +1,131 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-backfill-1
+description: test backfill for yunikorn
+tasks:
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 0
+          resources:
+            cpu: 100100m
+            memory: 102450Mi
+            pods: 110
+      timeout: 5m
+  - id: register
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/yunikorn/job.yml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-.*"
+      podCount: "{{.parallelism}}"
+  - id: configure
+    type: Configure
+    description: set up yunikorn config
+    params:
+      configmaps:
+        - name: yunikorn-configs
+          namespace: yunikorn
+          op: create
+          data:
+            queues.yaml: |
+              partitions:
+                - name: default
+                  queues:
+                  - name: root
+                    queues:
+                    - name: queue-a
+                      submitacl: '*'
+                      properties:
+                        application.sort.policy: fifo
+                      resources:
+                        max:
+                          {memory: 6000000Mi, vcore: 6000}
+                    - name: queue-b
+                      submitacl: '*'
+                      properties:
+                        application.sort.policy: fifo
+                      resources:
+                        max:
+                          {memory: 3000000Mi, vcore: 3000}
+                    - name: queue-c
+                      submitacl: '*'
+                      properties:
+                        application.sort.policy: fifo
+                      resources:
+                        max:
+                          {memory: 1000000Mi, vcore: 1000}
+      timeout: 1m
+  - id: job-a
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 200 #(2 per node, 100 nodes)
+      params:
+        jobName: job-a
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-a
+        queue: root.queue-a
+        image: ubuntu
+        cpu: 60
+        memory: 60000Mi
+        ttl: 4m
+  - id: job-b
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 800 #(8 per node, 100 nodes)
+      params:
+        jobName: job-b
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-b
+        queue: root.queue-b
+        image: ubuntu
+        cpu: 30
+        memory: 30000Mi
+        ttl: 60s
+  - id: job-c
+    type: SubmitObj
+    params:
+      refTaskId: register
+      count: 2400 #(24 per node, 100 nodes)
+      params:
+        jobName: job-c
+        namespace: default
+        parallelism: 1
+        completions: 1
+        applicationId: job-c
+        queue: root.queue-c
+        image: ubuntu
+        cpu: 10
+        memory: 10000Mi
+        ttl: 20s
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 100
+          resources:
+            cpu: 100100m
+            memory: 100050Mi
+            pods: 110
+      timeout: 5m

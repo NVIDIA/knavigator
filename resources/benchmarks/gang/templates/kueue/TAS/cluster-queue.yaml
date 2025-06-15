@@ -1,0 +1,20 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: {{.name}}
+spec:
+  namespaceSelector: {} # match all.
+  {{- if .cohort }}
+  cohort: {{.cohort}}
+  {{- end }}
+  resourceGroups:
+  - coveredResources: ["cpu", "memory", "pods"]
+    flavors:
+    - name: {{.flavor}}
+      resources:
+      - name: "cpu"
+        nominalQuota: {{.cpu}}
+      - name: "memory"
+        nominalQuota: {{.memory}}
+      - name: "pods"
+        nominalQuota: {{.pods}}

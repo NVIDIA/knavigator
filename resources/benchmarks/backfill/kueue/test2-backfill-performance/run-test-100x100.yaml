@@ -1,0 +1,125 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-backfill-2
+description: test greedy backfill for kueue
+tasks:
+  - id: register-cluster-queue
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/kueue/cluster-queue.yaml"
+  - id: register-local-queue
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/kueue/local-queue.yaml"
+  - id: register-resource-flavor
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/kueue/resource-flavor.yaml"
+  - id: register-job
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/kueue/job.yaml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-[0-9]-.*"
+      podCount: "{{.parallelism}}"
+      timeout: 1m
+  - id: create-resource-flavor
+    type: SubmitObj
+    params:
+      refTaskId: register-resource-flavor
+      canExist: true
+      params:
+        name: default-flavor
+  - id: create-cluster-queue
+    type: SubmitObj
+    params:
+      refTaskId: register-cluster-queue
+      canExist: true
+      params:
+        name: default-cluster-queue
+        flavor: default-flavor
+        cpu: 10000
+        memory: 10000000Mi
+  - id: create-local-queue
+    type: SubmitObj
+    params:
+      refTaskId: register-local-queue
+      canExist: true
+      params:
+        name: default-local-queue
+        namespace: default
+        clusterQueue: default-cluster-queue
+  - id: jobA1
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 200 #(2 per node, 100 nodes)
+      params:
+        jobName: job-a
+        queueName: default-local-queue
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 60
+        memory: 60000Mi
+        ttl: 4m
+  - id: jobB1
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 800 #(8 per node, 100 nodes)
+      params:
+        jobName: job-b
+        queueName: default-local-queue
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 30
+        memory: 30000Mi
+        ttl: 60s
+  - id: jobC1
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 2400 #(24 per node, 100 nodes)
+      params:
+        jobName: job-c
+        queueName: default-local-queue
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 10
+        memory: 10000Mi
+        ttl: 20s
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 100
+          resources:
+            cpu: 100100m
+            memory: 100050Mi
+            pods: 110
+      timeout: 5m

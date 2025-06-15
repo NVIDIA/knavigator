@@ -1,0 +1,71 @@
+
+name: test-backfill-2
+description: test greedy backfill for k8s
+tasks:
+  - id: register-job
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/backfill/templates/k8s/job.yml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-[0-9]-.*"
+      podCount: "{{.parallelism}}"
+      timeout: 1m
+  - id: job-a
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 70 #(2 per node, 35 nodes)
+      params:
+        jobName: job-a
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 60
+        memory: 60Gi
+        ttl: 4m
+  - id: job-b
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 280 #(8 per node, 35 nodes)
+      params:
+        jobName: job-b
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 30
+        memory: 30Gi
+        ttl: 1m
+  - id: job-c
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 840 #(24 per node, 35 nodes)
+      params:
+        jobName: job-c
+        namespace: default
+        parallelism: 1
+        completions: 1
+        backoffLimit: 0
+        completionMode: Indexed
+        image: ubuntu
+        cpu: 10
+        memory: 10Gi
+        ttl: 20s
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 35
+          resources:
+            cpu: 100100m
+            memory: 100050Mi
+            pods: 110
+      timeout: 5m

@@ -22,10 +22,10 @@ spec:
   weightFrom:
     expressionFrom: '.metadata.annotations["pod-complete.stage.kwok.x-k8s.io/weight"]'
   delay:
-    durationMilliseconds: 30000
+    durationMilliseconds: 6000000
     durationFrom:
       expressionFrom: '.metadata.annotations["pod-complete.stage.kwok.x-k8s.io/delay"]'
-    jitterDurationMilliseconds: 30000
+    jitterDurationMilliseconds: 6000000
     jitterDurationFrom:
       expressionFrom: '.metadata.annotations["pod-complete.stage.kwok.x-k8s.io/jitter-delay"]'
   next:

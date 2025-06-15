@@ -1,0 +1,87 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-backfill-1
+description: test backfill for yunikorn
+tasks:
+  - id: configure-nodes-cleanup
+    type: Configure
+    params:
+      nodes:
+        - type: test-backfill
+          count: 0
+          resources:
+            cpu: 100100m
+            memory: 102450Mi
+            pods: 110
+      timeout: 5m
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: test-gang-1
+          count: 90
+          resources:
+            cpu: 1100m
+            memory: 1050Mi
+            pods: 110
+        - type: test-gang-2
+          count: 1
+          resources:
+            cpu: 10100m
+            memory: 10050Mi
+            pods: 110
+      timeout: 5m
+  - id: register-job
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/gang/templates/volcano/job-gang.yaml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-test-[0-9]+"
+      podCount: "{{.replicas}}"
+  - id: configure
+    type: Configure
+    params:
+      configmaps:
+        - name: volcano-scheduler-configmap
+          namespace: volcano-system
+          op: create
+          data:
+            volcano-scheduler.conf: |
+              actions: "enqueue, allocate, backfill"
+              tiers:
+                - plugins:
+                    - name: priority
+                    - name: gang
+                    - name: conformance
+                - plugins:
+                    - name: drf
+                    - name: predicates
+                    - name: proportion
+                    - name: nodeorder
+                    - name: binpack
+      timeout: 1m
+  - id: big-cpu-job
+    type: SubmitObj
+    params:
+      refTaskId: register-job
+      count: 1
+      params:
+        jobName: big-cpu-job1
+        replicas: 8
+        ttl: 5m
+        jitter: 5m
+        cpu: 4
+        memory: 2Gi
+        queue: default

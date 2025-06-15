@@ -1,0 +1,93 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-gang-3
+description: test gang homogeneous load for yunikorn
+tasks:
+  - id: configure-nodes-cleanup
+    type: Configure
+    params:
+      nodes:
+        - type: test-gang
+          count: 0
+          resources:
+            cpu: 100100m
+            memory: 102450Mi
+            pods: 110
+      timeout: 5m
+  - id: configure-nodes
+    type: Configure
+    params:
+      nodes:
+        - type: gang-test
+          count: 100
+          namePrefix: gang-test
+          resources:
+            cpu: 100100m
+            memory: "100050Mi"
+            pods: 1010
+      timeout: 5m
+  - id: register-job
+    type: RegisterObj
+    params:
+      template: "resources/benchmarks/gang/templates/yunikorn/job-gang.yml"
+      nameFormat: "{{.jobName}}-{{._ENUM_}}"
+      podNameFormat: "{{._NAME_}}-.*"
+      podCount: "{{.parallelism}}"
+  - id: configure
+    type: Configure
+    description: set up yunikorn config
+    params:
+      configmaps:
+        - name: yunikorn-configs
+          namespace: yunikorn
+          op: create
+          data:
+            queues.yaml: |
+              partitions:
+                - name: default
+                  queues:
+                  - name: root
+                    queues:
+                    - name: sandbox
+                      submitacl: '*'
+                      properties:
+                        application.sort.policy: fifo
+                      resources:
+                        max:
+                          {memory: 10000000Mi, vcore: 10000}
+      timeout: 1m
+  - id: main-loop
+    type: Repeat
+    params:
+      count: 50
+      interval: 2s
+      tasks:
+      - id: job
+        type: SubmitObj
+        params:
+          refTaskId: register-job
+          count: 1
+          params:
+            jobName: job
+            namespace: default
+            parallelism: 100
+            completions: 100
+            applicationId: job
+            queue: root.sandbox
+            image: ubuntu
+            cpu: 1
+            memory: 1000Mi
+            ttl: 180s
+            jitter: 240s

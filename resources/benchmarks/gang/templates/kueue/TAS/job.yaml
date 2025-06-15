@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{._NAME_}}"
+  namespace: {{.namespace}}
+  labels:
+    kueue.x-k8s.io/queue-name: {{.queueName}}
+spec:
+  suspend: true
+  completions: {{.replicas}}
+  parallelism: {{.replicas}}
+  completionMode: {{.completionMode}}
+  template:
+    metadata:
+      annotations:
+        pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
+        pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.jitter}}
+        {{- if eq .topologyType "preferred" }}
+        kueue.x-k8s.io/podset-preferred-topology: {{.topologyLevel}}
+        {{- else if eq .topologyType "required" }}
+        kueue.x-k8s.io/podset-required-topology: {{.topologyLevel}}
+        {{- end }}
+    spec:
+      containers:
+      - name: test
+        image: ubuntu
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+            cpu: "{{.cpu}}"
+            memory: "{{.memory}}"
+          requests:
+            cpu: "{{.cpu}}"
+            memory: "{{.memory}}"
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: type
+                operator: In
+                values:
+                - "kwok"
+      tolerations:
+      - key: "kwok.x-k8s.io/node"
+        operator: "Exists"
+        effect: "NoSchedule"
+      nodeSelector:
+        "type": kwok
