@@ -19,17 +19,17 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.11'
 
     - name: Lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v9
       with:
-        version: 'v1.60'
+        version: 'v2.4.0'
         args: -v --timeout 5m
         skip-cache: true
 
@@ -44,12 +44,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.11'
 
     - name: Test
       run: go test -v ./...
@@ -57,12 +57,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.11'
 
     - name: Build
       run: make build
@@ -71,18 +71,18 @@ jobs:
     needs: [check, test, build]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.11'
 
     - name: Build
       run: make build
 
     - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
+      uses: go@v1
 
     - name: Run test scripts
       run: |
