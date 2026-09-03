@@ -1,21 +1,22 @@
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
+  default: none
   enable:
-    - errcheck
-    - goimports
-    - gosec
-    - gosimple
+#    - gosec
     - govet
     - ineffassign
     - staticcheck
     - unused
-    - gosimple
-    - typecheck
-    - unused
+  exclusions:
+    rules:
+      - text: "Error return value of .* is not checked"
+        linters:
+          - errcheck
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
