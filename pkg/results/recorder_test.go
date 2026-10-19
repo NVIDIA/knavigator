@@ -56,7 +56,7 @@ func TestFinishStopsWhenStalled(t *testing.T) {
 
 	dir := t.TempDir()
 	start := time.Now()
-	err = rec.Finish(context.Background(), dir, time.Minute, jobs, 1, 300*time.Millisecond)
+	err = rec.Finish(context.Background(), dir, time.Minute, jobs, 1, 300*time.Millisecond, DefaultBSLDFloor)
 
 	require.EqualError(t, err, "run stalled: 0/1 jobs started")
 	require.Less(t, time.Since(start), 10*time.Second)
@@ -111,7 +111,7 @@ func TestObserveFailedVictimIsEvicted(t *testing.T) {
 	r.observe(failed, true)
 
 	require.False(t, idle(r.snapshot(), jobs), "the job waits for the victim's replacement")
-	s := Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour))
+	s := Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour), Options{})
 	require.Equal(t, 1, s.PodsEvicted)
 	require.Zero(t, s.PodsFailed)
 
@@ -120,5 +120,5 @@ func TestObserveFailedVictimIsEvicted(t *testing.T) {
 	crashed.Spec.NodeName = "n1"
 	crashed.Status.Phase = corev1.PodFailed
 	r.observe(crashed, false)
-	require.Equal(t, 1, Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour)).PodsFailed)
+	require.Equal(t, 1, Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour), Options{}).PodsFailed)
 }
