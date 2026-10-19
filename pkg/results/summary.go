@@ -124,7 +124,8 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		// A job starts when its last required pod is placed, so a gang waits for its slowest member.
 		sort.Slice(ts, func(a, b int) bool { return ts[a].Before(ts[b]) })
 		s.JobsStarted++
-		jobWaits = append(jobWaits, ts[j.Pods-1].Sub(j.Submitted).Seconds())
+		// Pod timestamps have one second resolution, so a fast placement can read as before submission.
+		jobWaits = append(jobWaits, math.Max(0, ts[j.Pods-1].Sub(j.Submitted).Seconds()))
 	}
 
 	// Work still waiting at the end keeps the cluster's idle time in the denominator.
