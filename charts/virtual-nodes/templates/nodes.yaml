@@ -88,6 +88,11 @@ metadata:
     {{- end }}
     type: kwok
   name: virtual-{{ $node.type }}-{{ $suffix }}
+{{- with $node.taints }}
+spec:
+  taints:
+    {{- toYaml . | nindent 4 }}
+{{- end }}
 status:
   conditions:
   - message: kubelet has sufficient memory available
@@ -132,5 +137,27 @@ status:
     osImage: ""
     systemUUID: ""
   phase: Running
+{{- range $slice := $node.resourceSlices }}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: virtual-{{ $node.type }}-{{ $suffix }}-{{ $slice.driver | replace "." "-" }}
+spec:
+  driver: {{ $slice.driver }}
+  nodeName: virtual-{{ $node.type }}-{{ $suffix }}
+  pool:
+    name: virtual-{{ $node.type }}-{{ $suffix }}
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+  {{- range $i := until ($slice.devices | int) }}
+  - name: device-{{ $i }}
+    {{- with $slice.attributes }}
+    attributes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
