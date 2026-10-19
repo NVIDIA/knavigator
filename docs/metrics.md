@@ -10,6 +10,8 @@ The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while
 - `timeline.csv`: one row per pod with its job, node, GPUs, phase, and created, scheduled and finished times.
 - `results.json`: makespan, GPU-hours, GPU utilization against allocatable GPUs, pods never scheduled, jobs started, and mean, p95 and max wait for pods and jobs.
 
+With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
+
 A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares `podNameFormat` and `podCount`. Job wait runs from submission until the job's last required pod is scheduled, so it includes time spent in a queue before the pods exist.
 
 ```bash

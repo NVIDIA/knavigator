@@ -95,15 +95,36 @@ func mainInternal() error {
 		}
 	}
 
+	var runErr error
 	for _, workflow := range workflows {
 		log.Infof("Starting workflow %s", workflow.Name)
-		if err := engine.Run(ctx, eng, workflow); err != nil {
-			return err
+		if runErr = runWorkflow(ctx, eng, workflow, rec != nil); runErr != nil {
+			break
 		}
 	}
 
-	if rec != nil {
-		return rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng))
+	if rec == nil {
+		return runErr
+	}
+	if runErr == nil {
+		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng))
+	}
+	// Cleanup waits for the results so running pods are recorded before they are deleted.
+	if err := eng.Reset(ctx); runErr == nil {
+		runErr = err
+	}
+	return runErr
+}
+
+// runWorkflow runs a workflow; with deferReset it leaves the engine reset to the caller.
+func runWorkflow(ctx context.Context, eng *engine.Eng, workflow *config.Workflow, deferReset bool) error {
+	if !deferReset {
+		return engine.Run(ctx, eng, workflow)
+	}
+	for _, cfg := range workflow.Tasks {
+		if err := eng.RunTask(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	return nil
 }
