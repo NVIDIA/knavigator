@@ -142,6 +142,7 @@ func TestByGangSizeSubSecondPlacement(t *testing.T) {
 
 	s := Summarize(pods, jobs, 8, t0.Add(time.Minute))
 
+	require.Equal(t, Stats{Count: 1}, s.JobWaitSec, "wait is never negative")
 	require.Equal(t, Stats{Count: 1}, s.JobsByGangSize[0].WaitSec, "wait is never negative")
 }
 
