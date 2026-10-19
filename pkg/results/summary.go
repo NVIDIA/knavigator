@@ -18,10 +18,13 @@
 package results
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Pod is the lifecycle of one pod. Zero times mean the event never happened.
@@ -57,6 +60,7 @@ type Stats struct {
 type Summary struct {
 	Pods            int     `json:"pods"`
 	PodsUnscheduled int     `json:"pods_unscheduled"`
+	PodsFailed      int     `json:"pods_failed"`
 	Jobs            int     `json:"jobs"`
 	JobsStarted     int     `json:"jobs_started"`
 	MakespanSec     float64 `json:"makespan_sec"`
@@ -80,6 +84,9 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 
 	for _, p := range pods {
 		first = earliest(first, p.Created)
+		if p.Phase == string(corev1.PodFailed) {
+			s.PodsFailed++
+		}
 		if p.Scheduled.IsZero() {
 			s.PodsUnscheduled++
 			outstanding = outstanding || p.Finished.IsZero()
@@ -179,4 +186,17 @@ func latest(a, b time.Time) time.Time {
 		return b
 	}
 	return a
+}
+
+// check fails a run that left work unfinished, so a benchmark gate can rely on the exit code.
+func (s Summary) check(drained bool) error {
+	switch {
+	case !drained:
+		return fmt.Errorf("run did not drain: %d/%d jobs started", s.JobsStarted, s.Jobs)
+	case s.PodsFailed > 0:
+		return fmt.Errorf("%d pods failed", s.PodsFailed)
+	case s.JobsStarted < s.Jobs:
+		return fmt.Errorf("only %d/%d jobs started", s.JobsStarted, s.Jobs)
+	}
+	return nil
 }
