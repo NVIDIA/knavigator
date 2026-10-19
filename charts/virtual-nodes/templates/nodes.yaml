@@ -59,12 +59,33 @@
   {{- $params = set $params "resources" $resources }}
 
 {{- else }}
-  {{- $params = set $params "resources" $node.resources }}
+  {{- $params = set $params "resources" (deepCopy ($node.resources | default dict)) }}
+{{- end }}
+
+{{/*
+# The gpus shorthand sets the GPU resource and product labels, and publishes the GPUs through DRA.
+*/}}
+{{- $labels := deepCopy ($node.labels | default dict) }}
+{{- $slices := $node.resourceSlices | default list }}
+{{- with $node.gpus }}
+  {{- $_ := set $params.resources "nvidia.com/gpu" .count }}
+  {{- $_ = set $labels "nvidia.com/gpu.count" (toString .count) }}
+  {{- $attributes := dict "type" (dict "string" "gpu") }}
+  {{- if .product }}
+    {{- $_ = set $labels "nvidia.com/gpu.product" .product }}
+    {{- $_ = set $attributes "productName" (dict "string" .product) }}
+  {{- end }}
+  {{- $slices = append $slices (dict "driver" "gpu.nvidia.com" "devices" .count "attributes" $attributes) }}
 {{- end }}
 
 {{- $count := ($node.count | int) }}
-{{- range until $count }}
+{{- $racks := ($node.racks | default 1 | int) }}
+{{- range $index := until $count }}
 {{- $suffix := ( randAlphaNum 6 | lower ) }}
+{{/*
+# Racks are numbered from 1 and hold contiguous nodes; label and annotation values can use {{ .rack }}.
+*/}}
+{{- $ctx := dict "rack" (add1 (div (mul $index $racks) $count)) "index" $index "Template" $.Template }}
 ---
 apiVersion: v1
 kind: Node
@@ -73,7 +94,7 @@ metadata:
     node.alpha.kubernetes.io/ttl: "0"
     kwok.x-k8s.io/node: fake
     {{- range $key, $value := $node.annotations }}
-    {{ $key }}: {{ $value | quote }}
+    {{ $key }}: {{ tpl (toString $value) $ctx | quote }}
     {{- end }}
   labels:
     beta.kubernetes.io/arch: amd64
@@ -83,8 +104,8 @@ metadata:
     kubernetes.io/os: linux
     kubernetes.io/role: agent
     node-role.kubernetes.io/agent: ""
-    {{- range $key, $value := $node.labels }}
-    {{ $key }}: {{ $value | quote }}
+    {{- range $key, $value := $labels }}
+    {{ $key }}: {{ tpl (toString $value) $ctx | quote }}
     {{- end }}
     type: kwok
   name: virtual-{{ $node.type }}-{{ $suffix }}
@@ -137,7 +158,7 @@ status:
     osImage: ""
     systemUUID: ""
   phase: Running
-{{- range $slice := $node.resourceSlices }}
+{{- range $slice := $slices }}
 ---
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice

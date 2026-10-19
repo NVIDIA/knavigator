@@ -46,7 +46,7 @@ For convenience, we have included them in [scripts/install_kwok.sh](../scripts/i
 
 ## Setting up virtual nodes
 
-Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, and `resourceSlices`. The `type` and `count` attributes are mandatory, while the rest are optional.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, and `racks`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
 There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
@@ -81,25 +81,36 @@ For other node types, it is recommended to provide resource capacity. For exampl
     ephemeral-storage: 2537570228Ki
 ```
 
-Nodes can carry taints, and can publish [DRA](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/) devices through one `ResourceSlice` per driver (requires Kubernetes 1.34 or later). For example:
+A cluster can be described by node class. `gpus` sets `nvidia.com/gpu`, the `nvidia.com/gpu.count` and `nvidia.com/gpu.product` labels, and publishes the GPUs through a `gpu.nvidia.com` DRA `ResourceSlice` (Kubernetes 1.34 or later). `racks` spreads the nodes evenly over that many racks; label and annotation values can use `{{ .rack }}`, numbered from 1. For example, 64 H100 nodes in 8 racks and 16 A100 nodes in 2 racks:
 ```yaml
-- type: dgx8
+- type: h100
   count: 64
+  racks: 8
+  gpus:
+    count: 8
+    product: NVIDIA-H100-80GB-HBM3
   resources:
     cpu: 96
     memory: 1024Gi
-    nvidia.com/gpu: 8
-    pods: 256
+  labels:
+    example.com/rack: "rack-{{ .rack }}"
+- type: a100
+  count: 16
+  racks: 2
+  gpus:
+    count: 8
+    product: NVIDIA-A100-SXM4-80GB
+```
+
+Nodes can also carry `taints`, and `resourceSlices` publishes DRA devices for other drivers:
+```yaml
   taints:
   - key: dedicated
     value: gpu
     effect: NoExecute
   resourceSlices:
-  - driver: gpu.nvidia.com
-    devices: 8
-    attributes:
-      type:
-        string: gpu
+  - driver: example.com/nic
+    devices: 4
 ```
 
 There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
