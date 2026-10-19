@@ -52,6 +52,17 @@ Pod timestamps have one second resolution, so each wait carries about a second o
 
 A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares `podNameFormat` and `podCount`. Job wait runs from submission until the job's last required pod is scheduled, so it includes time spent in a queue before the pods exist.
 
+`results.json` also reports whether a scheduler favors some job sizes. Footprint is a job's total GPUs (GPUs per pod times pods).
+
+- `gang_stranded_gpu_hours`, `gang_stranded_share`: GPU time that gang members held before the gang was complete, over every attempt including replaced pods. The share divides by `gpu_hours`.
+- `wait_by_footprint`: job count, jobs started, wait and bounded slowdown per footprint bucket (1, 2, 3-4, 5-8, 9-16, 17+). A job that never created a pod has no footprint, so it counts in `jobs_never_admitted` but not in a bucket.
+- `footprint_wait_spearman`: rank correlation of footprint and job wait. Positive means bigger jobs wait longer.
+- `large_job_starvation_ratio`: mean wait of jobs of at least one node over mean wait of 1-GPU jobs.
+- `bsld_macro`: mean of the per-bucket mean slowdown, equal weight per bucket. Slowdown is max(1, (wait + runtime) / max(runtime, floor)), with the floor set by `-results.bsld-floor` (default 10m, in simulated time under `-speedup`). The value is null unless every job finished.
+- `jobs_never_admitted`: jobs with a pod that never got placed. `jobs_abandoned`, `abandoned_gpu_hours`: jobs fully placed but still running when the run ended, and the GPU-hours they used.
+
+Metrics that cannot be computed, such as a correlation over one job, are null.
+
 ```bash
 ./bin/knavigator -results ./out \
   -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,config-volcano.yaml,run-test.yaml}'

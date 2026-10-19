@@ -39,7 +39,7 @@ func TestSummarize(t *testing.T) {
 		{Namespace: "other", Name: "x", GPUs: 4, Created: at(2), Scheduled: at(2)},
 	}
 
-	s := Summarize(pods, jobs, 16, at(100))
+	s := Summarize(pods, jobs, 16, at(100), Options{MaxNodeGPUs: 8, BSLDFloor: time.Minute})
 
 	require.Equal(t, []string{"default/j1", "default/j1", "default/j10", ""},
 		[]string{pods[0].Job, pods[1].Job, pods[2].Job, pods[3].Job})
@@ -74,12 +74,12 @@ func TestSummarizeOutstanding(t *testing.T) {
 	}
 
 	// The unplaced pods and the job with no pods keep the run open until the timeout.
-	s := Summarize(pods, jobs, 8, at(3600))
+	s := Summarize(pods, jobs, 8, at(3600), Options{})
 	require.Equal(t, 3600.0, s.MakespanSec)
 	require.Equal(t, 1, s.JobsStarted)
 
 	// A drained run ends at its last completion.
-	s = Summarize(pods[:1], jobs[:1], 8, at(3600))
+	s = Summarize(pods[:1], jobs[:1], 8, at(3600), Options{})
 	require.Equal(t, 10.0, s.MakespanSec)
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
 }
@@ -99,6 +99,16 @@ func TestScaleTime(t *testing.T) {
 	require.Equal(t, 120.0, s.GPUHours)
 	require.Equal(t, 0.5, s.GPUUtilization)
 	require.Equal(t, Stats{Mean: 60, P95: 120, Max: 180}, s.JobWaitSec)
+}
+
+func TestScaleTimeSizes(t *testing.T) {
+	s := Summary{Sizes: Sizes{GangStrandedGPUHours: 1, AbandonedGPUHours: 2,
+		WaitByFootprint: []Footprint{{WaitSec: Stats{Mean: 1, P95: 2, Max: 3}, BSLD: Stats{Mean: 1.5}}}}}
+	s.ScaleTime(10)
+	require.Equal(t, 10.0, s.GangStrandedGPUHours)
+	require.Equal(t, 20.0, s.AbandonedGPUHours)
+	require.Equal(t, Stats{Mean: 10, P95: 20, Max: 30}, s.WaitByFootprint[0].WaitSec)
+	require.Equal(t, 1.5, s.WaitByFootprint[0].BSLD.Mean, "slowdown is a ratio")
 }
 
 func TestByGangSize(t *testing.T) {
@@ -122,7 +132,7 @@ func TestByGangSize(t *testing.T) {
 		{Namespace: "default", Name: "h-1", GPUs: 8, Created: t0},
 	}
 
-	s := Summarize(pods, jobs, 16, at(30))
+	s := Summarize(pods, jobs, 16, at(30), Options{})
 
 	require.Equal(t, []GangSize{
 		{Pods: 1, Submitted: 3, Waiting: 1, Running: 1, Complete: 1,
@@ -140,7 +150,7 @@ func TestByGangSizeSubSecondPlacement(t *testing.T) {
 	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0.Add(500 * time.Millisecond), Pods: 1, PodRegexp: "a-0"}}
 	pods := []Pod{{Namespace: "default", Name: "a-0", Created: t0, Scheduled: t0, Finished: t0.Add(time.Second)}}
 
-	s := Summarize(pods, jobs, 8, t0.Add(time.Minute))
+	s := Summarize(pods, jobs, 8, t0.Add(time.Minute), Options{})
 
 	require.Equal(t, Stats{Count: 1}, s.JobWaitSec, "wait is never negative")
 	require.Equal(t, Stats{Count: 1}, s.JobsByGangSize[0].WaitSec, "wait is never negative")
@@ -163,8 +173,57 @@ func TestByGangSizeReplacedPods(t *testing.T) {
 		{Namespace: "default", Name: "b-2", GPUs: 4, Phase: "Running", Created: at(8), Scheduled: at(9)},
 	}
 
-	s := Summarize(pods, jobs, 16, at(100))
+	s := Summarize(pods, jobs, 16, at(100), Options{})
 
 	require.Equal(t, 1, s.JobsByGangSize[0].Complete, "job a finished despite its lost attempts")
 	require.Equal(t, 1, s.JobsByGangSize[0].Running, "job b is still running its replacement")
+}
+
+func TestSizes(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	job := func(n string, pods int) Job {
+		return Job{Name: "default/" + n, Namespace: "default", Submitted: t0, Pods: pods, PodRegexp: n + "-[0-9]+"}
+	}
+	jobs := []Job{job("s", 1), job("g", 2), job("n", 1)}
+	pods := []Pod{
+		{Namespace: "default", Name: "s-0", GPUs: 1, Created: t0, Scheduled: at(0), Finished: at(100)},
+		// The gang holds 8 GPUs for 40s before its second pod lands, then runs 60s.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Created: t0, Scheduled: at(10), Finished: at(110)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Created: t0, Scheduled: at(50), Finished: at(110)},
+		{Namespace: "default", Name: "n-0", GPUs: 8, Created: t0},
+	}
+
+	s := Summarize(pods, jobs, 16, at(200), Options{MaxNodeGPUs: 8, BSLDFloor: time.Second})
+
+	require.InDelta(t, 8.0*40/3600, s.GangStrandedGPUHours, 1e-9)
+	require.Equal(t, 1, s.JobsNeverAdmitted)
+	require.Equal(t, 0, s.JobsAbandoned)
+	require.Nil(t, s.BSLDMacro, "a job never ran")
+	// Footprint 1 waited 0s, footprint 16 waited 50s: perfectly ranked.
+	require.InDelta(t, 1.0, *s.FootprintWaitSpearman, 1e-9)
+	require.Nil(t, s.LargeJobStarvationRatio, "single-GPU wait is zero")
+	require.Equal(t, "17+", s.WaitByFootprint[5].Bucket)
+	require.Equal(t, 0, s.WaitByFootprint[5].Jobs)
+	require.Equal(t, 1, s.WaitByFootprint[4].Started)
+	// (50+60)/60 for the gang; the single GPU job is clamped from 1 up to 1.
+	jobs = jobs[:2]
+	s = Summarize(pods[:3], jobs, 16, at(200), Options{MaxNodeGPUs: 8, BSLDFloor: time.Second})
+	require.InDelta(t, (110.0/60+1)/2, *s.BSLDMacro, 1e-9)
+}
+
+func TestAbandoned(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{{Namespace: "default", Name: "a-0", GPUs: 4, Created: t0, Scheduled: t0}}
+
+	s := Summarize(pods, jobs, 4, t0.Add(time.Hour), Options{})
+
+	require.Equal(t, 1, s.JobsAbandoned)
+	require.InDelta(t, 4.0, s.AbandonedGPUHours, 1e-9)
+}
+
+func TestSpearmanTies(t *testing.T) {
+	require.Nil(t, spearman([]float64{1, 1, 1}, []float64{1, 2, 3}))
+	require.InDelta(t, -1.0, *spearman([]float64{1, 2, 3}, []float64{9, 5, 1}), 1e-9)
 }
