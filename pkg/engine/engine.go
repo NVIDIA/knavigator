@@ -124,6 +124,16 @@ func (eng *Eng) GetTask(cfg *config.Task) (Runnable, error) {
 		}
 		return task, nil
 
+	case TaskSubmitTrace:
+		task, err := newSubmitTraceTask(eng.dynamicClient, eng, cfg)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := eng.objTypeMap[task.RefTaskID]; !ok {
+			return nil, fmt.Errorf("%s: unreferenced task ID %s", task.ID(), task.RefTaskID)
+		}
+		return task, nil
+
 	case TaskUpdateObj:
 		task, err := newUpdateObjTask(eng.dynamicClient, eng, cfg)
 		if err != nil {
