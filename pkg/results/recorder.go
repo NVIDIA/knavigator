@@ -189,7 +189,7 @@ func idle(pods []Pod, jobs []Job) bool {
 }
 
 // Finish waits until the run drains or the timeout passes, then writes the results into dir.
-func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job) error {
+func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64) error {
 	defer close(r.stop)
 
 	deadline := time.Now().Add(timeout)
@@ -218,6 +218,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	pods := r.snapshot()
 	summary := Summarize(pods, jobs, capacity, end)
+	if speedup > 1 {
+		summary.ScaleTime(speedup)
+	}
 	log.Infof("Results: %d pods (%d unscheduled), %d/%d jobs started, makespan %.0fs, GPU utilization %.1f%%, job wait p95 %.0fs",
 		summary.Pods, summary.PodsUnscheduled, summary.JobsStarted, summary.Jobs,
 		summary.MakespanSec, 100*summary.GPUUtilization, summary.JobWaitSec.P95)
