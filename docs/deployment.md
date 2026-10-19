@@ -46,7 +46,7 @@ For convenience, we have included them in [scripts/install_kwok.sh](../scripts/i
 
 ## Setting up virtual nodes
 
-Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, and `conditions`. The `type` and `count` attributes are mandatory, while the rest are optional.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, and `racks`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
 There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
@@ -81,6 +81,38 @@ For other node types, it is recommended to provide resource capacity. For exampl
     ephemeral-storage: 2537570228Ki
 ```
 
+A cluster can be described by node class. `gpus` sets `nvidia.com/gpu`, the `nvidia.com/gpu.count` and `nvidia.com/gpu.product` labels, and publishes the GPUs through a `gpu.nvidia.com` DRA `ResourceSlice` (Kubernetes 1.34 or later). `racks` spreads the nodes evenly over that many racks; label and annotation values can use `{{ .rack }}`, numbered from 1. For example, 64 H100 nodes in 8 racks and 16 A100 nodes in 2 racks:
+```yaml
+- type: h100
+  count: 64
+  racks: 8
+  gpus:
+    count: 8
+    product: NVIDIA-H100-80GB-HBM3
+  resources:
+    cpu: 96
+    memory: 1024Gi
+  labels:
+    example.com/rack: "rack-{{ .rack }}"
+- type: a100
+  count: 16
+  racks: 2
+  gpus:
+    count: 8
+    product: NVIDIA-A100-SXM4-80GB
+```
+
+Nodes can also carry `taints`, and `resourceSlices` publishes DRA devices for other drivers:
+```yaml
+  taints:
+  - key: dedicated
+    value: gpu
+    effect: NoExecute
+  resourceSlices:
+  - driver: example.com/nic
+    devices: 4
+```
+
 There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
 
 - Using the `helm` command:
@@ -97,6 +129,8 @@ There are two ways to set up virtual nodes in the cluster, both of which require
   Set up virtual nodes within the `Configure` task in the workflow config file.
   
   For this example, refer to [test-custom-resource.yml](../resources/workflows/test-custom-resource.yml#L11-L19).
+
+  The task installs the released `virtual-nodes` chart. Set `KNAVIGATOR_VIRTUAL_NODES_CHART` to a chart path, such as `charts/virtual-nodes`, to use a local copy instead.
 
 > :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 

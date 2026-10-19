@@ -193,10 +193,12 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	defer close(r.stop)
 
 	deadline := time.Now().Add(timeout)
+	drained := true
 	// Two idle polls in a row give controllers time to create the next pods.
 	for idleCount := 0; idleCount < 2; {
 		if time.Now().After(deadline) {
 			log.Warningf("Results: run did not drain within %s; recording pods as they are", timeout)
+			drained = false
 			break
 		}
 		if idle(r.snapshot(), jobs) {
@@ -232,7 +234,10 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := os.WriteFile(filepath.Join(dir, "results.json"), append(data, '\n'), 0o644); err != nil {
 		return err
 	}
-	return writeTimeline(filepath.Join(dir, "timeline.csv"), pods)
+	if err := writeTimeline(filepath.Join(dir, "timeline.csv"), pods); err != nil {
+		return err
+	}
+	return summary.check(drained)
 }
 
 // gpuCapacity sums allocatable GPUs over all nodes at the end of the run.

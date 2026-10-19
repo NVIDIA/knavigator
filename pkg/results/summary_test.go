@@ -83,3 +83,10 @@ func TestSummarizeOutstanding(t *testing.T) {
 	require.Equal(t, 10.0, s.MakespanSec)
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
 }
+
+func TestCheck(t *testing.T) {
+	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(false), "run did not drain: 1/2 jobs started")
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 2, PodsFailed: 1}.check(true), "1 pods failed")
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(true), "only 1/2 jobs started")
+}
