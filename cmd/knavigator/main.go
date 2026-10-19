@@ -71,6 +71,18 @@ func mainInternal() error {
 		return err
 	}
 
+	// Point helm at the same cluster, so runs against different contexts can share a host.
+	if len(args.kubeCfg.KubeConfigPath) != 0 {
+		if err = os.Setenv("KUBECONFIG", args.kubeCfg.KubeConfigPath); err != nil {
+			return err
+		}
+	}
+	if len(args.kubeCfg.KubeCtx) != 0 {
+		if err = os.Setenv("HELM_KUBECONTEXT", args.kubeCfg.KubeCtx); err != nil {
+			return err
+		}
+	}
+
 	eng, err := engine.New(restConfig, &args.cleanupInfo)
 	if err != nil {
 		return err

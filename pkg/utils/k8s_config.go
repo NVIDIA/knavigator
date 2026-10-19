@@ -42,7 +42,8 @@ func GetK8sConfig(cfg *cfg.KubeConfig) (*rest.Config, error) {
 	log.Infof("Using external kubeconfig")
 	configAccess := clientcmd.NewDefaultPathOptions()
 	if len(cfg.KubeConfigPath) != 0 {
-		configAccess.GlobalFile = cfg.KubeConfigPath
+		// An explicit path wins over KUBECONFIG; GlobalFile would only be a fallback to it.
+		configAccess.LoadingRules.ExplicitPath = cfg.KubeConfigPath
 	}
 
 	config, err := configAccess.GetStartingConfig()
