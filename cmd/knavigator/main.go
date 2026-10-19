@@ -21,11 +21,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
+	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/engine"
+	"github.com/NVIDIA/knavigator/pkg/results"
 	"github.com/NVIDIA/knavigator/pkg/server"
 	"github.com/NVIDIA/knavigator/pkg/utils"
 )
@@ -35,6 +38,8 @@ type Args struct {
 	workflow    string
 	port        int
 	cleanupInfo engine.CleanupInfo
+	results     string
+	resultsWait time.Duration
 }
 
 func mainInternal() error {
@@ -47,6 +52,8 @@ func mainInternal() error {
 	flag.DurationVar(&args.cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
 	flag.StringVar(&args.workflow, "workflow", "", "comma-separated list of workflow config files and dirs (mutually exclusive with the 'port' flag)")
 	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
+	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
+	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -77,6 +84,17 @@ func mainInternal() error {
 
 	ctx := context.Background()
 
+	var rec *results.Recorder
+	if len(args.results) != 0 {
+		client, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			return err
+		}
+		if rec, err = results.Start(ctx, client); err != nil {
+			return err
+		}
+	}
+
 	for _, workflow := range workflows {
 		log.Infof("Starting workflow %s", workflow.Name)
 		if err := engine.Run(ctx, eng, workflow); err != nil {
@@ -84,7 +102,30 @@ func mainInternal() error {
 		}
 	}
 
+	if rec != nil {
+		return rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng))
+	}
 	return nil
+}
+
+// submittedJobs lists one job per submitted object that declares a pod name format.
+func submittedJobs(eng *engine.Eng) []results.Job {
+	var jobs []results.Job
+	for _, info := range eng.ObjInfos() {
+		if len(info.PodRegexp) != len(info.Names) {
+			continue
+		}
+		for i, name := range info.Names {
+			jobs = append(jobs, results.Job{
+				Name:      info.Namespace + "/" + name,
+				Namespace: info.Namespace,
+				Submitted: info.Submitted,
+				Pods:      info.PodCount / len(info.Names),
+				PodRegexp: info.PodRegexp[i],
+			})
+		}
+	}
+	return jobs
 }
 
 func validate(args *Args) error {
@@ -94,6 +135,10 @@ func validate(args *Args) error {
 
 	if len(args.workflow) != 0 && args.port > 0 {
 		return fmt.Errorf("'workflow' and 'port' are mutually exclusive")
+	}
+
+	if len(args.results) != 0 && len(args.workflow) == 0 {
+		return fmt.Errorf("'results' requires 'workflow'")
 	}
 
 	return nil

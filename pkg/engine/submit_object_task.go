@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/maja42/goval"
 	"gopkg.in/yaml.v3"
@@ -124,6 +125,7 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		return err
 	}
 
+	submitted := time.Now()
 	for _, arr := range objs {
 		for i, obj := range arr {
 			crd := &unstructured.Unstructured{
@@ -150,8 +152,9 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 		}
 	}
 
-	return task.accessor.SetObjInfo(task.taskID,
-		NewObjInfo(names, objs[0][0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...))
+	info := NewObjInfo(names, objs[0][0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...)
+	info.Submitted = submitted
+	return task.accessor.SetObjInfo(task.taskID, info)
 }
 
 func (task *SubmitObjTask) getGenericObjects(regObjParams *RegisterObjParams) ([][]*GenericObject, []string, int, []string, error) {

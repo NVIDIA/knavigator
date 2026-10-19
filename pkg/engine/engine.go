@@ -247,6 +247,18 @@ func (eng *Eng) GetObjInfo(taskID string) (*ObjInfo, error) {
 	return info, nil
 }
 
+// ObjInfos returns the info of all submitted objects, keyed by task ID
+func (eng *Eng) ObjInfos() map[string]*ObjInfo {
+	eng.mutex.Lock()
+	defer eng.mutex.Unlock()
+
+	infos := make(map[string]*ObjInfo, len(eng.objInfoMap))
+	for id, info := range eng.objInfoMap {
+		infos[id] = info
+	}
+	return infos
+}
+
 func execRunnable(ctx context.Context, r Runnable) error {
 	id := r.ID()
 	log.Infof("Starting task %s", id)

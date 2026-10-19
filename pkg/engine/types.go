@@ -109,6 +109,7 @@ type ObjInfo struct {
 	GVR       []schema.GroupVersionResource
 	PodCount  int
 	PodRegexp []string
+	Submitted time.Time
 }
 
 // NewObjInfo creates new ObjInfo
