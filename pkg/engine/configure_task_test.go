@@ -78,6 +78,25 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: resource slice for node type dgx8 must have a driver and positive devices",
 		},
 		{
+			name:       "Case 4c: More racks than nodes",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes":   []interface{}{map[string]interface{}{"type": "dgx8", "count": 2, "racks": 3}},
+			},
+			err: "Configure/configure: racks for node type dgx8 must be between 0 and count",
+		},
+		{
+			name:       "Case 4d: GPUs without a count",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes": []interface{}{map[string]interface{}{"type": "dgx8", "count": 2,
+					"gpus": map[string]interface{}{"product": "H100"}}},
+			},
+			err: "Configure/configure: gpus for node type dgx8 must have a positive count",
+		},
+		{
 			name:       "Case 5a: Invalid namespace op",
 			simClients: true,
 			params: map[string]interface{}{
@@ -316,6 +335,11 @@ func TestNodes2JSON(t *testing.T) {
 			}},
 			expr: `nodes=[{"type":"dgx8","count":1,"taints":[{"key":"dedicated","value":"gpu","effect":"NoExecute"}],` +
 				`"resourceSlices":[{"driver":"gpu.nvidia.com","devices":8}]}]`,
+		},
+		{
+			name:  "Case 4: racks and gpus",
+			nodes: []virtualNode{{Type: "h100", Count: 64, Racks: 8, GPUs: &nodeGPUs{Count: 8, Product: "H100"}}},
+			expr:  `nodes=[{"type":"h100","count":64,"racks":8,"gpus":{"count":8,"product":"H100"}}]`,
 		},
 	}
 	for _, tc := range testCases {

@@ -65,6 +65,15 @@ type virtualNode struct {
 	Resources      map[string]interface{} `yaml:"resources,omitempty" json:"resources,omitempty"`
 	Taints         []corev1.Taint         `yaml:"taints,omitempty" json:"taints,omitempty"`
 	ResourceSlices []resourceSlice        `yaml:"resourceSlices,omitempty" json:"resourceSlices,omitempty"`
+	// Racks spreads the nodes evenly over this many racks; values can use {{ .rack }}, numbered from 1.
+	Racks int `yaml:"racks,omitempty" json:"racks,omitempty"`
+	// GPUs sets the GPU resource and product labels, and publishes the GPUs through DRA.
+	GPUs *nodeGPUs `yaml:"gpus,omitempty" json:"gpus,omitempty"`
+}
+
+type nodeGPUs struct {
+	Count   int    `yaml:"count" json:"count"`
+	Product string `yaml:"product,omitempty" json:"product,omitempty"`
 }
 
 // resourceSlice publishes DRA devices for each virtual node.
@@ -160,6 +169,12 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 	}
 
 	for _, node := range task.Nodes {
+		if node.Racks < 0 || node.Racks > node.Count {
+			return fmt.Errorf("%s: racks for node type %s must be between 0 and count", task.ID(), node.Type)
+		}
+		if node.GPUs != nil && node.GPUs.Count <= 0 {
+			return fmt.Errorf("%s: gpus for node type %s must have a positive count", task.ID(), node.Type)
+		}
 		for _, slice := range node.ResourceSlices {
 			if len(slice.Driver) == 0 || slice.Devices <= 0 {
 				return fmt.Errorf("%s: resource slice for node type %s must have a driver and positive devices", task.ID(), node.Type)
