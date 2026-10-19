@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -56,11 +57,21 @@ type configureTaskParams struct {
 }
 
 type virtualNode struct {
-	Type        string              `yaml:"type" json:"type"`
-	Count       int                 `yaml:"count" json:"count"`
-	Annotations map[string]string   `yaml:"annotations,omitempty" json:"annotations,omitempty"`
-	Labels      map[string]string   `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Conditions  []map[string]string `yaml:"conditions,omitempty" json:"conditions,omitempty"`
+	Type           string                 `yaml:"type" json:"type"`
+	Count          int                    `yaml:"count" json:"count"`
+	Annotations    map[string]string      `yaml:"annotations,omitempty" json:"annotations,omitempty"`
+	Labels         map[string]string      `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Conditions     []map[string]string    `yaml:"conditions,omitempty" json:"conditions,omitempty"`
+	Resources      map[string]interface{} `yaml:"resources,omitempty" json:"resources,omitempty"`
+	Taints         []corev1.Taint         `yaml:"taints,omitempty" json:"taints,omitempty"`
+	ResourceSlices []resourceSlice        `yaml:"resourceSlices,omitempty" json:"resourceSlices,omitempty"`
+}
+
+// resourceSlice publishes DRA devices for each virtual node.
+type resourceSlice struct {
+	Driver     string                 `yaml:"driver" json:"driver"`
+	Devices    int                    `yaml:"devices" json:"devices"`
+	Attributes map[string]interface{} `yaml:"attributes,omitempty" json:"attributes,omitempty"`
 }
 
 type namespace struct {
@@ -145,6 +156,14 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 			// nop
 		default:
 			return fmt.Errorf("%s: invalid PriorityClass operation %s; supported: %s, %s", task.ID(), pc.Op, OpCreate, OpDelete)
+		}
+	}
+
+	for _, node := range task.Nodes {
+		for _, slice := range node.ResourceSlices {
+			if len(slice.Driver) == 0 || slice.Devices <= 0 {
+				return fmt.Errorf("%s: resource slice for node type %s must have a driver and positive devices", task.ID(), node.Type)
+			}
 		}
 	}
 
@@ -414,17 +433,23 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 		return err
 	}
 
-	// update helm repo
-	args := []string{"repo", "add", "--force-update", "knavigator", "https://nvidia.github.io/knavigator/helm-charts"}
+	// A local chart lets a run use chart changes that are not released yet.
+	chart := os.Getenv("KNAVIGATOR_VIRTUAL_NODES_CHART")
+	if len(chart) == 0 {
+		chart = "knavigator/virtual-nodes"
 
-	log.V(4).Infof("Updating helm repo")
+		// update helm repo
+		args := []string{"repo", "add", "--force-update", "knavigator", "https://nvidia.github.io/knavigator/helm-charts"}
 
-	if err = runCommand(ctx, "helm", args); err != nil {
-		return err
+		log.V(4).Infof("Updating helm repo")
+
+		if err = runCommand(ctx, "helm", args); err != nil {
+			return err
+		}
 	}
 
 	// upgrade helm chart
-	args = []string{"upgrade", "--install", "virtual-nodes", "knavigator/virtual-nodes",
+	args := []string{"upgrade", "--install", "virtual-nodes", chart,
 		"--wait", "--set-json", nodeExpr}
 
 	log.V(4).Infof("Updating nodes with %v", append([]string{"helm"}, args...))

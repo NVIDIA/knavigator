@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -63,6 +64,18 @@ func TestNewConfigureTask(t *testing.T) {
 				"nodes":   "BAD",
 			},
 			err: "Configure/configure: failed to parse parameters: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `BAD` into []engine.virtualNode",
+		},
+		{
+			name:       "Case 4b: Resource slice without devices",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes": []interface{}{map[string]interface{}{
+					"type": "dgx8", "count": 1,
+					"resourceSlices": []interface{}{map[string]interface{}{"driver": "gpu.nvidia.com"}},
+				}},
+			},
+			err: "Configure/configure: resource slice for node type dgx8 must have a driver and positive devices",
 		},
 		{
 			name:       "Case 5a: Invalid namespace op",
@@ -292,6 +305,17 @@ func TestNodes2JSON(t *testing.T) {
 			name:  "Case 2: multiple entries",
 			nodes: []virtualNode{{Type: "dgxa100.80g", Count: 4}, {Type: "cpu-tiny", Count: 4}},
 			expr:  `nodes=[{"type":"dgxa100.80g","count":4},{"type":"cpu-tiny","count":4}]`,
+		},
+		{
+			name: "Case 3: taints and resource slices",
+			nodes: []virtualNode{{
+				Type:           "dgx8",
+				Count:          1,
+				Taints:         []corev1.Taint{{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoExecute}},
+				ResourceSlices: []resourceSlice{{Driver: "gpu.nvidia.com", Devices: 8}},
+			}},
+			expr: `nodes=[{"type":"dgx8","count":1,"taints":[{"key":"dedicated","value":"gpu","effect":"NoExecute"}],` +
+				`"resourceSlices":[{"driver":"gpu.nvidia.com","devices":8}]}]`,
 		},
 	}
 	for _, tc := range testCases {

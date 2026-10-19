@@ -46,7 +46,7 @@ For convenience, we have included them in [scripts/install_kwok.sh](../scripts/i
 
 ## Setting up virtual nodes
 
-Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, and `conditions`. The `type` and `count` attributes are mandatory, while the rest are optional.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, and `resourceSlices`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
 There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
@@ -81,6 +81,27 @@ For other node types, it is recommended to provide resource capacity. For exampl
     ephemeral-storage: 2537570228Ki
 ```
 
+Nodes can carry taints, and can publish [DRA](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/) devices through one `ResourceSlice` per driver (requires Kubernetes 1.34 or later). For example:
+```yaml
+- type: dgx8
+  count: 64
+  resources:
+    cpu: 96
+    memory: 1024Gi
+    nvidia.com/gpu: 8
+    pods: 256
+  taints:
+  - key: dedicated
+    value: gpu
+    effect: NoExecute
+  resourceSlices:
+  - driver: gpu.nvidia.com
+    devices: 8
+    attributes:
+      type:
+        string: gpu
+```
+
 There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
 
 - Using the `helm` command:
@@ -97,6 +118,8 @@ There are two ways to set up virtual nodes in the cluster, both of which require
   Set up virtual nodes within the `Configure` task in the workflow config file.
   
   For this example, refer to [test-custom-resource.yml](../resources/workflows/test-custom-resource.yml#L11-L19).
+
+  The task installs the released `virtual-nodes` chart. Set `KNAVIGATOR_VIRTUAL_NODES_CHART` to a chart path, such as `charts/virtual-nodes`, to use a local copy instead.
 
 > :warning: **Warning:** Ensure you deploy virtual nodes as the final step before launching `knavigator`. If you deploy any components after virtual nodes are created, the pods for these components might be assigned to virtual nodes, which could will their functionality.
 
