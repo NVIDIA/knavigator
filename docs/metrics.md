@@ -12,6 +12,8 @@ The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while
 
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 
+With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
+
 A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares `podNameFormat` and `podCount`. Job wait runs from submission until the job's last required pod is scheduled, so it includes time spent in a queue before the pods exist.
 
 ```bash
