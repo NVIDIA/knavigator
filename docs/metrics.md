@@ -15,6 +15,8 @@ The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while
 
 A run counts as drained once every job has placed and finished its pods. A pod that a scheduler evicted does not count, so a job finishes only when its replacement does.
 
+`-results.stall <duration>` stops the wait when no pod has been placed or has finished for that long, in real time, so a scheduler that has stopped making progress does not hold the run until `-results.timeout`. The files are written as for a timeout, `stalled` is true in `results.json`, and the exit status is an error. It is off by default. Set it longer than your longest job, because a run of long jobs that are all still running also makes no progress.
+
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 
 `results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.

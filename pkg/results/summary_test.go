@@ -86,6 +86,7 @@ func TestSummarizeOutstanding(t *testing.T) {
 
 func TestCheck(t *testing.T) {
 	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1, Stalled: true}.check(false), "run stalled: 1/2 jobs started")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(false), "run did not drain: 1/2 jobs started")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 2, PodsFailed: 1}.check(true), "1 pods failed")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(true), "only 1/2 jobs started")

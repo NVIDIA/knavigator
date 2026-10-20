@@ -40,7 +40,8 @@ import (
 // Only pods requesting this resource are recorded; make it a flag if other accelerators matter.
 const gpuResource corev1.ResourceName = "nvidia.com/gpu"
 
-const pollInterval = 5 * time.Second
+// A variable so tests can poll quickly.
+var pollInterval = 5 * time.Second
 
 // Recorder watches GPU pods created after it starts.
 type Recorder struct {
@@ -251,14 +252,15 @@ func idle(pods []Pod, jobs []Job) bool {
 }
 
 // Finish waits until the run drains or the timeout passes, then writes the results into dir.
-func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64) error {
+func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64, stall time.Duration) error {
 	defer close(r.stop)
 	if r.pusher != nil {
 		defer r.pusher.Stop()
 	}
 
 	deadline := time.Now().Add(timeout)
-	drained := true
+	drained, stalled := true, false
+	lastProgress, lastCount := time.Now(), -1
 	// Two idle polls in a row give controllers time to create the next pods.
 	for idleCount := 0; idleCount < 2; {
 		if time.Now().After(deadline) {
@@ -266,10 +268,18 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 			drained = false
 			break
 		}
-		if idle(r.snapshot(), jobs) {
+		pods := r.snapshot()
+		if idle(pods, jobs) {
 			idleCount++
 		} else {
 			idleCount = 0
+		}
+		if n := progress(pods); n != lastCount {
+			lastCount, lastProgress = n, time.Now()
+		} else if stall > 0 && idleCount == 0 && time.Since(lastProgress) > stall {
+			log.Warningf("Results: no pod was placed or finished for %s; stopping the run and recording pods as they are", stall)
+			drained, stalled = false, true
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -287,6 +297,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	events := r.eventList()
 	summary := Summarize(pods, jobs, capacity, end)
 	summary.PreemptionEvents = preemptionEvents(events)
+	summary.Stalled = stalled
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
 	}
@@ -317,6 +328,20 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		return err
 	}
 	return summary.check(drained)
+}
+
+// progress counts placements and completions; a run that stops changing it is not advancing.
+func progress(pods []Pod) int {
+	var n int
+	for _, p := range pods {
+		if !p.Scheduled.IsZero() {
+			n++
+		}
+		if !p.Finished.IsZero() {
+			n++
+		}
+	}
+	return n
 }
 
 // gpuCapacity sums allocatable GPUs over all nodes at the end of the run.

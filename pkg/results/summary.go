@@ -84,6 +84,8 @@ type Summary struct {
 	EvictedGPUHours float64 `json:"evicted_gpu_hours"`
 	// PreemptionEvents counts the scheduler's own preemption events, one per removed pod.
 	PreemptionEvents int `json:"preemption_events"`
+	// Stalled is set when the run stopped because nothing was placed or finished for -results.stall.
+	Stalled bool `json:"stalled"`
 }
 
 // Summarize sets Pod.Job and computes run metrics. Pods still running at end count as running until end.
@@ -236,6 +238,8 @@ func latest(a, b time.Time) time.Time {
 // check fails a run that left work unfinished, so a benchmark gate can rely on the exit code.
 func (s Summary) check(drained bool) error {
 	switch {
+	case s.Stalled:
+		return fmt.Errorf("run stalled: %d/%d jobs started", s.JobsStarted, s.Jobs)
 	case !drained:
 		return fmt.Errorf("run did not drain: %d/%d jobs started", s.JobsStarted, s.Jobs)
 	case s.PodsFailed > 0:

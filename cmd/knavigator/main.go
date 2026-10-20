@@ -34,16 +34,17 @@ import (
 )
 
 type Args struct {
-	kubeCfg     config.KubeConfig
-	workflow    string
-	port        int
-	cleanupInfo engine.CleanupInfo
-	results     string
-	resultsWait time.Duration
-	speedup     float64
-	pushURL     string
-	pushRun     string
-	pushEvery   time.Duration
+	kubeCfg      config.KubeConfig
+	workflow     string
+	port         int
+	cleanupInfo  engine.CleanupInfo
+	results      string
+	resultsWait  time.Duration
+	speedup      float64
+	pushURL      string
+	pushRun      string
+	pushEvery    time.Duration
+	resultsStall time.Duration
 }
 
 func mainInternal() error {
@@ -63,6 +64,7 @@ func mainInternal() error {
 	flag.StringVar(&args.pushRun, "results.run", "", "run label on pushed metrics (default: start time)")
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
+	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -138,7 +140,7 @@ func mainInternal() error {
 		return runErr
 	}
 	if runErr == nil {
-		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup)
+		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall)
 	}
 	// Cleanup waits for the results so running pods are recorded before they are deleted.
 	if err := eng.Reset(ctx); runErr == nil {
