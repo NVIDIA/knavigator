@@ -12,6 +12,8 @@ The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while
 
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 
+`results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.
+
 ### Prometheus and Grafana
 
 `-results.pushgateway <url>` also sends the run to a [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), so the run shows up next to the node metrics. Knavigator pushes the pod gauges and the summary of the run so far every `-results.push-interval` (default 10s), and the final summary when the run ends. Every series carries a `run` label, set with `-results.run` and defaulting to the start time, so separate runs stay apart. A failed push logs a warning and never fails the run.
@@ -40,7 +42,7 @@ The Pushgateway keeps the last value of a run until you delete it:
 curl -X DELETE http://localhost:9091/metrics/job/knavigator/run/baseline
 ```
 
-[`resources/dashboards/run-results.json`](../resources/dashboards/run-results.json) charts a run: the numbers so far, utilization over the selected time range (from `knavigator_gpus_in_use`), GPUs in use and waiting, and pods by state. Import it into Grafana next to `GPU-occupancy.json`, and pick the run from the `Run` variable.
+[`resources/dashboards/run-results.json`](../resources/dashboards/run-results.json) charts a run: the numbers so far, a table of jobs by gang size, utilization over the selected time range (from `knavigator_gpus_in_use`), GPUs in use and waiting, and pods by state. Import it into Grafana next to `GPU-occupancy.json`, and pick the run from the `Run` variable.
 
 With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
 

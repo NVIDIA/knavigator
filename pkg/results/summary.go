@@ -73,6 +73,8 @@ type Summary struct {
 	GPUUtilization  float64 `json:"gpu_utilization"`
 	PodWaitSec      Stats   `json:"pod_wait_sec"`
 	JobWaitSec      Stats   `json:"job_wait_sec"`
+	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
+	JobsByGangSize []GangSize `json:"jobs_by_gang_size"`
 }
 
 // Summarize sets Pod.Job and computes run metrics. Pods still running at end count as running until end.
@@ -143,6 +145,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	}
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
+	s.JobsByGangSize = byGangSize(pods, jobs, scheduled)
 	return s
 }
 
@@ -156,6 +159,12 @@ func (s *Summary) ScaleTime(speedup float64) {
 		st.Mean *= speedup
 		st.P95 *= speedup
 		st.Max *= speedup
+	}
+	for i := range s.JobsByGangSize {
+		w := &s.JobsByGangSize[i].WaitSec
+		w.Mean *= speedup
+		w.P95 *= speedup
+		w.Max *= speedup
 	}
 }
 
