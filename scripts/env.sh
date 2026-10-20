@@ -71,7 +71,7 @@ function wait_for_pods() {
 #
 function deploy_kwok() {
   KWOK_REPO=kubernetes-sigs/kwok
-  KWOK_RELEASE="v0.6.1"
+  KWOK_RELEASE="v0.8.0"
   printGreen Deploying KWOK $KWOK_RELEASE
 
   # Deploy KWOK controller
