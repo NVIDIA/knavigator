@@ -3,18 +3,23 @@ kind: Job
 metadata:
   name: "{{._NAME_}}"
   namespace: "default"
+  annotations:
+    kai.scheduler/batch-min-member: "{{.replicas}}"
 spec:
   completions: {{.replicas}}
   parallelism: {{.replicas}}
   template:
     metadata:
       labels:
-        runai/queue: "test"
+        kai.scheduler/queue: "test"
       annotations:
         pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
         pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
     spec:
       schedulerName: kai-scheduler
+      {{- if .priorityClassName }}
+      priorityClassName: {{.priorityClassName}}
+      {{- end }}
       containers:
       - name: test
         image: busybox
