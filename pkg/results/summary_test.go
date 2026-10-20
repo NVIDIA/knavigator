@@ -83,3 +83,13 @@ func TestSummarizeOutstanding(t *testing.T) {
 	require.Equal(t, 10.0, s.MakespanSec)
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
 }
+
+func TestScaleTime(t *testing.T) {
+	s := Summary{MakespanSec: 10, GPUHours: 2, GPUUtilization: 0.5, JobWaitSec: Stats{Mean: 1, P95: 2, Max: 3}}
+	s.ScaleTime(60)
+	require.Equal(t, 60.0, s.Speedup)
+	require.Equal(t, 600.0, s.MakespanSec)
+	require.Equal(t, 120.0, s.GPUHours)
+	require.Equal(t, 0.5, s.GPUUtilization)
+	require.Equal(t, Stats{Mean: 60, P95: 120, Max: 180}, s.JobWaitSec)
+}
