@@ -17,18 +17,23 @@ kind: Job
 metadata:
   name: "{{._NAME_}}"
   namespace: "{{.namespace}}"
+  annotations:
+    kai.scheduler/batch-min-member: "{{.replicas}}"
 spec:
   completions: {{.replicas}}
   parallelism: {{.replicas}}
   template:
     metadata:
       labels:
-        runai/queue: "{{.queue}}"
+        kai.scheduler/queue: "{{.queue}}"
       annotations:
         pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
         pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}
     spec:
       schedulerName: kai-scheduler
+      {{- if .priorityClassName }}
+      priorityClassName: {{.priorityClassName}}
+      {{- end }}
       containers:
       - name: test
         image: {{.image}}
