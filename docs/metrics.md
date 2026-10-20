@@ -57,7 +57,7 @@ A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares
 
 ### Time Compression
 
-`-speedup N` (requires `-workflow`) shrinks simulated time so long traces finish sooner. Knavigator divides every `Sleep` timeout and the `ttl` param of every `SubmitObj` task by N, so jobs run and arrive N times faster. `results.json` reports makespan, GPU-hours and waits in simulated seconds and records `speedup`. GPU utilization is a ratio and does not change. `timeline.csv` keeps real timestamps.
+`-speedup N` (requires `-workflow`) shrinks simulated time so long traces finish sooner. Knavigator divides every `Sleep` timeout and the `ttl` param of every `SubmitObj` task by N, and multiplies the `speedup` of every `SubmitTrace` task by N, so jobs run and arrive N times faster. `results.json` reports makespan, GPU-hours and waits in simulated seconds and records `speedup`. GPU utilization is a ratio and does not change. `timeline.csv` keeps real timestamps.
 
 ```bash
 ./bin/knavigator -speedup 60 -results ./out -workflow ...

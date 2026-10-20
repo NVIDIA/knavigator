@@ -62,7 +62,7 @@ func mainInternal() error {
 	flag.StringVar(&args.pushURL, "results.pushgateway", "", "Prometheus Pushgateway URL; pushes live run metrics and the summary (requires 'results')")
 	flag.StringVar(&args.pushRun, "results.run", "", "run label on pushed metrics (default: start time)")
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
-	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor; results report simulated time (requires 'workflow')")
+	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -158,7 +158,11 @@ func runWorkflow(ctx context.Context, eng *engine.Eng, workflow *config.Workflow
 	return nil
 }
 
-// speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks.
+// taskSubmitTrace is the SubmitTrace task type, matched by name so this works before and after the task exists.
+const taskSubmitTrace = "SubmitTrace"
+
+// speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks,
+// and multiplies the 'speedup' of SubmitTrace tasks.
 func speedUp(workflows []*config.Workflow, speedup float64) {
 	if speedup <= 1 {
 		return
@@ -172,9 +176,25 @@ func speedUp(workflows []*config.Workflow, speedup float64) {
 				if p, ok := t.Params["params"].(map[string]interface{}); ok {
 					scaleDuration(p, "ttl", speedup)
 				}
+			case taskSubmitTrace:
+				// The trace gets faster by the same factor, so the results can report simulated time.
+				if t.Params != nil {
+					t.Params["speedup"] = paramFloat(t.Params["speedup"], 1) * speedup
+				}
 			}
 		}
 	}
+}
+
+// paramFloat reads a number from decoded YAML, which can be an int or a float.
+func paramFloat(v interface{}, def float64) float64 {
+	switch x := v.(type) {
+	case int:
+		return float64(x)
+	case float64:
+		return x
+	}
+	return def
 }
 
 func scaleDuration(m map[string]interface{}, key string, speedup float64) {
