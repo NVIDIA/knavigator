@@ -89,10 +89,10 @@ func TestGetK8sConfig(t *testing.T) {
 			expectedErr: `no kubecontext "none"`,
 		},
 		{
-			name:         "Case 4: KUBECONFIG precedence",
+			name:         "Case 4: explicit path wins over KUBECONFIG",
 			kubeCfg:      testKubeCfg1,
 			envCfg:       testKubeCfg2,
-			expectedHost: "https://10.10.10.3:8443",
+			expectedHost: "https://10.10.10.1:8443",
 		},
 		{
 			name:         "Case 5: KUBECONFIG only",
