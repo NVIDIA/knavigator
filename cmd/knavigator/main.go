@@ -40,6 +40,7 @@ type Args struct {
 	cleanupInfo engine.CleanupInfo
 	results     string
 	resultsWait time.Duration
+	speedup     float64
 }
 
 func mainInternal() error {
@@ -54,6 +55,8 @@ func mainInternal() error {
 	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
 	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
 	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
+
+	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor; results report simulated time (requires 'workflow')")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -82,6 +85,8 @@ func mainInternal() error {
 		return err
 	}
 
+	speedUp(workflows, args.speedup)
+
 	ctx := context.Background()
 
 	var rec *results.Recorder
@@ -103,9 +108,36 @@ func mainInternal() error {
 	}
 
 	if rec != nil {
-		return rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng))
+		return rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup)
 	}
 	return nil
+}
+
+// speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks.
+func speedUp(workflows []*config.Workflow, speedup float64) {
+	if speedup <= 1 {
+		return
+	}
+	for _, w := range workflows {
+		for _, t := range w.Tasks {
+			switch t.Type {
+			case engine.TaskSleep:
+				scaleDuration(t.Params, "timeout", speedup)
+			case engine.TaskSubmitObj:
+				if p, ok := t.Params["params"].(map[string]interface{}); ok {
+					scaleDuration(p, "ttl", speedup)
+				}
+			}
+		}
+	}
+}
+
+func scaleDuration(m map[string]interface{}, key string, speedup float64) {
+	if s, ok := m[key].(string); ok {
+		if d, err := time.ParseDuration(s); err == nil {
+			m[key] = time.Duration(float64(d) / speedup).String()
+		}
+	}
 }
 
 // submittedJobs lists one job per submitted object that declares a pod name format.
@@ -135,6 +167,14 @@ func validate(args *Args) error {
 
 	if len(args.workflow) != 0 && args.port > 0 {
 		return fmt.Errorf("'workflow' and 'port' are mutually exclusive")
+	}
+
+	if args.speedup < 1 {
+		return fmt.Errorf("'speedup' must be at least 1")
+	}
+
+	if args.speedup > 1 && len(args.workflow) == 0 {
+		return fmt.Errorf("'speedup' requires 'workflow'")
 	}
 
 	if len(args.results) != 0 && len(args.workflow) == 0 {

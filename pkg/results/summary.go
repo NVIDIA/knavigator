@@ -58,6 +58,7 @@ type Stats struct {
 }
 
 type Summary struct {
+	Speedup         float64 `json:"speedup,omitempty"`
 	Pods            int     `json:"pods"`
 	PodsUnscheduled int     `json:"pods_unscheduled"`
 	PodsFailed      int     `json:"pods_failed"`
@@ -140,6 +141,19 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
 	return s
+}
+
+// ScaleTime converts the durations from real seconds to simulated seconds for a run that
+// compressed time by speedup. Ratios such as GPU utilization are unchanged.
+func (s *Summary) ScaleTime(speedup float64) {
+	s.Speedup = speedup
+	s.MakespanSec *= speedup
+	s.GPUHours *= speedup
+	for _, st := range []*Stats{&s.PodWaitSec, &s.JobWaitSec} {
+		st.Mean *= speedup
+		st.P95 *= speedup
+		st.Max *= speedup
+	}
 }
 
 func assignJobs(pods []Pod, jobs []Job) {
