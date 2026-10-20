@@ -84,6 +84,13 @@ func TestSummarizeOutstanding(t *testing.T) {
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
 }
 
+func TestCheck(t *testing.T) {
+	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(false), "run did not drain: 1/2 jobs started")
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 2, PodsFailed: 1}.check(true), "1 pods failed")
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(true), "only 1/2 jobs started")
+}
+
 func TestScaleTime(t *testing.T) {
 	s := Summary{MakespanSec: 10, GPUHours: 2, GPUUtilization: 0.5, JobWaitSec: Stats{Mean: 1, P95: 2, Max: 3}}
 	s.ScaleTime(60)
