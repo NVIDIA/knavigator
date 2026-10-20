@@ -44,6 +44,8 @@ curl -X DELETE http://localhost:9091/metrics/job/knavigator/run/baseline
 
 [`resources/dashboards/run-results.json`](../resources/dashboards/run-results.json) charts a run: the numbers so far, a table of jobs by gang size, utilization over the selected time range (from `knavigator_gpus_in_use`), GPUs in use and waiting, and pods by state. Import it into Grafana next to `GPU-occupancy.json`, and pick the run from the `Run` variable.
 
+`resources/dashboards/GPU-occupancy.json` averages cluster occupancy over the time range as GPUs requested divided by GPUs in the cluster, so nodes that came and went during the range count for the time they existed. It also reports two GPU-hour totals over the time range shown. Wasted GPU-hours counts GPUs that sat idle while pods were waiting for GPUs: at each moment, the smaller of the idle GPUs and the GPUs requested by waiting pods. Idle GPU-hours counts GPUs that no pod requested, whether or not work was waiting. Both come from `node_resource_requests` and kube-state-metrics, so they work without `-results.pushgateway`.
+
 With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
 
 A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares `podNameFormat` and `podCount`. Job wait runs from submission until the job's last required pod is scheduled, so it includes time spent in a queue before the pods exist.
