@@ -168,3 +168,30 @@ func TestByGangSizeReplacedPods(t *testing.T) {
 	require.Equal(t, 1, s.JobsByGangSize[0].Complete, "job a finished despite its lost attempts")
 	require.Equal(t, 1, s.JobsByGangSize[0].Running, "job b is still running its replacement")
 }
+
+func TestSummarizeEvicted(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"},
+		{Name: "default/b", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "b-[0-9]+"},
+	}
+	pods := []Pod{
+		// Placed, then deleted after 3600s: preempted. The replacement finishes normally.
+		{Namespace: "default", Name: "a-0", GPUs: 8, Phase: "Deleted", Created: t0, Scheduled: t0, Finished: at(3600)},
+		{Namespace: "default", Name: "a-0", GPUs: 8, Phase: "Succeeded", Created: at(3600), Scheduled: at(3601), Finished: at(3700)},
+		// Deleted before it was ever placed: nothing was lost.
+		{Namespace: "default", Name: "b-0", GPUs: 8, Phase: "Deleted", Created: t0, Finished: at(10)},
+		// Deleted but owned by no submitted job.
+		{Namespace: "other", Name: "x", GPUs: 4, Phase: "Deleted", Created: t0, Scheduled: t0, Finished: at(1800)},
+	}
+
+	s := Summarize(pods, jobs, 16, at(4000))
+
+	require.Equal(t, 2, s.PodsEvicted)
+	require.Equal(t, 1, s.JobsEvicted)
+	require.InDelta(t, 8.0+2.0, s.EvictedGPUHours, 1e-9)
+
+	s.ScaleTime(60)
+	require.InDelta(t, 600.0, s.EvictedGPUHours, 1e-9)
+}

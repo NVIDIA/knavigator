@@ -5,10 +5,15 @@ Moreover, Knavigator's functionality relies on a Prometheus server  to execute t
 
 ## Run Results
 
-The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes two files:
+The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes three files:
 
 - `timeline.csv`: one row per pod with its job, node, GPUs, phase, and created, scheduled and finished times.
 - `results.json`: failed pods, makespan, GPU-hours, GPU utilization against allocatable GPUs, pods never scheduled, jobs started, and mean, p95 and max wait for pods and jobs.
+- `events.csv`: warning events and every eviction or preemption event (`Preempted`, `Preempting`, `Evict`, `Evicted`) since the run started, up to 10000. It shows why a scheduler left work waiting or removed pods.
+
+`results.json` also reports preemption. `pods_evicted` counts pods deleted after they were placed and before they finished. Schedulers preempt by deleting pods, and job controllers and cleanup delete pods too, so compare it with `preemption_events`, the number of `Preempted` and `Evict` events (one per removed pod). `jobs_evicted` counts jobs that lost a pod this way, and `evicted_gpu_hours` is the GPU time those pods had already used.
+
+A run counts as drained once every job has placed and finished its pods. A pod that a scheduler evicted does not count, so a job finishes only when its replacement does.
 
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 

@@ -50,6 +50,7 @@ type Recorder struct {
 	mutex  sync.Mutex
 	pods   map[types.UID]*Pod
 	pusher *Pusher
+	events map[types.UID]*Event
 }
 
 // Start begins watching pods and returns once the watch cache has synced.
@@ -57,9 +58,10 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 	r := &Recorder{
 		client: client,
 		// Creation timestamps have one second resolution.
-		start: time.Now().Truncate(time.Second),
-		stop:  make(chan struct{}),
-		pods:  make(map[types.UID]*Pod),
+		start:  time.Now().Truncate(time.Second),
+		stop:   make(chan struct{}),
+		pods:   make(map[types.UID]*Pod),
+		events: make(map[types.UID]*Event),
 	}
 
 	factory := informers.NewSharedInformerFactory(client, 0)
@@ -78,10 +80,19 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 		return nil, err
 	}
 
+	eventInformer := factory.Core().V1().Events().Informer()
+	_, err = eventInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    r.observeEvent,
+		UpdateFunc: func(_, obj interface{}) { r.observeEvent(obj) },
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	factory.Start(r.stop)
-	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced, eventInformer.HasSynced) {
 		close(r.stop)
-		return nil, fmt.Errorf("pod informer failed to sync")
+		return nil, fmt.Errorf("informers failed to sync")
 	}
 	return r, nil
 }
@@ -102,6 +113,34 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		}
 		return s, nil
 	}, interval)
+}
+
+func (r *Recorder) observeEvent(obj interface{}) {
+	e, ok := obj.(*corev1.Event)
+	if !ok || !keepEvent(e) {
+		return
+	}
+	ev := toEvent(e)
+	if ev.Time.Before(r.start) {
+		return
+	}
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if _, seen := r.events[e.UID]; !seen && len(r.events) >= maxEvents {
+		return
+	}
+	r.events[e.UID] = &ev
+}
+
+func (r *Recorder) eventList() []Event {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	events := make([]Event, 0, len(r.events))
+	for _, e := range r.events {
+		events = append(events, *e)
+	}
+	return events
 }
 
 func (r *Recorder) observe(obj interface{}, deleted bool) {
@@ -189,7 +228,7 @@ func (r *Recorder) snapshot() []Pod {
 	return pods
 }
 
-// idle reports whether every job has created its pods and no recorded pod is still active.
+// idle reports whether every job has placed and finished its pods and no recorded pod is still active.
 func idle(pods []Pod, jobs []Job) bool {
 	assignJobs(pods, jobs)
 	seen := map[string]int{}
@@ -197,7 +236,11 @@ func idle(pods []Pod, jobs []Job) bool {
 		if p.Finished.IsZero() {
 			return false
 		}
-		seen[p.Job]++
+		// An evicted pod does not finish its job: the controller creates a replacement. A pod that
+		// ended without ever being placed does not either.
+		if !p.Scheduled.IsZero() && p.Phase != phaseDeleted {
+			seen[p.Job]++
+		}
 	}
 	for _, j := range jobs {
 		if seen[j.Name] < j.Pods {
@@ -241,7 +284,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		return err
 	}
 	pods := r.snapshot()
+	events := r.eventList()
 	summary := Summarize(pods, jobs, capacity, end)
+	summary.PreemptionEvents = preemptionEvents(events)
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
 	}
@@ -266,6 +311,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		return err
 	}
 	if err := writeTimeline(filepath.Join(dir, "timeline.csv"), pods); err != nil {
+		return err
+	}
+	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
 		return err
 	}
 	return summary.check(drained)

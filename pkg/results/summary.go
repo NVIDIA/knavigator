@@ -75,6 +75,15 @@ type Summary struct {
 	JobWaitSec      Stats   `json:"job_wait_sec"`
 	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
 	JobsByGangSize []GangSize `json:"jobs_by_gang_size"`
+	// PodsEvicted counts pods deleted after they were placed and before they finished; schedulers
+	// preempt by deleting pods, and job controllers and cleanup do too.
+	PodsEvicted int `json:"pods_evicted"`
+	// JobsEvicted counts jobs that lost at least one pod that way.
+	JobsEvicted int `json:"jobs_evicted"`
+	// EvictedGPUHours is the GPU time those pods had already used, work that a restart repeats.
+	EvictedGPUHours float64 `json:"evicted_gpu_hours"`
+	// PreemptionEvents counts the scheduler's own preemption events, one per removed pod.
+	PreemptionEvents int `json:"preemption_events"`
 }
 
 // Summarize sets Pod.Job and computes run metrics. Pods still running at end count as running until end.
@@ -87,6 +96,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	// Earliest placement per pod name, so a replacement attempt cannot fill another worker's slot.
 	scheduled := map[string]map[string]time.Time{}
 	outstanding := false
+	evicted := map[string]bool{}
 
 	for _, p := range pods {
 		first = earliest(first, p.Created)
@@ -104,6 +114,11 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		}
 		last = latest(last, fin)
 		s.GPUHours += p.GPUs * fin.Sub(p.Scheduled).Hours()
+		if p.Phase == phaseDeleted {
+			s.PodsEvicted++
+			s.EvictedGPUHours += p.GPUs * fin.Sub(p.Scheduled).Hours()
+			evicted[p.Job] = true
+		}
 		podWaits = append(podWaits, p.Scheduled.Sub(p.Created).Seconds())
 		if scheduled[p.Job] == nil {
 			scheduled[p.Job] = map[string]time.Time{}
@@ -113,6 +128,8 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		}
 	}
 
+	delete(evicted, "") // pods that belong to no submitted job
+	s.JobsEvicted = len(evicted)
 	var jobWaits []float64
 	for _, j := range jobs {
 		first = earliest(first, j.Submitted)
@@ -156,6 +173,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.Speedup = speedup
 	s.MakespanSec *= speedup
 	s.GPUHours *= speedup
+	s.EvictedGPUHours *= speedup
 	for _, st := range []*Stats{&s.PodWaitSec, &s.JobWaitSec} {
 		st.Mean *= speedup
 		st.P95 *= speedup
