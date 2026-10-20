@@ -37,6 +37,8 @@ type Pod struct {
 	Job       string
 	Node      string
 	GPUs      float64
+	// Priority is the pod's resolved priority (spec.priority), 0 when it has none.
+	Priority  int
 	Phase     string
 	Created   time.Time
 	Scheduled time.Time
@@ -84,8 +86,23 @@ type Summary struct {
 	EvictedGPUHours float64 `json:"evicted_gpu_hours"`
 	// PreemptionEvents counts the scheduler's own preemption events, one per removed pod.
 	PreemptionEvents int `json:"preemption_events"`
+	// EvictionsByPriority groups the evicted pods by the victim's priority, lowest first.
+	EvictionsByPriority []PriorityEvictions `json:"evictions_by_priority"`
+	// JobsEvictedAgain counts jobs that lost more pods than they have, so a pod was evicted at least
+	// twice. Each restart repeats the lost work.
+	JobsEvictedAgain int `json:"jobs_evicted_again"`
+	// MaxEvictionsPerJob is the most times one job was evicted; a whole gang evicted at once counts once.
+	MaxEvictionsPerJob int `json:"max_evictions_per_job"`
 	// Stalled is set when the run stopped because nothing was placed or finished for -results.stall.
 	Stalled bool `json:"stalled"`
+}
+
+// PriorityEvictions counts the evicted pods of one priority.
+type PriorityEvictions struct {
+	Priority int     `json:"priority"`
+	Pods     int     `json:"pods"`
+	Jobs     int     `json:"jobs"`
+	GPUHours float64 `json:"gpu_hours"`
 }
 
 // Summarize sets Pod.Job and computes run metrics. Pods still running at end count as running until end.
@@ -99,6 +116,9 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	scheduled := map[string]map[string]time.Time{}
 	outstanding := false
 	evicted := map[string]bool{}
+	evictedPods := map[string]int{}
+	byPriority := map[int]*PriorityEvictions{}
+	priorityJobs := map[int]map[string]bool{}
 
 	for _, p := range pods {
 		first = earliest(first, p.Created)
@@ -120,6 +140,16 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 			s.PodsEvicted++
 			s.EvictedGPUHours += p.GPUs * fin.Sub(p.Scheduled).Hours()
 			evicted[p.Job] = true
+			evictedPods[p.Job]++
+			e := byPriority[p.Priority]
+			if e == nil {
+				e = &PriorityEvictions{Priority: p.Priority}
+				byPriority[p.Priority] = e
+				priorityJobs[p.Priority] = map[string]bool{}
+			}
+			e.Pods++
+			e.GPUHours += p.GPUs * fin.Sub(p.Scheduled).Hours()
+			priorityJobs[p.Priority][p.Job] = true
 		}
 		podWaits = append(podWaits, p.Scheduled.Sub(p.Created).Seconds())
 		if scheduled[p.Job] == nil {
@@ -132,6 +162,11 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 
 	delete(evicted, "") // pods that belong to no submitted job
 	s.JobsEvicted = len(evicted)
+	for _, pe := range byPriority {
+		pe.Jobs = len(priorityJobs[pe.Priority])
+		s.EvictionsByPriority = append(s.EvictionsByPriority, *pe)
+	}
+	sort.Slice(s.EvictionsByPriority, func(a, b int) bool { return s.EvictionsByPriority[a].Priority < s.EvictionsByPriority[b].Priority })
 	var jobWaits []float64
 	for _, j := range jobs {
 		first = earliest(first, j.Submitted)
@@ -151,6 +186,15 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		s.JobsStarted++
 		// Pod timestamps have one second resolution, so a fast placement can read as before submission.
 		jobWaits = append(jobWaits, math.Max(0, ts[j.Pods-1].Sub(j.Submitted).Seconds()))
+	}
+
+	for _, j := range jobs {
+		if e := evictedPods[j.Name]; j.Pods > 0 && e > 0 {
+			if e > j.Pods {
+				s.JobsEvictedAgain++
+			}
+			s.MaxEvictionsPerJob = max(s.MaxEvictionsPerJob, (e+j.Pods-1)/j.Pods)
+		}
 	}
 
 	// Work still waiting at the end keeps the cluster's idle time in the denominator.
@@ -176,6 +220,9 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.MakespanSec *= speedup
 	s.GPUHours *= speedup
 	s.EvictedGPUHours *= speedup
+	for i := range s.EvictionsByPriority {
+		s.EvictionsByPriority[i].GPUHours *= speedup
+	}
 	for _, st := range []*Stats{&s.PodWaitSec, &s.JobWaitSec} {
 		st.Mean *= speedup
 		st.P95 *= speedup

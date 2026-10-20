@@ -74,3 +74,19 @@ func TestProgress(t *testing.T) {
 	require.Equal(t, 1, progress([]Pod{{Created: t0, Scheduled: t0}}))
 	require.Equal(t, 3, progress([]Pod{{Scheduled: t0, Finished: t0}, {Scheduled: t0}}))
 }
+
+func TestObserveRecordsPriority(t *testing.T) {
+	r := &Recorder{pods: map[types.UID]*Pod{}, events: map[types.UID]*Event{}}
+	high, plain := gpuPod("high-0"), gpuPod("plain-0")
+	prio := int32(1000)
+	high.Spec.Priority = &prio
+
+	r.observe(high, false)
+	r.observe(plain, false)
+
+	byName := map[string]int{}
+	for _, p := range r.snapshot() {
+		byName[p.Name] = p.Priority
+	}
+	require.Equal(t, map[string]int{"high-0": 1000, "plain-0": 0}, byName, "a pod without a priority reads 0")
+}

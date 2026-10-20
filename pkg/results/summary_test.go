@@ -196,3 +196,44 @@ func TestSummarizeEvicted(t *testing.T) {
 	s.ScaleTime(60)
 	require.InDelta(t, 600.0, s.EvictedGPUHours, 1e-9)
 }
+
+func TestSummarizeEvictionsByPriority(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"},
+		{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[0-9]+"},
+		{Name: "default/b", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "b-[0-9]+"},
+	}
+	evicted := func(name string, prio int, gpus float64, start, end int) Pod {
+		return Pod{Namespace: "default", Name: name, GPUs: gpus, Priority: prio, Phase: phaseDeleted,
+			Created: at(start), Scheduled: at(start), Finished: at(end)}
+	}
+	pods := []Pod{
+		// Job a, priority 50, is evicted three times: its pod restarts each time.
+		evicted("a-0", 50, 4, 0, 3600), evicted("a-1", 50, 4, 3600, 7200), evicted("a-2", 50, 4, 7200, 10800),
+		// Gang g, priority 100, loses both pods once: one round, not a repeat.
+		evicted("g-0", 100, 8, 0, 3600), evicted("g-1", 100, 8, 0, 3600),
+		// Job b, priority 50, is evicted once.
+		evicted("b-0", 50, 2, 0, 3600),
+	}
+
+	s := Summarize(pods, jobs, 16, at(20000))
+
+	require.Equal(t, []PriorityEvictions{
+		{Priority: 50, Pods: 4, Jobs: 2, GPUHours: 3*4 + 2},
+		{Priority: 100, Pods: 2, Jobs: 1, GPUHours: 16},
+	}, s.EvictionsByPriority)
+	require.Equal(t, 1, s.JobsEvictedAgain, "only job a lost more pods than it has")
+	require.Equal(t, 3, s.MaxEvictionsPerJob)
+
+	s.ScaleTime(60)
+	require.Equal(t, 840.0, s.EvictionsByPriority[0].GPUHours)
+}
+
+func TestSummarizeNoEvictionsByPriority(t *testing.T) {
+	s := Summarize(nil, nil, 8, time.Now())
+	require.Empty(t, s.EvictionsByPriority)
+	require.Zero(t, s.JobsEvictedAgain)
+	require.Zero(t, s.MaxEvictionsPerJob)
+}

@@ -161,6 +161,9 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 	p, ok := r.pods[pod.UID]
 	if !ok {
 		p = &Pod{Namespace: pod.Namespace, Name: pod.Name, GPUs: gpus, Created: pod.CreationTimestamp.Time}
+		if pod.Spec.Priority != nil {
+			p.Priority = int(*pod.Spec.Priority)
+		}
 		r.pods[pod.UID] = p
 	}
 	p.Phase = string(pod.Status.Phase)
@@ -373,10 +376,10 @@ func writeTimeline(path string, pods []Pod) error {
 		return t.UTC().Format(time.RFC3339Nano)
 	}
 	w := csv.NewWriter(f)
-	_ = w.Write([]string{"namespace", "pod", "job", "node", "gpus", "phase", "created", "scheduled", "finished"})
+	_ = w.Write([]string{"namespace", "pod", "job", "node", "gpus", "priority", "phase", "created", "scheduled", "finished"})
 	for _, p := range pods {
 		_ = w.Write([]string{p.Namespace, p.Name, p.Job, p.Node, strconv.FormatFloat(p.GPUs, 'f', -1, 64),
-			p.Phase, ts(p.Created), ts(p.Scheduled), ts(p.Finished)})
+			strconv.Itoa(p.Priority), p.Phase, ts(p.Created), ts(p.Scheduled), ts(p.Finished)})
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
