@@ -111,6 +111,13 @@ function deploy_prometheus() {
   helm upgrade --install -n monitoring node-resource-exporter --wait $REPO_HOME/charts/node-resource-exporter
 
   kubectl -n monitoring wait --for=condition=ready pod -l app.kubernetes.io/name=node-resource-exporter --timeout=600s
+
+  PUSHGATEWAY_VERSION=3.9.1
+  printGreen Deploying Pushgateway $PUSHGATEWAY_VERSION
+
+  helm upgrade --install -n monitoring pushgateway prometheus-community/prometheus-pushgateway \
+    --version=$PUSHGATEWAY_VERSION --wait \
+    --set serviceMonitor.enabled=true
 }
 
 # Tested workload managers

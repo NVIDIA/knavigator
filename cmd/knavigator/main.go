@@ -41,6 +41,9 @@ type Args struct {
 	results     string
 	resultsWait time.Duration
 	speedup     float64
+	pushURL     string
+	pushRun     string
+	pushEvery   time.Duration
 }
 
 func mainInternal() error {
@@ -56,6 +59,9 @@ func mainInternal() error {
 	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
 	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
 
+	flag.StringVar(&args.pushURL, "results.pushgateway", "", "Prometheus Pushgateway URL; pushes live run metrics and the summary (requires 'results')")
+	flag.StringVar(&args.pushRun, "results.run", "", "run label on pushed metrics (default: start time)")
+	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 
 	log.InitFlags(nil)
@@ -111,6 +117,12 @@ func mainInternal() error {
 		}
 		if rec, err = results.Start(ctx, client); err != nil {
 			return err
+		}
+		if len(args.pushURL) != 0 {
+			if len(args.pushRun) == 0 {
+				args.pushRun = time.Now().UTC().Format("20060102T150405")
+			}
+			rec.PushTo(ctx, args.pushURL, args.pushRun, args.pushEvery, func() []results.Job { return submittedJobs(eng) }, args.speedup)
 		}
 	}
 
@@ -220,6 +232,10 @@ func validate(args *Args) error {
 
 	if args.speedup > 1 && len(args.workflow) == 0 {
 		return fmt.Errorf("'speedup' requires 'workflow'")
+	}
+
+	if len(args.pushURL) != 0 && len(args.results) == 0 {
+		return fmt.Errorf("'results.pushgateway' requires 'results'")
 	}
 
 	if len(args.results) != 0 && len(args.workflow) == 0 {

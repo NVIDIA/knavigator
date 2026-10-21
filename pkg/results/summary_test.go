@@ -100,3 +100,70 @@ func TestScaleTime(t *testing.T) {
 	require.Equal(t, 0.5, s.GPUUtilization)
 	require.Equal(t, Stats{Mean: 60, P95: 120, Max: 180}, s.JobWaitSec)
 }
+
+func TestByGangSize(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	job := func(n string, pods int) Job {
+		return Job{Name: "default/" + n, Namespace: "default", Submitted: t0, Pods: pods, PodRegexp: n + "-[0-9]+"}
+	}
+	jobs := []Job{job("a", 1), job("b", 1), job("c", 1), job("g", 2), job("h", 2)}
+	pods := []Pod{
+		// a: done. b: running. c: not placed.
+		{Namespace: "default", Name: "a-0", GPUs: 1, Phase: "Succeeded", Created: t0, Scheduled: at(2), Finished: at(10)},
+		{Namespace: "default", Name: "b-0", GPUs: 1, Phase: "Running", Created: t0, Scheduled: at(4)},
+		{Namespace: "default", Name: "c-0", GPUs: 1, Created: t0},
+		// g: both pods done, one replaced after a preemption; its wait ends at the last pod's first
+		// placement, as for Summary.JobWaitSec. h: one pod placed, so still waiting.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Created: t0, Scheduled: at(1), Finished: at(5), Phase: phaseDeleted},
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: at(5), Scheduled: at(6), Finished: at(20)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(3), Finished: at(20)},
+		{Namespace: "default", Name: "h-0", GPUs: 8, Created: t0, Scheduled: at(1)},
+		{Namespace: "default", Name: "h-1", GPUs: 8, Created: t0},
+	}
+
+	s := Summarize(pods, jobs, 16, at(30))
+
+	require.Equal(t, []GangSize{
+		{Pods: 1, Submitted: 3, Waiting: 1, Running: 1, Complete: 1,
+			WaitSec: Stats{Count: 2, Mean: 3, P95: 4, Max: 4}},
+		{Pods: 2, Submitted: 2, Waiting: 1, Running: 0, Complete: 1,
+			WaitSec: Stats{Count: 1, Mean: 3, P95: 3, Max: 3}},
+	}, s.JobsByGangSize)
+
+	s.ScaleTime(10)
+	require.Equal(t, Stats{Count: 2, Mean: 30, P95: 40, Max: 40}, s.JobsByGangSize[0].WaitSec)
+}
+
+func TestByGangSizeSubSecondPlacement(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0.Add(500 * time.Millisecond), Pods: 1, PodRegexp: "a-0"}}
+	pods := []Pod{{Namespace: "default", Name: "a-0", Created: t0, Scheduled: t0, Finished: t0.Add(time.Second)}}
+
+	s := Summarize(pods, jobs, 8, t0.Add(time.Minute))
+
+	require.Equal(t, Stats{Count: 1}, s.JobsByGangSize[0].WaitSec, "wait is never negative")
+}
+
+func TestByGangSizeReplacedPods(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[a-z0-9]+"},
+		{Name: "default/b", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "b-[a-z0-9]+"},
+	}
+	pods := []Pod{
+		// Job a: a pod that failed before it was placed, an evicted pod, then the pod that finished.
+		{Namespace: "default", Name: "a-1", GPUs: 4, Phase: "Failed", Created: at(0), Finished: at(2)},
+		{Namespace: "default", Name: "a-2", GPUs: 4, Phase: phaseDeleted, Created: at(2), Scheduled: at(3), Finished: at(9)},
+		{Namespace: "default", Name: "a-3", GPUs: 4, Phase: "Succeeded", Created: at(9), Scheduled: at(10), Finished: at(60)},
+		// Job b: evicted, with its replacement still running.
+		{Namespace: "default", Name: "b-1", GPUs: 4, Phase: phaseDeleted, Created: at(0), Scheduled: at(1), Finished: at(8)},
+		{Namespace: "default", Name: "b-2", GPUs: 4, Phase: "Running", Created: at(8), Scheduled: at(9)},
+	}
+
+	s := Summarize(pods, jobs, 16, at(100))
+
+	require.Equal(t, 1, s.JobsByGangSize[0].Complete, "job a finished despite its lost attempts")
+	require.Equal(t, 1, s.JobsByGangSize[0].Running, "job b is still running its replacement")
+}
