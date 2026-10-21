@@ -19,7 +19,7 @@ set -e
 REPO_HOME=$(readlink -f "$(dirname "$(readlink -f "$0")")/../..")
 source "$REPO_HOME/scripts/env.sh"
 
-VOLCANO_VERSION=v1.11.2
+VOLCANO_VERSION=v1.16.0
 printGreen Deploying volcano $VOLCANO_VERSION
 
 helm repo add --force-update volcano-sh https://volcano-sh.github.io/helm-charts
