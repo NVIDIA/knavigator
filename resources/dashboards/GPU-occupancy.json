@@ -123,7 +123,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(avg_over_time(node_resource_occupancy{resource=\"nvidia.com/gpu\"}[$__range]))",
+          "expr": "avg_over_time((sum(node_resource_requests{resource=\"nvidia.com/gpu\"}) / sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"}) * 100)[$__range:$__interval])",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -131,7 +131,8 @@
         }
       ],
       "title": "Avg. cluster GPU occupancy (%)",
-      "type": "gauge"
+      "type": "gauge",
+      "description": "Cluster GPU occupancy averaged over the time range shown: GPUs requested by pods divided by the cluster's GPUs, sampled over time. Nodes that came and went during the range count only for the time they existed."
     },
     {
       "datasource": {
@@ -232,9 +233,135 @@
       ],
       "title": "Avg. node GPU occupancy (%)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Wasted GPU-hours: GPU time that sat idle while pods were waiting for GPUs. At each moment it counts the smaller of (a) GPUs not requested by any pod and (b) GPUs requested by pods still waiting to be placed, and adds that up over the time range shown. Idle time with nothing waiting is not counted. See the idle panel for that.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "noValue": "No GPU data yet",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum_over_time((((sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"}) - sum(node_resource_requests{resource=\"nvidia.com/gpu\"})) < sum(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"} * on(namespace, pod) group_left() (kube_pod_status_phase{phase=\"Pending\"} == 1))) or sum(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"} * on(namespace, pod) group_left() (kube_pod_status_phase{phase=\"Pending\"} == 1)) or vector(0))[$__range:$__interval]) * $__interval_ms / 3600000",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Wasted GPU-hours (selected range)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Idle GPU-hours: GPU time not requested by any pod, whether or not work was waiting. This is a different metric from wasted GPU-hours, which only counts idle time while pods were waiting.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "noValue": "No GPU data yet",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum_over_time((sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"}) - sum(node_resource_requests{resource=\"nvidia.com/gpu\"}))[$__range:$__interval]) * $__interval_ms / 3600000",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Idle GPU-hours (selected range)",
+      "type": "stat"
     }
   ],
-  "refresh": "",
+  "refresh": "10s",
   "schemaVersion": 39,
   "tags": [],
   "templating": {
@@ -249,6 +376,6 @@
   "timezone": "browser",
   "title": "GPU occupancy",
   "uid": "ddt1v72mdqxa8a",
-  "version": 18,
+  "version": 20,
   "weekStart": ""
 }

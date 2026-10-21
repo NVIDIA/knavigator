@@ -49,6 +49,7 @@ type Recorder struct {
 	stop   chan struct{}
 	mutex  sync.Mutex
 	pods   map[types.UID]*Pod
+	pusher *Pusher
 }
 
 // Start begins watching pods and returns once the watch cache has synced.
@@ -85,6 +86,24 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 	return r, nil
 }
 
+// PushTo sends metrics to a Pushgateway every interval and again when the run ends. Besides the
+// pod gauges, it pushes the summary of the run so far, using the jobs submitted up to that point.
+func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Duration, jobs func() []Job, speedup float64) {
+	r.pusher = NewPusher(url, run)
+	r.pusher.SetSpeedup(speedup)
+	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
+		capacity, err := r.gpuCapacity(ctx)
+		if err != nil {
+			return Summary{}, err
+		}
+		s := Summarize(pods, jobs(), capacity, time.Now())
+		if speedup > 1 {
+			s.ScaleTime(speedup)
+		}
+		return s, nil
+	}, interval)
+}
+
 func (r *Recorder) observe(obj interface{}, deleted bool) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok || pod.CreationTimestamp.Time.Before(r.start) {
@@ -117,7 +136,7 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 			p.Finished = finishedTime(pod, now)
 		case deleted:
 			p.Finished = now
-			p.Phase = "Deleted"
+			p.Phase = phaseDeleted
 		}
 	}
 }
@@ -191,6 +210,9 @@ func idle(pods []Pod, jobs []Job) bool {
 // Finish waits until the run drains or the timeout passes, then writes the results into dir.
 func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64) error {
 	defer close(r.stop)
+	if r.pusher != nil {
+		defer r.pusher.Stop()
+	}
 
 	deadline := time.Now().Add(timeout)
 	drained := true
@@ -222,6 +244,12 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	summary := Summarize(pods, jobs, capacity, end)
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
+	}
+	if r.pusher != nil {
+		r.pusher.Stop()
+		if err := r.pusher.Final(ctx, summary, pods); err != nil {
+			log.Warningf("Results: final push failed: %v", err)
+		}
 	}
 	log.Infof("Results: %d pods (%d unscheduled), %d/%d jobs started, makespan %.0fs, GPU utilization %.1f%%, job wait p95 %.0fs",
 		summary.Pods, summary.PodsUnscheduled, summary.JobsStarted, summary.Jobs,

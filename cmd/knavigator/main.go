@@ -41,6 +41,9 @@ type Args struct {
 	results     string
 	resultsWait time.Duration
 	speedup     float64
+	pushURL     string
+	pushRun     string
+	pushEvery   time.Duration
 }
 
 func mainInternal() error {
@@ -56,7 +59,10 @@ func mainInternal() error {
 	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
 	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
 
-	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor; results report simulated time (requires 'workflow')")
+	flag.StringVar(&args.pushURL, "results.pushgateway", "", "Prometheus Pushgateway URL; pushes live run metrics and the summary (requires 'results')")
+	flag.StringVar(&args.pushRun, "results.run", "", "run label on pushed metrics (default: start time)")
+	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
+	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -110,6 +116,12 @@ func mainInternal() error {
 		if rec, err = results.Start(ctx, client); err != nil {
 			return err
 		}
+		if len(args.pushURL) != 0 {
+			if len(args.pushRun) == 0 {
+				args.pushRun = time.Now().UTC().Format("20060102T150405")
+			}
+			rec.PushTo(ctx, args.pushURL, args.pushRun, args.pushEvery, func() []results.Job { return submittedJobs(eng) }, args.speedup)
+		}
 	}
 
 	var runErr error
@@ -146,7 +158,11 @@ func runWorkflow(ctx context.Context, eng *engine.Eng, workflow *config.Workflow
 	return nil
 }
 
-// speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks.
+// taskSubmitTrace is the SubmitTrace task type, matched by name so this works before and after the task exists.
+const taskSubmitTrace = "SubmitTrace"
+
+// speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks,
+// and multiplies the 'speedup' of SubmitTrace tasks.
 func speedUp(workflows []*config.Workflow, speedup float64) {
 	if speedup <= 1 {
 		return
@@ -160,9 +176,25 @@ func speedUp(workflows []*config.Workflow, speedup float64) {
 				if p, ok := t.Params["params"].(map[string]interface{}); ok {
 					scaleDuration(p, "ttl", speedup)
 				}
+			case taskSubmitTrace:
+				// The trace gets faster by the same factor, so the results can report simulated time.
+				if t.Params != nil {
+					t.Params["speedup"] = paramFloat(t.Params["speedup"], 1) * speedup
+				}
 			}
 		}
 	}
+}
+
+// paramFloat reads a number from decoded YAML, which can be an int or a float.
+func paramFloat(v interface{}, def float64) float64 {
+	switch x := v.(type) {
+	case int:
+		return float64(x)
+	case float64:
+		return x
+	}
+	return def
 }
 
 func scaleDuration(m map[string]interface{}, key string, speedup float64) {
@@ -208,6 +240,10 @@ func validate(args *Args) error {
 
 	if args.speedup > 1 && len(args.workflow) == 0 {
 		return fmt.Errorf("'speedup' requires 'workflow'")
+	}
+
+	if len(args.pushURL) != 0 && len(args.results) == 0 {
+		return fmt.Errorf("'results.pushgateway' requires 'results'")
 	}
 
 	if len(args.results) != 0 && len(args.workflow) == 0 {
