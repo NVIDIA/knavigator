@@ -166,7 +166,10 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 		}
 		r.pods[pod.UID] = p
 	}
-	p.Phase = string(pod.Status.Phase)
+	// A removed pod stays removed; later updates report the terminal phase it was given on the way out.
+	if p.Phase != phaseDeleted {
+		p.Phase = string(pod.Status.Phase)
+	}
 	if pod.Spec.NodeName != "" {
 		p.Node = pod.Spec.NodeName
 		if p.Scheduled.IsZero() {
@@ -177,6 +180,10 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 		switch {
 		case pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed:
 			p.Finished = finishedTime(pod, now)
+			// Since Kubernetes 1.27 a deleted or preempted pod first turns Failed, then disappears.
+			if pod.Status.Phase == corev1.PodFailed && removed(pod) {
+				p.Phase = phaseDeleted
+			}
 		case deleted:
 			p.Finished = now
 			p.Phase = phaseDeleted
@@ -192,6 +199,19 @@ func podGPUs(pod *corev1.Pod) float64 {
 		}
 	}
 	return n
+}
+
+// removed reports whether the pod is being deleted or was disrupted by preemption or eviction.
+func removed(pod *corev1.Pod) bool {
+	if pod.DeletionTimestamp != nil {
+		return true
+	}
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.DisruptionTarget && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 func scheduledTime(pod *corev1.Pod, fallback time.Time) time.Time {

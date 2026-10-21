@@ -27,7 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// phaseDeleted marks a pod that was deleted before it finished.
+// phaseDeleted marks a pod that was deleted, preempted or evicted before it finished.
 const phaseDeleted = "Deleted"
 
 // Pod is the lifecycle of one pod. Zero times mean the event never happened.

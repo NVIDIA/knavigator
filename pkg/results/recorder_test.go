@@ -90,3 +90,35 @@ func TestObserveRecordsPriority(t *testing.T) {
 	}
 	require.Equal(t, map[string]int{"high-0": 1000, "plain-0": 0}, byName, "a pod without a priority reads 0")
 }
+
+func TestObserveFailedVictimIsEvicted(t *testing.T) {
+	r := &Recorder{pods: map[types.UID]*Pod{}, events: map[types.UID]*Event{}}
+	jobs := []Job{{Name: "default/a", Namespace: "default", Pods: 1, PodRegexp: "a-[a-z0-9]+"}}
+
+	victim := gpuPod("a-x1")
+	victim.Spec.NodeName = "n1"
+	victim.Status.Phase = corev1.PodRunning
+	r.observe(victim, false)
+
+	// A real kubelet turns the preempted pod Failed before the API server removes it.
+	failed := victim.DeepCopy()
+	failed.Status.Phase = corev1.PodFailed
+	now := metav1.Now()
+	failed.DeletionTimestamp = &now
+	failed.Status.Conditions = append(failed.Status.Conditions, corev1.PodCondition{
+		Type: corev1.DisruptionTarget, Status: corev1.ConditionTrue, Reason: "PreemptionByScheduler"})
+	r.observe(failed, false)
+	r.observe(failed, true)
+
+	require.False(t, idle(r.snapshot(), jobs), "the job waits for the victim's replacement")
+	s := Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour))
+	require.Equal(t, 1, s.PodsEvicted)
+	require.Zero(t, s.PodsFailed)
+
+	// A pod that fails on its own is still a failure.
+	crashed := gpuPod("a-x2")
+	crashed.Spec.NodeName = "n1"
+	crashed.Status.Phase = corev1.PodFailed
+	r.observe(crashed, false)
+	require.Equal(t, 1, Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour)).PodsFailed)
+}
