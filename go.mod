@@ -1,6 +1,6 @@
 module github.com/NVIDIA/knavigator
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/maja42/goval v1.6.0
