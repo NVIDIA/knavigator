@@ -237,3 +237,78 @@ func TestSummarizeNoEvictionsByPriority(t *testing.T) {
 	require.Zero(t, s.JobsEvictedAgain)
 	require.Zero(t, s.MaxEvictionsPerJob)
 }
+
+func TestIdleWaitingGPUHours(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	pods := []Pod{
+		// Runs on half the cluster for 300s.
+		{Name: "a", GPUs: 4, Created: at(0), Scheduled: at(0), Finished: at(300)},
+		// Needs the whole cluster, so it waits from 50s until a finishes.
+		{Name: "b", GPUs: 8, Created: at(50), Scheduled: at(300), Finished: at(400)},
+		// Never placed and deleted at 100s; it waited the whole time.
+		{Name: "c", GPUs: 2, Created: at(0), Finished: at(100)},
+	}
+
+	got := idleWaitingGPUHours(pods, 8, at(1000))
+
+	// 0-50s: 4 idle, 2 waiting (c) -> 2; 50-100s: 4 idle, 10 waiting -> 4; 100-300s: 4 idle, 8 waiting -> 4;
+	// 300-400s: nothing idle, nothing waiting.
+	require.InDelta(t, (2*50.0+4*50+4*200)/3600, got, 1e-9)
+	require.Zero(t, idleWaitingGPUHours(pods, 0, at(1000)), "no capacity, no waste")
+	require.Zero(t, idleWaitingGPUHours(nil, 8, at(1000)))
+}
+
+func TestBindingGapGPUHours(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	gang := func(name string, pods int) Job {
+		return Job{Name: "default/" + name, Namespace: "default", Submitted: t0, Pods: pods, PodRegexp: name + "-[a-z0-9]+"}
+	}
+	jobs := []Job{gang("g", 2), gang("h", 3), gang("s", 1)}
+	pods := []Pod{
+		// g: its first pod is bound at 10s and holds 8 GPUs until the second binds at 50s.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(200)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(50), Finished: at(200)},
+		// h needs 3 pods but only 2 ever bind: both hold their GPUs until the run ends at 1000s.
+		{Namespace: "default", Name: "h-0", GPUs: 4, Created: t0, Scheduled: at(0)},
+		{Namespace: "default", Name: "h-1", GPUs: 4, Created: t0, Scheduled: at(100)},
+		// A single pod has no gang to wait for.
+		{Namespace: "default", Name: "s-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(300), Finished: at(400)},
+		// An evicted gang pod is counted by the eviction metric, not here.
+		{Namespace: "default", Name: "h-2", GPUs: 4, Phase: phaseDeleted, Created: t0, Scheduled: at(0), Finished: at(50)},
+	}
+
+	assignJobs(pods, jobs)
+	got := bindingGapGPUHours(pods, jobs, at(1000))
+
+	require.InDelta(t, (8*40.0+4*1000+4*900)/3600, got, 1e-9)
+	require.Zero(t, bindingGapGPUHours(nil, jobs, at(1000)))
+}
+
+func TestSummarizeWasted(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[a-z0-9]+"},
+		{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[a-z0-9]+"},
+	}
+	pods := []Pod{
+		// Evicted after an hour on 4 GPUs: 4 GPU-hours lost.
+		{Namespace: "default", Name: "a-0", GPUs: 4, Phase: phaseDeleted, Created: at(0), Scheduled: at(0), Finished: at(3600)},
+		{Namespace: "default", Name: "a-1", GPUs: 4, Phase: "Succeeded", Created: at(3600), Scheduled: at(3600), Finished: at(4000)},
+		// A gang whose first pod waits an hour for the second: 8 GPU-hours held.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: at(0), Scheduled: at(0), Finished: at(5000)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: at(0), Scheduled: at(3600), Finished: at(5000)},
+	}
+
+	s := Summarize(pods, jobs, 16, at(10000))
+
+	require.InDelta(t, 4.0, s.EvictedGPUHours, 1e-9)
+	require.InDelta(t, 8.0, s.BindingGapGPUHours, 1e-9)
+	require.InDelta(t, 12.0, s.WastedGPUHours, 1e-9, "evictions plus binding gaps")
+
+	s.ScaleTime(60)
+	require.InDelta(t, 480.0, s.BindingGapGPUHours, 1e-9)
+	require.InDelta(t, 720.0, s.WastedGPUHours, 1e-9)
+}

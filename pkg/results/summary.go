@@ -86,6 +86,14 @@ type Summary struct {
 	EvictedGPUHours float64 `json:"evicted_gpu_hours"`
 	// PreemptionEvents counts the scheduler's own preemption events, one per removed pod.
 	PreemptionEvents int `json:"preemption_events"`
+	// IdleWaitingGPUHours is GPU time that sat idle while pods were waiting for GPUs: at each moment
+	// the smaller of the idle GPUs and the GPUs the waiting pods request, added up over the run.
+	IdleWaitingGPUHours float64 `json:"idle_waiting_gpu_hours"`
+	// BindingGapGPUHours is GPU time that gang pods held while waiting for the rest of their gang to be
+	// bound, so the gang could not yet start.
+	BindingGapGPUHours float64 `json:"binding_gap_gpu_hours"`
+	// WastedGPUHours is EvictedGPUHours plus BindingGapGPUHours.
+	WastedGPUHours float64 `json:"wasted_gpu_hours"`
 	// EvictionsByPriority groups the evicted pods by the victim's priority, lowest first.
 	EvictionsByPriority []PriorityEvictions `json:"evictions_by_priority"`
 	// JobsEvictedAgain counts jobs that lost more pods than they have, so a pod was evicted at least
@@ -162,6 +170,9 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 
 	delete(evicted, "") // pods that belong to no submitted job
 	s.JobsEvicted = len(evicted)
+	s.IdleWaitingGPUHours = idleWaitingGPUHours(pods, gpuCapacity, end)
+	s.BindingGapGPUHours = bindingGapGPUHours(pods, jobs, end)
+	s.WastedGPUHours = s.EvictedGPUHours + s.BindingGapGPUHours
 	for _, pe := range byPriority {
 		pe.Jobs = len(priorityJobs[pe.Priority])
 		s.EvictionsByPriority = append(s.EvictionsByPriority, *pe)
@@ -220,6 +231,9 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.MakespanSec *= speedup
 	s.GPUHours *= speedup
 	s.EvictedGPUHours *= speedup
+	s.IdleWaitingGPUHours *= speedup
+	s.BindingGapGPUHours *= speedup
+	s.WastedGPUHours *= speedup
 	for i := range s.EvictionsByPriority {
 		s.EvictionsByPriority[i].GPUHours *= speedup
 	}
