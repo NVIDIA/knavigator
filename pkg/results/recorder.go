@@ -189,7 +189,7 @@ func (r *Recorder) snapshot() []Pod {
 	return pods
 }
 
-// idle reports whether every job has created its pods and no recorded pod is still active.
+// idle reports whether every job has placed and finished its pods and no recorded pod is still active.
 func idle(pods []Pod, jobs []Job) bool {
 	assignJobs(pods, jobs)
 	seen := map[string]int{}
@@ -197,7 +197,11 @@ func idle(pods []Pod, jobs []Job) bool {
 		if p.Finished.IsZero() {
 			return false
 		}
-		seen[p.Job]++
+		// An evicted pod does not finish its job: the controller creates a replacement. A pod that
+		// ended without ever being placed does not either.
+		if !p.Scheduled.IsZero() && p.Phase != phaseDeleted {
+			seen[p.Job]++
+		}
 	}
 	for _, j := range jobs {
 		if seen[j.Name] < j.Pods {

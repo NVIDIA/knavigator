@@ -10,6 +10,8 @@ The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while
 - `timeline.csv`: one row per pod with its job, node, GPUs, phase, and created, scheduled and finished times.
 - `results.json`: failed pods, makespan, GPU-hours, GPU utilization against allocatable GPUs, pods never scheduled, jobs started, and mean, p95 and max wait for pods and jobs.
 
+A run counts as drained once every job has placed and finished its pods. A pod that a scheduler evicted does not count, so a job finishes only when its replacement does.
+
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 
 `results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.
