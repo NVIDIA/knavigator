@@ -103,7 +103,9 @@ func mainInternal() error {
 		return err
 	}
 
-	speedUp(workflows, args.speedup)
+	if err := speedUp(workflows, args.speedup); err != nil {
+		return err
+	}
 
 	ctx := context.Background()
 
@@ -158,15 +160,9 @@ func runWorkflow(ctx context.Context, eng *engine.Eng, workflow *config.Workflow
 	return nil
 }
 
-// taskSubmitTrace is the SubmitTrace task type, matched by name so this works before and after the task exists.
-const taskSubmitTrace = "SubmitTrace"
-
 // speedUp compresses simulated time: it divides Sleep timeouts and the 'ttl' param of SubmitObj tasks,
-// and multiplies the 'speedup' of SubmitTrace tasks.
-func speedUp(workflows []*config.Workflow, speedup float64) {
-	if speedup <= 1 {
-		return
-	}
+// and sets the SubmitTrace speedup, so the results scale by the same factor the run used.
+func speedUp(workflows []*config.Workflow, speedup float64) error {
 	for _, w := range workflows {
 		for _, t := range w.Tasks {
 			switch t.Type {
@@ -176,28 +172,24 @@ func speedUp(workflows []*config.Workflow, speedup float64) {
 				if p, ok := t.Params["params"].(map[string]interface{}); ok {
 					scaleDuration(p, "ttl", speedup)
 				}
-			case taskSubmitTrace:
-				// The trace gets faster by the same factor, so the results can report simulated time.
-				if t.Params != nil {
-					t.Params["speedup"] = paramFloat(t.Params["speedup"], 1) * speedup
+			case engine.TaskSubmitTrace:
+				if v, ok := t.Params["speedup"]; ok && fmt.Sprint(v) != fmt.Sprint(speedup) {
+					return fmt.Errorf("%s: 'speedup' %v differs from -speedup %g; set it with -speedup only", t.ID, v, speedup)
 				}
+				if t.Params == nil {
+					t.Params = map[string]interface{}{}
+				}
+				t.Params["speedup"] = speedup
 			}
 		}
 	}
-}
-
-// paramFloat reads a number from decoded YAML, which can be an int or a float.
-func paramFloat(v interface{}, def float64) float64 {
-	switch x := v.(type) {
-	case int:
-		return float64(x)
-	case float64:
-		return x
-	}
-	return def
+	return nil
 }
 
 func scaleDuration(m map[string]interface{}, key string, speedup float64) {
+	if speedup <= 1 {
+		return
+	}
 	if s, ok := m[key].(string); ok {
 		if d, err := time.ParseDuration(s); err == nil {
 			m[key] = time.Duration(float64(d) / speedup).String()
