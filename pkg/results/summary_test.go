@@ -312,3 +312,26 @@ func TestSummarizeWasted(t *testing.T) {
 	require.InDelta(t, 480.0, s.BindingGapGPUHours, 1e-9)
 	require.InDelta(t, 720.0, s.WastedGPUHours, 1e-9)
 }
+
+func TestBindingGapAfterEviction(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[a-z0-9]+"}}
+
+	// Both pods bind at once, so the gang never waited, even though one is evicted later.
+	pods := []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: "Succeeded", Created: t0, Scheduled: t0, Finished: at(100)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(100)},
+	}
+	assignJobs(pods, jobs)
+	require.Zero(t, bindingGapGPUHours(pods, jobs, at(1000)))
+
+	// Evicted before its partner binds: the gang is short again until the replacement binds at 50s.
+	pods = []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(5)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(200)},
+		{Namespace: "default", Name: "g-2", GPUs: 1, Phase: "Succeeded", Created: at(5), Scheduled: at(50), Finished: at(200)},
+	}
+	assignJobs(pods, jobs)
+	require.InDelta(t, 40.0/3600, bindingGapGPUHours(pods, jobs, at(1000)), 1e-9)
+}

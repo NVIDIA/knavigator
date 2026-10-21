@@ -69,8 +69,8 @@ func idleWaitingGPUHours(pods []Pod, capacity float64, end time.Time) float64 {
 
 // bindingGapGPUHours is GPU time that gang pods held before their gang was complete: a bound pod
 // holds its GPUs, but the gang cannot start until its last pod is bound. A gang that never completed
-// held its GPUs for the whole time. Evicted pods are left out, because the eviction metric already
-// counts all of their time.
+// held its GPUs for the whole time. Evicted pods count toward completing the gang while they were
+// bound, but their own time is left out, because the eviction metric already counts it.
 func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 	byJob := map[string][]Pod{}
 	for _, p := range pods {
@@ -81,16 +81,35 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 		if j.Pods <= 1 {
 			continue
 		}
-		var bound []time.Time
+		// The gang is complete once it holds all its pods at once. A bind adds a member and an
+		// eviction removes one; a pod that finished stays a member.
+		type change struct {
+			t time.Time
+			d int
+		}
+		var changes []change
 		for _, p := range byJob[j.Name] {
-			if !p.Scheduled.IsZero() && p.Phase != phaseDeleted {
-				bound = append(bound, p.Scheduled)
+			if p.Scheduled.IsZero() {
+				continue
+			}
+			changes = append(changes, change{p.Scheduled, 1})
+			if p.Phase == phaseDeleted && !p.Finished.IsZero() {
+				changes = append(changes, change{p.Finished, -1})
 			}
 		}
-		sort.Slice(bound, func(a, b int) bool { return bound[a].Before(bound[b]) })
+		sort.Slice(changes, func(a, b int) bool {
+			if !changes[a].t.Equal(changes[b].t) {
+				return changes[a].t.Before(changes[b].t)
+			}
+			return changes[a].d < changes[b].d // an eviction at the same instant comes first
+		})
 		var complete time.Time // zero while the gang is short of pods
-		if len(bound) >= j.Pods {
-			complete = bound[j.Pods-1]
+		members := 0
+		for _, c := range changes {
+			if members += c.d; members >= j.Pods {
+				complete = c.t
+				break
+			}
 		}
 		for _, p := range byJob[j.Name] {
 			if p.Scheduled.IsZero() || p.Phase == phaseDeleted {
