@@ -48,6 +48,8 @@ curl -X DELETE http://localhost:9091/metrics/job/knavigator/run/baseline
 
 With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
 
+Pod timestamps have one second resolution, so each wait carries about a second of error.
+
 A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares `podNameFormat` and `podCount`. Job wait runs from submission until the job's last required pod is scheduled, so it includes time spent in a queue before the pods exist.
 
 ```bash
