@@ -132,8 +132,8 @@ func (p *pushed) value(name string, labels map[string]string) float64 {
 func TestPusher(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	pods := []Pod{
-		{GPUs: 8, Created: t0, Scheduled: t0},                                    // running
-		{GPUs: 8, Created: t0},                                                   // pending
+		{GPUs: 8, Created: t0, Scheduled: t0}, // running
+		{GPUs: 8, Created: t0},                // pending
 		{GPUs: 8, Created: t0, Scheduled: t0, Finished: t0, Phase: "Succeeded"},  // done
 		{GPUs: 4, Created: t0, Scheduled: t0, Finished: t0, Phase: phaseDeleted}, // evicted
 		{GPUs: 4, Created: t0, Finished: t0, Phase: phaseDeleted},                // deleted before placement
