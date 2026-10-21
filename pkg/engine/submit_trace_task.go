@@ -47,7 +47,7 @@ type submitTraceTaskParams struct {
 	RefTaskID string `yaml:"refTaskId"`
 	// Seed: random seed; the same seed and classes always give the same trace
 	Seed uint64 `yaml:"seed"`
-	// Speedup: divides arrival times and runtimes, so a trace of hours replays in minutes; default 1
+	// Speedup: divides arrival times and runtimes; main sets it from -speedup so results scale to match
 	Speedup float64 `yaml:"speedup"`
 	// TimeLimitFactor: scales the runtime into the time limit passed to the template; default 1
 	TimeLimitFactor float64 `yaml:"timeLimitFactor"`

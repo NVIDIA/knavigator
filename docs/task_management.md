@@ -13,7 +13,7 @@ Tasks are defined in a YAML format or received via HTTP/gRPC protocols. The Task
 
 ## SubmitTrace
 
-`SubmitTrace` generates a seeded workload from one or more job classes and submits each job from a registered template at its arrival time. Arrivals are Poisson, runtimes are log-normal, and `speedup` divides both, so a trace of several hours can replay in minutes. The same `seed` and classes always give the same trace.
+`SubmitTrace` generates a seeded workload from one or more job classes and submits each job from a registered template at its arrival time. Arrivals are Poisson and runtimes are log-normal. The `-speedup` flag divides both, so a trace of several hours can replay in minutes, and the results report the same factor (see [Time Compression](metrics.md#time-compression)). A `speedup` param in the task must match `-speedup`. The same `seed` and classes always give the same trace.
 
 Each job gets these template parameters on top of `params`: `jobId`, `class`, `account`, `gangSize`, `gpus`, `priority`, `runtime` (scaled, as a duration string), and `timeLimitSeconds` and `timeLimitMinutes` (the scaled runtime times `timeLimitFactor`, rounded up).
 
@@ -23,7 +23,6 @@ Each job gets these template parameters on top of `params`: `jobId`, `class`, `a
   params:
     refTaskId: job
     seed: 0
-    speedup: 60
     timeLimitFactor: 2
     params:
       namespace: default
