@@ -82,6 +82,12 @@ func TestSummarizeOutstanding(t *testing.T) {
 	s = Summarize(pods[:1], jobs[:1], 8, at(3600))
 	require.Equal(t, 10.0, s.MakespanSec)
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
+
+	// An evicted pod whose replacement does not exist yet keeps the run open too.
+	evicted := []Pod{{Namespace: "default", Name: "a-0", GPUs: 8, Phase: phaseDeleted, Created: at(0), Scheduled: at(0), Finished: at(10)}}
+	s = Summarize(evicted, jobs[:1], 8, at(100))
+	require.Equal(t, 100.0, s.MakespanSec)
+	require.InDelta(t, 0.1, s.GPUUtilization, 1e-9)
 }
 
 func TestCheck(t *testing.T) {

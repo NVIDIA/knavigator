@@ -122,7 +122,6 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	var podWaits []float64
 	// Earliest placement per pod name, so a replacement attempt cannot fill another worker's slot.
 	scheduled := map[string]map[string]time.Time{}
-	outstanding := false
 	evicted := map[string]bool{}
 	evictedPods := map[string]int{}
 	byPriority := map[int]*PriorityEvictions{}
@@ -135,7 +134,6 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		}
 		if p.Scheduled.IsZero() {
 			s.PodsUnscheduled++
-			outstanding = outstanding || p.Finished.IsZero()
 			continue
 		}
 		fin := p.Finished
@@ -185,7 +183,6 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 			continue
 		}
 		if len(scheduled[j.Name]) < j.Pods {
-			outstanding = true
 			continue
 		}
 		ts := make([]time.Time, 0, len(scheduled[j.Name]))
@@ -208,8 +205,9 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 		}
 	}
 
-	// Work still waiting at the end keeps the cluster's idle time in the denominator.
-	if outstanding {
+	// Work still waiting at the end, including replacements for evicted pods, keeps the cluster's
+	// idle time in the denominator.
+	if !idle(pods, jobs) {
 		last = latest(last, end)
 	}
 	if !first.IsZero() && last.After(first) {
