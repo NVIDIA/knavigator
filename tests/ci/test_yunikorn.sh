@@ -9,7 +9,7 @@ source $REPO_HOME/scripts/env.sh
 deploy_kwok
 
 # Install YuniKorn
-deploy_yunikorn
+${REPO_HOME}/scripts/schedulers/yunikorn.sh
 
 # Run knavigator with an example test
 ${REPO_HOME}/bin/knavigator -workflow ${REPO_HOME}/resources/workflows/yunikorn/test-job.yml -v 4 -cleanup

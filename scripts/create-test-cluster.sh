@@ -48,41 +48,19 @@ kubectl apply -f $REPO_HOME/charts/overrides/kwok/pod-complete.yaml
 
 echo ""
 printYellow "Select workload manager or leave it blank to skip:"
-cat << EOF
-  1: jobset (https://github.com/kubernetes-sigs/jobset)
-  2: kueue (https://github.com/kubernetes-sigs/kueue)
-  3: volcano (https://github.com/volcano-sh/volcano)
-  4: yunikorn (https://github.com/apache/yunikorn-core)
-  5: run:ai (https://www.run.ai)
-  6: kai (https://github.com/NVIDIA/KAI-Scheduler)
-  7: combined: coscheduler plugin + jobset + kueue
-EOF
+schedulers=("$REPO_HOME"/scripts/schedulers/*.sh)
+for i in "${!schedulers[@]}"; do
+  echo "  $((i + 1)): $(sed -n 's/^# Installs //p' "${schedulers[$i]}")"
+done
 read -p "> " choice
 
-case "$choice" in
-  1)
-    deploy_jobset
-    ;;
-  2)
-    deploy_kueue
-    ;;
-  3)
-    deploy_volcano
-    ;;
-  4)
-    deploy_yunikorn
-    ;;
-  5)
-    deploy_runai
-    ;;
-  6)
-    deploy_kai
-    ;;
-  7)
-    deploy_scheduler_plugins
-    deploy_jobset
-    deploy_kueue
-    ;;
-esac
+if [[ -n "$choice" ]]; then
+  script=${schedulers[$((choice - 1))]:-}
+  if [[ -z "$script" ]]; then
+    printRed "No workload manager $choice"
+    exit 1
+  fi
+  "$script"
+fi
 
 printYellow Cluster is ready
