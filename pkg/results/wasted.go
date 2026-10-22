@@ -69,8 +69,9 @@ func idleWaitingGPUHours(pods []Pod, capacity float64, end time.Time) float64 {
 
 // bindingGapGPUHours is GPU time that gang pods held before their gang was complete: a bound pod
 // holds its GPUs, but the gang cannot start until its last pod is bound. A gang that never completed
-// held its GPUs for the whole time. Evicted pods count toward completing the gang while they were
-// bound, but their own time is left out, because the eviction metric already counts it.
+// held its GPUs for the whole time, and a gang that lost pods waits again until its replacements are
+// bound. Evicted pods count toward completing the gang while they were bound, but their own time is
+// left out, because the eviction metric already counts it.
 func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 	byJob := map[string][]Pod{}
 	for _, p := range pods {
@@ -103,12 +104,18 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 			}
 			return changes[a].d < changes[b].d // an eviction at the same instant comes first
 		})
-		var complete time.Time // zero while the gang is short of pods
+		// Spans while the gang is short of pods; a zero end leaves the span open.
+		type span struct{ from, to time.Time }
+		short := []span{{}}
 		members := 0
 		for _, c := range changes {
-			if members += c.d; members >= j.Pods {
-				complete = c.t
-				break
+			was := members >= j.Pods
+			members += c.d
+			switch is := members >= j.Pods; {
+			case is && !was:
+				short[len(short)-1].to = c.t
+			case was && !is:
+				short = append(short, span{from: c.t})
 			}
 		}
 		for _, p := range byJob[j.Name] {
@@ -119,11 +126,14 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 			if held.IsZero() {
 				held = end
 			}
-			if !complete.IsZero() && complete.Before(held) {
-				held = complete
-			}
-			if held.After(p.Scheduled) {
-				gpuSeconds += p.GPUs * held.Sub(p.Scheduled).Seconds()
+			for _, s := range short {
+				from, to := latest(p.Scheduled, s.from), held
+				if !s.to.IsZero() && s.to.Before(to) {
+					to = s.to
+				}
+				if to.After(from) {
+					gpuSeconds += p.GPUs * to.Sub(from).Seconds()
+				}
 			}
 		}
 	}

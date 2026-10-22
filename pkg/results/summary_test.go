@@ -334,4 +334,15 @@ func TestBindingGapAfterEviction(t *testing.T) {
 	}
 	assignJobs(pods, jobs)
 	require.InDelta(t, 40.0/3600, bindingGapGPUHours(pods, jobs, at(1000)), 1e-9)
+
+	// The whole gang is evicted at 10s and its replacements bind at 20s and 30s, so the first
+	// replacement waits 10s for its partner.
+	pods = []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(10)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(10)},
+		{Namespace: "default", Name: "g-2", GPUs: 1, Phase: "Succeeded", Created: at(10), Scheduled: at(20), Finished: at(100)},
+		{Namespace: "default", Name: "g-3", GPUs: 1, Phase: "Succeeded", Created: at(10), Scheduled: at(30), Finished: at(100)},
+	}
+	assignJobs(pods, jobs)
+	require.InDelta(t, 10.0/3600, bindingGapGPUHours(pods, jobs, at(1000)), 1e-9)
 }
