@@ -26,9 +26,9 @@ import (
 	"text/template"
 
 	"gopkg.in/yaml.v3"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/restmapper"
 	log "k8s.io/klog/v2"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -40,7 +40,7 @@ type RegisterObjTask struct {
 	BaseTask
 	RegisterObjParams
 
-	client   *discovery.DiscoveryClient
+	client   discovery.DiscoveryInterface
 	accessor ObjInfoAccessor
 
 	gvk []schema.GroupVersionKind
@@ -154,39 +154,20 @@ func (task *RegisterObjTask) validate(params map[string]interface{}) error {
 
 // Exec implements Runnable interface
 func (task *RegisterObjTask) Exec(ctx context.Context) error {
-	apiResourceList, err := task.client.ServerPreferredResources()
+	groupResources, err := restmapper.GetAPIGroupResources(task.client)
 	if err != nil {
 		return fmt.Errorf("%s: failed to retrieve API resources: %v", task.ID(), err)
 	}
+	mapper := restmapper.NewDiscoveryRESTMapper(groupResources)
 
 	task.gvr = make([]schema.GroupVersionResource, 0, len(task.gvk))
-
 	for _, gvk := range task.gvk {
-		switch gvk.String() {
-		case "batch/v1, Kind=Job":
-			task.gvr = append(task.gvr, schema.GroupVersionResource{
-				Group:    gvk.Group,
-				Version:  gvk.Version,
-				Resource: "jobs",
-			})
-		default:
-			if err := task.getGVR(apiResourceList, gvk); err != nil {
-				return err
-			}
+		// Map the template's exact group and version, including built-in kinds.
+		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if err != nil {
+			return fmt.Errorf("%s: failed to find resource for %s: %v", task.ID(), gvk.String(), err)
 		}
+		task.gvr = append(task.gvr, mapping.Resource)
 	}
 	return task.accessor.SetObjType(task.taskID, &task.RegisterObjParams)
-}
-
-func (task *RegisterObjTask) getGVR(apiResourceList []*v1.APIResourceList, gvk schema.GroupVersionKind) error {
-	for _, list := range apiResourceList {
-		for _, r := range list.APIResources {
-			if r.Group == gvk.Group && r.Kind == gvk.Kind {
-				task.gvr = append(task.gvr, schema.GroupVersionResource{Group: r.Group, Version: r.Version, Resource: r.Name})
-				return nil
-			}
-		}
-	}
-
-	return fmt.Errorf("%s: failed to find resource for %s", task.ID(), gvk.String())
 }
