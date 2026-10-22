@@ -52,6 +52,8 @@ type Recorder struct {
 	pods   map[types.UID]*Pod
 	pusher *Pusher
 	events map[types.UID]*Event
+	// Occurrences an event had before the run, left out of its count during the run.
+	eventsBefore map[types.UID]int32
 }
 
 // Start begins watching pods and returns once the watch cache has synced.
@@ -63,6 +65,8 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 		stop:   make(chan struct{}),
 		pods:   make(map[types.UID]*Pod),
 		events: make(map[types.UID]*Event),
+
+		eventsBefore: make(map[types.UID]int32),
 	}
 
 	factory := informers.NewSharedInformerFactory(client, 0)
@@ -122,12 +126,14 @@ func (r *Recorder) observeEvent(obj interface{}) {
 		return
 	}
 	ev := toEvent(e)
-	if ev.Time.Before(r.start) {
-		return
-	}
 
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	if ev.Time.Before(r.start) {
+		r.eventsBefore[e.UID] = ev.Count
+		return
+	}
+	ev.Count -= r.eventsBefore[e.UID]
 	if _, seen := r.events[e.UID]; !seen && len(r.events) >= maxEvents {
 		return
 	}

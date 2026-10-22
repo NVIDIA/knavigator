@@ -60,14 +60,17 @@ func keepEvent(e *corev1.Event) bool {
 }
 
 func toEvent(e *corev1.Event) Event {
-	t := e.LastTimestamp.Time
+	t, count := e.LastTimestamp.Time, e.Count
+	// events.k8s.io/v1 keeps repeats in Series and may leave the legacy fields zero.
+	if e.Series != nil {
+		t, count = e.Series.LastObservedTime.Time, e.Series.Count
+	}
 	if t.IsZero() {
 		t = e.EventTime.Time
 	}
 	if t.IsZero() {
 		t = e.CreationTimestamp.Time
 	}
-	count := e.Count
 	if count == 0 {
 		count = 1
 	}

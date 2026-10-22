@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestKeepEvent(t *testing.T) {
@@ -56,6 +57,28 @@ func TestToEventTimeFallback(t *testing.T) {
 	e = toEvent(&corev1.Event{LastTimestamp: metav1.NewTime(last), Count: 7})
 	require.Equal(t, last, e.Time)
 	require.Equal(t, int32(7), e.Count)
+
+	// An event series leaves the legacy count and timestamp zero.
+	e = toEvent(&corev1.Event{EventTime: metav1.NewMicroTime(created),
+		Series: &corev1.EventSeries{Count: 10, LastObservedTime: metav1.NewMicroTime(last)}})
+	require.Equal(t, last, e.Time)
+	require.Equal(t, int32(10), e.Count)
+}
+
+func TestObserveEventCountsOnlyRunOccurrences(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r := &Recorder{start: start, events: map[types.UID]*Event{}, eventsBefore: map[types.UID]int32{}}
+	series := func(count int32, last time.Time) *corev1.Event {
+		return &corev1.Event{ObjectMeta: metav1.ObjectMeta{UID: "e"}, Reason: "Preempted",
+			EventTime: metav1.NewMicroTime(start.Add(-time.Hour)),
+			Series:    &corev1.EventSeries{Count: count, LastObservedTime: metav1.NewMicroTime(last)}}
+	}
+
+	// A series that began before the run counts only the occurrences during it.
+	r.observeEvent(series(4, start.Add(-time.Minute)))
+	require.Empty(t, r.eventList())
+	r.observeEvent(series(6, start.Add(time.Minute)))
+	require.Equal(t, 2, preemptionEvents(r.eventList()))
 }
 
 func TestWriteEventsSorted(t *testing.T) {
