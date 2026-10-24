@@ -92,9 +92,16 @@ func TestStartRefusesLeftoverGPUPods(t *testing.T) {
 		*phasePod("default", "web-0", corev1.PodRunning, false),
 	}
 	client := fake.NewSimpleClientset()
-	// The fake lists in name order; this list is out of order, so the error has to sort it.
-	client.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &corev1.PodList{Items: pods}, nil
+	// The fake lists in name order; this list is out of order, so the error has to sort it. An empty
+	// namespace lists all of them, as the API server does.
+	client.PrependReactor("list", "pods", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		out := &corev1.PodList{}
+		for _, p := range pods {
+			if ns := a.GetNamespace(); ns == "" || p.Namespace == ns {
+				out.Items = append(out.Items, p)
+			}
+		}
+		return true, out, nil
 	})
 
 	rec, err := Start(context.Background(), client, nil)
@@ -163,6 +170,22 @@ func TestFinishIgnoresOtherKubeSystemRestarts(t *testing.T) {
 
 	setRestarts(t, client, "kube-system", "kube-proxy-x1", 1)
 	setRestarts(t, client, "kube-system", "coredns-c1", 3)
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0))
+	require.Equal(t, "[]", string(readHarness(t, dir)["control_plane_restarts"]))
+}
+
+func TestFinishIgnoresRestartCountDrop(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(
+		containerPod("kube-system", "etcd-n1", "etcd", 4, controlPlane()),
+	)
+	rec, err := Start(context.Background(), client, nil)
+	require.NoError(t, err)
+
+	// A count that goes down is not a restart during the run.
+	setRestarts(t, client, "kube-system", "etcd-n1", 0)
 
 	dir := t.TempDir()
 	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0))
