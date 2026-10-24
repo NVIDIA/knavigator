@@ -47,7 +47,7 @@ func TestFinishStopsWhenStalled(t *testing.T) {
 	defer func() { pollInterval = old }()
 
 	client := fake.NewSimpleClientset()
-	rec, err := Start(context.Background(), client)
+	rec, err := Start(context.Background(), client, nil)
 	require.NoError(t, err)
 	// A gang pod that no scheduler ever places.
 	_, err = client.CoreV1().Pods("default").Create(context.Background(), gpuPod("g-0"), metav1.CreateOptions{})
