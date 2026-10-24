@@ -22,7 +22,7 @@ source "$REPO_HOME/scripts/env.sh"
 deploy_mpi_operator
 deploy_kuberay_operator
 
-KUEUE_VERSION=v0.11.4
+KUEUE_VERSION=v0.20.2
 printGreen Deploying kueue $KUEUE_VERSION
 
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
@@ -33,3 +33,6 @@ kubectl -n kueue-system patch deployment kueue-controller-manager \
 wait_for_pods "kueue-system" 1
 
 kubectl -n kueue-system wait --for=condition=ready pod -l control-plane=controller-manager --timeout=600s
+
+# Clients fail API discovery until the visibility API server is up.
+kubectl wait --for=condition=Available apiservice v1beta2.visibility.kueue.x-k8s.io --timeout=600s

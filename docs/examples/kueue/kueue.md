@@ -1,11 +1,9 @@
 ## Example of running `kueue` with `knavigator`
 
-Install `kueue` by following these [instructions](https://kueue.sigs.k8s.io/docs/installation/):
+Install `kueue` v0.20.2 with `scripts/schedulers/kueue.sh` (or follow these [instructions](https://kueue.sigs.k8s.io/docs/installation/)), then add the workload priority classes the examples use. The templates use the `kueue.x-k8s.io/v1beta2` API.
 
 ```bash
-KUEUE_VERSION=v0.11.4
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/${KUEUE_VERSION}/manifests.yaml
-
+./scripts/schedulers/kueue.sh
 kubectl apply -f charts/overrides/kueue/priority.yaml
 ```
 
