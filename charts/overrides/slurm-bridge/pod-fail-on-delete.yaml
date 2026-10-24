@@ -1,0 +1,60 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Does what a kubelet does to a deleted pod: moves a deleted Pending or
+# Running pod that still carries slurm-bridge's finalizer to Failed.
+# slurm-bridge removes the finalizer only from a terminal pod, and KWOK's
+# pod-delete stage skips pods with finalizers, so without this stage such a
+# pod stays Terminating for good. Failed, not Succeeded: a preempted pod that
+# ends Succeeded reads as a job that finished.
+apiVersion: kwok.x-k8s.io/v1alpha1
+kind: Stage
+metadata:
+  name: pod-fail-on-delete
+spec:
+  resourceRef:
+    apiGroup: v1
+    kind: Pod
+  selector:
+    matchExpressions:
+    - key: '.metadata.deletionTimestamp'
+      operator: 'Exists'
+    - key: '.metadata.finalizers.[]'
+      operator: 'In'
+      values:
+      - 'scheduler.slinky.slurm.net/finalizer'
+    - key: '.status.phase'
+      operator: 'In'
+      values:
+      - 'Pending'
+      - 'Running'
+  weight: 1
+  next:
+    statusTemplate: |
+      {{ $now := Now }}
+      containerStatuses:
+      {{ range $index, $item := .spec.containers }}
+      - image: {{ $item.image | Quote }}
+        name: {{ $item.name | Quote }}
+        ready: false
+        restartCount: 0
+        started: false
+        state:
+          terminated:
+            exitCode: 137
+            finishedAt: {{ $now | Quote }}
+            reason: Error
+            startedAt: {{ $now | Quote }}
+      {{ end }}
+      phase: Failed

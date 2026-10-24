@@ -1,0 +1,56 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Values for the slurm chart, namespace slurm. configFiles, nodesets and the
+# first four lines of controller.extraConf are slurm-bridge's
+# hack/slurm-bridge-external.yaml. The rest adds partition-tier preemption:
+# partition slurm-bridge-preempt at PriorityTier 2 over the same nodes may
+# cancel jobs of partition slurm-bridge (PriorityTier 1).
+# The auth keys come from the slurm-auth-slurm and slurm-auth-jwt Secrets,
+# which scripts/schedulers/slurm-bridge.sh generates, so the chart does not
+# render them.
+slurmKey:
+  create: false
+  secretRef:
+    name: slurm-auth-slurm
+    key: slurm.key
+jwtKey:
+  create: false
+  secretRef:
+    name: slurm-auth-jwt
+    key: jwt.key
+configFiles:
+  topology.yaml: |
+    ---
+    - topology: topo-switch
+      cluster_default: true
+      tree:
+        switches:
+          - switch: sw_root
+            children: s[1-2]
+          - switch: s1
+          - switch: s2
+nodesets:
+  slinky:
+    enabled: false
+controller:
+  extraConf: |
+    ReconfigFlags=KeepPartInfo
+    GresTypes=gpu
+    Nodeset=slurm-bridge Feature=slurm-bridge
+    PartitionName=slurm-bridge Nodes=slurm-bridge State=UP Default=NO
+    PreemptType=preempt/partition_prio
+    PreemptMode=CANCEL
+    Nodeset=slurm-bridge-preempt Feature=slurm-bridge-preempt
+    PartitionName=slurm-bridge-preempt Nodes=slurm-bridge-preempt State=UP Default=NO PriorityTier=2
