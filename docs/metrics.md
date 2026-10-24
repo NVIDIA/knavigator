@@ -19,6 +19,12 @@ A run counts as drained once every job has placed and finished its pods. A pod t
 
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 
+A run is only evidence if the cluster under it stayed healthy, so `-results` also checks the cluster and reports it in the `harness` object of `results.json`:
+
+- Before the run, Knavigator refuses to start while pods that request `nvidia.com/gpu` and are not `Succeeded` or `Failed` already exist, because they hold GPUs the run would count as free. The error names how many and lists them as `namespace/name`.
+- At the start and end it records the restart count of every container in the control-plane static pods (`kube-system` pods labelled `tier=control-plane`: kube-apiserver, kube-scheduler, kube-controller-manager and etcd on kubeadm and kind), and of every pod in the namespaces given by `-results.restart-namespaces` (comma-separated, for example `kueue-system,kai-scheduler`; default none). Other `kube-system` pods, such as kube-proxy and coredns, are not watched. `control_plane_restarts` lists each container whose count rose as `{container, before, after}`, with `container` written as `namespace/pod/container`, and is empty when none did. Any restart makes Knavigator exit with an error after the files are written.
+- `clock_offset_start_s` and `clock_offset_end_s` are the API server's clock minus the host's, in seconds, measured by creating and deleting a `knavigator-clock-` ConfigMap in `default`. Pod timestamps come from the API server and have one second resolution, so a value between -1 and 1 means the clocks agree. The offset never fails a run; a measurement that fails logs a warning and leaves its field out.
+
 `results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.
 
 ### Prometheus and Grafana
