@@ -1,0 +1,60 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-slurm-bridge-job
+description: submit and validate a job with slurm-bridge
+tasks:
+- id: register-job
+  type: RegisterObj
+  params:
+    template: "resources/templates/slurm-bridge/job.yaml"
+    nameFormat: "job{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
+    podCount: "{{.replicas}}"
+# slurm-bridge registers each node that carries the external-node label as a Slurm node, in the
+# partitions and under the leaf switch its annotations name. Label and annotations must arrive
+# together: a node labelled first joins no partition.
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 3
+      labels:
+        nvidia.com/gpu.count: "8"
+        scheduler.slinky.slurm.net/external-node: "true"
+      annotations:
+        scheduler.slinky.slurm.net/external-node-partitions: "slurm-bridge,slurm-bridge-preempt"
+        topology.slinky.slurm.net/spec: "topo-switch:s1"
+    timeout: 1m
+- id: job
+  type: SubmitObj
+  params:
+    refTaskId: register-job
+    count: 1
+    params:
+      namespace: default
+      replicas: 3
+      image: ubuntu
+      cpu: 100m
+      memory: 250M
+      gpu: 8
+      ttl: "20s"
+      timeLimit: 2
+- id: status
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Running
+    timeout: 2m
