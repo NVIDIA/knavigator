@@ -29,33 +29,25 @@ func TestSpeedUp(t *testing.T) {
 		{Type: "Sleep", Params: map[string]interface{}{"timeout": "2m"}},
 		{Type: "SubmitObj", Params: map[string]interface{}{"params": map[string]interface{}{"ttl": "5m", "workers": 4}}},
 		{Type: "CheckPod", Params: map[string]interface{}{"timeout": "10m"}},
+		{Type: "SubmitTrace", Params: map[string]interface{}{"refTaskId": "job"}},
 	}}
 
-	speedUp([]*config.Workflow{w}, 60)
+	require.NoError(t, speedUp([]*config.Workflow{w}, 60))
 
 	require.Equal(t, "2s", w.Tasks[0].Params["timeout"])
 	require.Equal(t, "5s", w.Tasks[1].Params["params"].(map[string]interface{})["ttl"])
 	require.Equal(t, 4, w.Tasks[1].Params["params"].(map[string]interface{})["workers"])
 	require.Equal(t, "10m", w.Tasks[2].Params["timeout"])
+	require.Equal(t, 60.0, w.Tasks[3].Params["speedup"])
 }
 
-func TestSpeedUpSubmitTrace(t *testing.T) {
-	w := &config.Workflow{Tasks: []*config.Task{
-		{Type: "SubmitTrace", Params: map[string]interface{}{"refTaskId": "job"}},
-		{Type: "SubmitTrace", Params: map[string]interface{}{"refTaskId": "job", "speedup": 2}},
-		{Type: "SubmitTrace", Params: map[string]interface{}{"refTaskId": "job", "speedup": 1.5}},
-		{Type: "SubmitTrace"},
-	}}
-
-	speedUp([]*config.Workflow{w}, 60)
-
-	require.Equal(t, 60.0, w.Tasks[0].Params["speedup"], "no task speedup means 1")
-	require.Equal(t, 120.0, w.Tasks[1].Params["speedup"], "an integer task speedup")
-	require.Equal(t, 90.0, w.Tasks[2].Params["speedup"], "a float task speedup")
-	require.Nil(t, w.Tasks[3].Params, "a task without params is left alone")
-
-	// A speedup of 1 changes nothing.
-	w2 := &config.Workflow{Tasks: []*config.Task{{Type: "SubmitTrace", Params: map[string]interface{}{"refTaskId": "job"}}}}
-	speedUp([]*config.Workflow{w2}, 1)
-	require.NotContains(t, w2.Tasks[0].Params, "speedup")
+func TestSpeedUpTraceMismatch(t *testing.T) {
+	trace := func(v interface{}) []*config.Workflow {
+		return []*config.Workflow{{Tasks: []*config.Task{
+			{Type: "SubmitTrace", ID: "trace", Params: map[string]interface{}{"speedup": v}},
+		}}}
+	}
+	require.NoError(t, speedUp(trace(60), 60))
+	require.Error(t, speedUp(trace(1), 60))
+	require.Error(t, speedUp(trace(60), 1))
 }

@@ -29,6 +29,7 @@ const (
 	TaskConfigure      = "Configure"
 	TaskRegisterObj    = "RegisterObj"
 	TaskSubmitObj      = "SubmitObj"
+	TaskSubmitTrace    = "SubmitTrace"
 	TaskUpdateObj      = "UpdateObj"
 	TaskCheckObj       = "CheckObj"
 	TaskCheckConfigmap = "CheckConfigmap"
