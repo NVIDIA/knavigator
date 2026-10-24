@@ -28,3 +28,4 @@ We have tested several of these and offer templates and workflows to support the
 * [YuniKorn](./examples/yunikorn/yunikorn.md)
 * [Run:ai](./examples/runai/runai.md)
 * [Kai](./examples/kai/kai.md)
+* [slurm-bridge](./examples/slurm-bridge/slurm-bridge.md)
