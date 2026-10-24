@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
@@ -45,6 +46,7 @@ type Args struct {
 	pushRun      string
 	pushEvery    time.Duration
 	resultsStall time.Duration
+	restartNS    string
 }
 
 func mainInternal() error {
@@ -65,6 +67,7 @@ func mainInternal() error {
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
+	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -117,7 +120,8 @@ func mainInternal() error {
 		if err != nil {
 			return err
 		}
-		if rec, err = results.Start(ctx, client); err != nil {
+		namespaces := strings.FieldsFunc(args.restartNS, func(c rune) bool { return c == ',' || c == ' ' })
+		if rec, err = results.Start(ctx, client, namespaces); err != nil {
 			return err
 		}
 		if len(args.pushURL) != 0 {

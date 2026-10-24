@@ -54,10 +54,17 @@ type Recorder struct {
 	events map[types.UID]*Event
 	// Occurrences an event had before the run, left out of its count during the run.
 	eventsBefore map[types.UID]int32
+	harness      *harnessStart
 }
 
-// Start begins watching pods and returns once the watch cache has synced.
-func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) {
+// Start begins watching pods and returns once the watch cache has synced. It refuses to start while
+// GPU pods from before the run are active. A restart of a control-plane container, or of any
+// container in restartNamespaces, during the run fails it.
+func Start(ctx context.Context, client kubernetes.Interface, restartNamespaces []string) (*Recorder, error) {
+	harness, err := startHarness(ctx, client, restartNamespaces)
+	if err != nil {
+		return nil, err
+	}
 	r := &Recorder{
 		client: client,
 		// Creation timestamps have one second resolution.
@@ -67,11 +74,12 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 		events: make(map[types.UID]*Event),
 
 		eventsBefore: make(map[types.UID]int32),
+		harness:      harness,
 	}
 
 	factory := informers.NewSharedInformerFactory(client, 0)
 	informer := factory.Core().V1().Pods().Informer()
-	_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { r.observe(obj, false) },
 		UpdateFunc: func(_, obj interface{}) { r.observe(obj, false) },
 		DeleteFunc: func(obj interface{}) {
@@ -318,6 +326,10 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	end := time.Now()
 
+	harness, err := r.harness.finish(ctx, r.client)
+	if err != nil {
+		return err
+	}
 	capacity, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
@@ -327,6 +339,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	summary := Summarize(pods, jobs, capacity, end)
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
+	summary.Harness = harness
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
 	}
@@ -354,6 +367,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		return err
 	}
 	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
+		return err
+	}
+	if err := harness.check(); err != nil {
 		return err
 	}
 	return summary.check(drained)
