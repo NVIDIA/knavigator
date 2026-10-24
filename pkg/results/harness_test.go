@@ -84,14 +84,18 @@ func readHarness(t *testing.T, dir string) map[string]json.RawMessage {
 func controlPlane() map[string]string { return map[string]string{"tier": "control-plane"} }
 
 func TestStartRefusesLeftoverGPUPods(t *testing.T) {
-	client := fake.NewSimpleClientset(
-		// Listed out of order, so the error has to sort them.
-		phasePod("team", "a-0", corev1.PodPending, true),
-		phasePod("default", "b-0", corev1.PodRunning, true),
-		phasePod("default", "done-0", corev1.PodSucceeded, true),
-		phasePod("default", "crashed-0", corev1.PodFailed, true),
-		phasePod("default", "web-0", corev1.PodRunning, false),
-	)
+	pods := []corev1.Pod{
+		*phasePod("team", "a-0", corev1.PodPending, true),
+		*phasePod("default", "b-0", corev1.PodRunning, true),
+		*phasePod("default", "done-0", corev1.PodSucceeded, true),
+		*phasePod("default", "crashed-0", corev1.PodFailed, true),
+		*phasePod("default", "web-0", corev1.PodRunning, false),
+	}
+	client := fake.NewSimpleClientset()
+	// The fake lists in name order; this list is out of order, so the error has to sort it.
+	client.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &corev1.PodList{Items: pods}, nil
+	})
 
 	rec, err := Start(context.Background(), client, nil)
 
