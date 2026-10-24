@@ -1,0 +1,40 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: test-k8s-trace
+description: replay a recorded trace of k8s jobs from a CSV file
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/templates/k8s/trace-job.yml"
+    nameFormat: "trace{{.jobId}}"
+    podNameFormat: "{{._NAME_}}-[0-9]+-.*"
+    podCount: "{{.gangSize}}"
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 2
+      labels:
+        nvidia.com/gpu.count: "8"
+    timeout: 1m
+- id: trace
+  type: SubmitTrace
+  params:
+    refTaskId: register
+    file: resources/traces/trace.csv
+    params:
+      namespace: default
