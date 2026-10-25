@@ -15,9 +15,10 @@
 # Does what a kubelet does to a deleted pod: moves a deleted Pending or
 # Running pod that still carries slurm-bridge's finalizer to Failed.
 # slurm-bridge removes the finalizer only from a terminal pod, and KWOK's
-# pod-delete stage skips pods with finalizers, so without this stage such a
-# pod stays Terminating for good. Failed, not Succeeded: a preempted pod that
-# ends Succeeded reads as a job that finished.
+# pod-delete stage only issues the delete, which the finalizer blocks, so
+# without this stage such a pod stays Terminating for good. Failed, not
+# Succeeded: a preempted pod that ends Succeeded reads as a job that
+# finished.
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
 metadata:

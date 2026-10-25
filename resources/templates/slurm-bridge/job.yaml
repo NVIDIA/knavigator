@@ -14,8 +14,9 @@
 
 # Each pod of this Job becomes one Slurm job. slurm-bridge reads the Slurm settings from the Job's
 # annotations. An empty gres keeps the pod's GPU request out of Slurm, which places whole nodes:
-# the virtual nodes have no gres/gpu in Slurm. timeLimit is in minutes and must outlast ttl, or
-# Slurm ends the job before KWOK completes the pod.
+# the virtual nodes have no gres/gpu in Slurm. timeLimit is in minutes and must outlast ttl: when
+# Slurm ends the job at its time limit, slurm-bridge deletes the pod, which ends Failed instead of
+# completing.
 apiVersion: batch/v1
 kind: Job
 metadata:
