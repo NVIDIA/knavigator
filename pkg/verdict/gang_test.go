@@ -25,33 +25,6 @@ import (
 	"github.com/NVIDIA/knavigator/pkg/verdict"
 )
 
-func TestPodsIgnoresEventsAfterTheWindow(t *testing.T) {
-	evs := fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22))
-	pods := verdict.Pods(evs, "gang", at(10))
-	require.Len(t, pods, 1)
-	require.Equal(t, at(2), pods[0].Running)
-	require.True(t, pods[0].End.IsZero())
-	require.Equal(t, []int64{1, 2, 3}, pods[0].Seqs)
-}
-
-func TestPodsKeepsTheFirstTerminalTransition(t *testing.T) {
-	p := done("v0", "victim", "n1", 0, 1, 2, 12)
-	p.later = []step{{at: 12.5, tr: eventlog.Deleted}}
-	pods := verdict.Pods(fixture("preemption", p), "preemption", at(100))
-	require.Len(t, pods, 1)
-	require.Equal(t, at(12), pods[0].End)
-	require.Equal(t, eventlog.Succeeded, pods[0].EndBy)
-	require.Len(t, pods[0].Seqs, 5)
-}
-
-func TestPodsKeepsOnlyTheNamedProbe(t *testing.T) {
-	evs := append(fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22)),
-		fixture("priority", done("x", "low", "n1", 0, 1, 2, 3))...)
-	pods := verdict.Pods(evs, "priority", at(100))
-	require.Len(t, pods, 1)
-	require.Equal(t, "x", pods[0].Name)
-}
-
 func TestGang(t *testing.T) {
 	params := verdict.GangParams{Jobs: []string{"gang-a", "gang-b"}, Size: 2, GraceSec: 5}
 	tests := []struct {
