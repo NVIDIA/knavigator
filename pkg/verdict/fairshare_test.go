@@ -221,6 +221,25 @@ func TestFairnessOverTime(t *testing.T) {
 			want: map[string]float64{"jain_median": 1, "windows_used": 1, "worst_shortfall_gpu_s": 0},
 		},
 		{
+			// capacity 4, 10 s windows, horizon 20 s, no Job events. Tenant a's
+			// job a1 has two 2-GPU pods: one runs 0 to 10 s, one never runs, so
+			// the job has not ended and wants 4 GPUs to the horizon. Tenant b's
+			// 2-GPU pod runs 0 to 20 s. Window [0,10): entitlements 20 and 20,
+			// deliveries 20 and 20, J = 1. Window [10,20): a delivers 0, b 20,
+			// x = (0, 1), J = 0.5, and a falls 20 GPU-s short. Ending a's demand
+			// with its first pod instead would leave that window to b alone.
+			name: "a job seen only through its pods wants capacity until all of them end",
+			tl: verdict.Build(fixture("fair-share",
+				pod{name: "a1-0", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 0, scheduled: 0, running: 0, end: 10, endBy: eventlog.Succeeded},
+				pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, created: 0, scheduled: -1, running: -1, end: -1},
+				tenantPod("b1", "b", 2, 0, 0, -1),
+			), "fair-share", at(20)),
+			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 2, JobLengthSec: 10,
+				ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10},
+			want: map[string]float64{"windows_used": 2, "windows_excluded": 0, "jain_median": 0.75,
+				"jain_p5": 0.5, "worst_shortfall_gpu_s": 20},
+		},
+		{
 			// capacity 4, 10 s windows, horizon 20 s. Tenant a's 2-GPU Job is
 			// created at 0 and its pod runs 5 to 20; tenant b's 2-GPU Job is created
 			// at 10 and runs 10 to 20. Window [0,10): only a has demand (20 GPU-s),
