@@ -58,11 +58,12 @@ var knownTransitions = map[Transition]bool{
 	QuotaReserved: true, Requeued: true, Unschedulable: true,
 }
 
-// Event is one line of the event log. ObservedAt is when knavigator wrote
-// the change, on the host clock; APITime is the object's own timestamp for
+// Event is one line of the event log. ObservedAt is when the recorder wrote
+// the change, on its host clock; APITime is the object's own timestamp for
 // it, when it has one, and APITimePrecision says whether that timestamp
 // carries seconds ("s") or microseconds ("us"). Probe, Job and Tenant are
-// optional labels a capability workflow sets on the objects it submits.
+// optional labels a workflow sets on the objects it submits; Job is a
+// label, not a Kubernetes Job's name.
 type Event struct {
 	Schema           int        `json:"schema"`
 	Seq              int64      `json:"seq"`
