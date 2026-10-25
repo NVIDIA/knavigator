@@ -19,6 +19,15 @@ set -e
 REPO_HOME=$(readlink -f "$(dirname "$(readlink -f "$0")")/../..")
 source "$REPO_HOME/scripts/env.sh"
 
+# helm v3.17 accepts a chart@sha256 reference but ignores the digest, so the chart pins below
+# would pin nothing. v3.18.0 is the first release that checks the digest.
+HELM_VERSION=$(helm version --template '{{.Version}}')
+if [[ ! "$HELM_VERSION" =~ ^v([0-9]+)\.([0-9]+)\. ]] ||
+    (( 10#${BASH_REMATCH[1]} < 3 || (10#${BASH_REMATCH[1]} == 3 && 10#${BASH_REMATCH[2]} < 18) )); then
+  printRed "slurm-bridge.sh needs helm v3.18.0 or later, which checks chart digests; found helm $HELM_VERSION"
+  exit 2
+fi
+
 SLURM_BRIDGE_VERSION=${SLURM_BRIDGE_VERSION:-v1.2.3}
 SCHEDULER_PLUGINS_VERSION=v0.33.5
 CHARTS=oci://ghcr.io/slinkyproject/charts
