@@ -20,6 +20,8 @@ source "$REPO_HOME/scripts/env.sh"
 
 # Install KWOK node simulator
 deploy_kwok
+# Complete pods after their ttl, so the workflow sees them running
+kubectl apply -f "$REPO_HOME/charts/overrides/kwok/pod-complete.yaml"
 
 # Install slurm-bridge
 "$REPO_HOME/scripts/schedulers/slurm-bridge.sh"
