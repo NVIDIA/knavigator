@@ -88,6 +88,21 @@ func TestPriority(t *testing.T) {
 			},
 		},
 		{
+			// every queued job goes first and q1 has two pods: 4 of the 4 jobs
+			// are ahead, so not supported, not "4 of 5" as counting pods would say
+			name: "every queued job ahead is not supported, whatever their pod count",
+			tl: verdict.Build(fixture("priority",
+				done("q1-0", "q1", "n1", 1, 30, 30.5, 50), done("q1-1", "q1", "n2", 1, 31, 31.5, 51),
+				done("q2", "q2", "n3", 1, 40, 40.5, 60), done("q3", "q3", "n4", 1, 45, 45.5, 65),
+				done("q4", "q4", "n1", 1, 48, 48.5, 68), done("h0", "high", "n2", 3, 50, 50.5, 70),
+			), "priority", at(100)),
+			want: want{
+				outcome: verdict.NotSupported,
+				reason:  "all 4 queued lower-priority jobs were scheduled before the high-priority job",
+				some:    map[string]float64{"queued_before_high": 4},
+			},
+		},
+		{
 			name: "not supported when the pods run in arrival order",
 			tl: verdict.Build(fixture("priority", append(queued(30, 40, 50, 60),
 				done("h0", "high", "n1", 3, 70, 70.5, 90))...), "priority", at(100)),
