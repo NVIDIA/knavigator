@@ -163,18 +163,6 @@ func nthScheduled(pods []*Pod, n int) (time.Time, bool) {
 	return ts[n-1], true
 }
 
-// earliestCreated returns the earliest creation time among pods, or the
-// zero time when none was seen.
-func earliestCreated(pods []*Pod) time.Time {
-	var t time.Time
-	for _, p := range pods {
-		if !p.Created.IsZero() && (t.IsZero() || p.Created.Before(t)) {
-			t = p.Created
-		}
-	}
-	return t
-}
-
 // evidence returns the sorted, de-duplicated event sequence numbers of pods.
 func evidence(groups ...[]*Pod) []int64 {
 	seen := map[int64]bool{}
