@@ -1,0 +1,55 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copied from the Scheduling Capabilities Suite at e5968b1
+# (https://github.com/ArangoGutierrez/scheduler-capabilities-suite/tree/e5968b1/claims).
+# Documented claims for kube-scheduler 1.37 with the Workload API. Each
+# claim is quoted from the page cited (fetched and checked on 2026-10-10;
+# every quote re-checked on 2026-10-12), or states that no mechanism is
+# documented. mechanism is how the Suite's probe exercised the capability.
+# expected is the verdict the documentation implies under the rules in
+# pkg/verdict.
+scheduler: vanilla
+version: Kubernetes v1.37.0 (kindest/node v1.37.0)
+claims:
+  gang:
+    claim: 'Gang scheduling ensures that a group of Pods are scheduled on an "all-or-nothing" basis.'
+    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/gang-scheduling/
+    expected: supported
+    mechanism: standalone PodGroup (scheduling.k8s.io/v1beta1, gang minCount = pods) named by the pods' spec.schedulingGroup; GenericWorkload on (Beta since 1.37, off by default)
+  priority:
+    claim: 'Pods with preemptionPolicy: Never will be placed in the scheduling queue ahead of lower-priority pods, but they cannot preempt other pods.'
+    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/
+    expected: supported
+    mechanism: PriorityClass scs-high (1000, preemptionPolicy Never) over scs-low (100)
+  preemption:
+    claim: 'It instructs the scheduler that all pods from the PodGroup have to be disrupted together.'
+    citation: https://kubernetes.io/docs/concepts/workloads/workload-api/disruption-and-priority/
+    expected: supported
+    mechanism: victim gang PodGroup with disruptionMode all; high-priority job PriorityClass scs-high-preempt (PreemptLowerPriority); workload-aware preemption is part of GenericWorkload in 1.37
+  fair-share:
+    claim: 'No tenant fair-share mechanism is documented for kube-scheduler 1.37. The nearest page treats fair share as a quota cap: "there is a concern that one team could use more than its fair share of resources."'
+    citation: https://kubernetes.io/docs/concepts/policy/resource-quotas/
+    expected: not_supported
+    mechanism: tenants are namespaces with no quota and no policy
+  backfill:
+    claim: 'If it cannot find enough placements to satisfy the minCount requirement, none of the Pods are scheduled. Instead, they are moved to the unschedulable queue to wait for cluster resources to free up, allowing other workloads to be scheduled in the meantime.'
+    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/gang-scheduling/
+    expected: partial
+    mechanism: plain Jobs; the large job is a PodGroup gang; no reservation for a waiting PodGroup is documented (podgroup-scheduling avoids groups that "reserve cluster capacity while waiting"), so short jobs may pass it and delay it
+  topology:
+    claim: 'allows finding the optimal placement for the considered PodGroup, guaranteeing that all pods will be collocated within the same topology domain.'
+    citation: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-aware-scheduling/
+    expected: supported
+    mechanism: PodGroup schedulingConstraints.topology with the rack label as key; TopologyAwareWorkloadScheduling on (Alpha since 1.36, off by default)
