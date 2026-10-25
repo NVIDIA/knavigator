@@ -11,11 +11,14 @@ slurm-bridge registers as Slurm external nodes.
 `scripts/schedulers/slurm-bridge.sh` installs slurm-bridge v1.2.3 and Slurm 26.05.4 from the
 charts in `oci://ghcr.io/slinkyproject/charts`, pinned by digest, with the values in
 `charts/overrides/slurm-bridge/`. Set `SLURM_BRIDGE_VERSION` to install another release by tag.
+The digest-pinned chart references need helm v3.18.0 or later: helm v3.16 rejects them, and helm
+v3.17 accepts them but ignores the digest.
 The script generates the Slurm auth key and the JWT key into the `slurm-auth-slurm` and
 `slurm-auth-jwt` Secrets on first install, and applies the KWOK stage `pod-fail-on-delete`, which
 fails a deleted pod that still carries slurm-bridge's finalizer, as a kubelet would.
 
-Run it on its own, or pick it from the menu of `scripts/create-test-cluster.sh`:
+On a cluster with KWOK and its pod-complete stage, as `scripts/create-test-cluster.sh` sets up,
+run it on its own or pick it from the menu:
 ```shell
 ./scripts/schedulers/slurm-bridge.sh
 ```
@@ -30,9 +33,10 @@ three, then the workflow submits a 3-pod Job and checks that the pods run:
 ./bin/knavigator -workflow resources/workflows/slurm-bridge/test-job.yaml -cleanup
 ```
 
-The job template takes `timeLimit`, the Slurm time limit in minutes, which must outlast `ttl`, and
-optional `partition` and `priority`. Partition `slurm-bridge-preempt` may preempt jobs of the
-default partition `slurm-bridge`.
+The job template takes `timeLimit`, the Slurm time limit in minutes, and optional `partition` and
+`priority`. `timeLimit` must outlast `ttl`: when Slurm ends the job at its time limit, slurm-bridge
+deletes the pod, which ends Failed instead of completing. Partition `slurm-bridge-preempt` may
+preempt jobs of the default partition `slurm-bridge`.
 
 ### Limits
 
