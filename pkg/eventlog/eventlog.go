@@ -62,8 +62,8 @@ var knownTransitions = map[Transition]bool{
 // the change, on its host clock; APITime is the object's own timestamp for
 // it, when it has one, and APITimePrecision says whether that timestamp
 // carries seconds ("s") or microseconds ("us"). Probe, Job and Tenant are
-// optional labels a workflow sets on the objects it submits; Job is a
-// label, not a Kubernetes Job's name.
+// optional values of labels on the object, or for Probe and Tenant on its
+// namespace; Job comes from a label, not from the object's owner.
 type Event struct {
 	Schema           int        `json:"schema"`
 	Seq              int64      `json:"seq"`
