@@ -12,7 +12,7 @@ slurm-bridge registers as Slurm external nodes.
 charts in `oci://ghcr.io/slinkyproject/charts`, pinned by digest, with the values in
 `charts/overrides/slurm-bridge/`. Set `SLURM_BRIDGE_VERSION` to install another release by tag.
 The digest-pinned chart references need helm v3.18.0 or later: helm v3.16 rejects them, and helm
-v3.17 accepts them but ignores the digest.
+v3.17 accepts them but ignores the digest, so the script refuses any helm older than v3.18.0.
 The script generates the Slurm auth key and the JWT key into the `slurm-auth-slurm` and
 `slurm-auth-jwt` Secrets on first install, and applies the KWOK stage `pod-fail-on-delete`, which
 fails a deleted pod that still carries slurm-bridge's finalizer, as a kubelet would.
