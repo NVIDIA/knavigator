@@ -18,6 +18,7 @@ package eventlog
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,8 +43,8 @@ func ev(seq int64, tr Transition) Event {
 const line1 = `{"schema":1,"seq":1,"run_id":"r1","observed_at":"2026-10-10T10:00:01Z","kind":"Pod","namespace":"scs-gang","name":"p","uid":"u","probe":"gang","job":"gang-a","tenant":"t1","priority":0,"gpus":8,"transition":"created"}`
 
 // seq2 returns line1 renumbered as seq 2, observed at the same instant.
-func seq2(line string) string {
-	return strings.Replace(line, `"seq":1`, `"seq":2`, 1)
+func seq2() string {
+	return strings.Replace(line1, `"seq":1`, `"seq":2`, 1)
 }
 
 func TestEncodeAndRead(t *testing.T) {
@@ -86,7 +87,7 @@ func TestTransitionValues(t *testing.T) {
 		Requeued:      "requeued",
 		Unschedulable: "unschedulable",
 	}
-	require.Len(t, want, 12)
+	require.Len(t, knownTransitions, len(want))
 	for tr, s := range want {
 		require.Equal(t, s, string(tr))
 		require.NoError(t, ev(1, tr).Validate(), "transition %s", s)
@@ -190,8 +191,12 @@ func TestEncodeMarshalError(t *testing.T) {
 	e.ObservedAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	enc := NewEncoder(&buf)
-	require.EqualError(t, enc.Encode(e),
-		"seq 1: json: error calling MarshalJSON for type *time.Time: year outside of range [0,9999]")
+	// the json error text differs between encoding/json implementations, so
+	// only the package's own prefix is pinned
+	err := enc.Encode(e)
+	var me *json.MarshalerError
+	require.ErrorAs(t, err, &me)
+	require.EqualError(t, err, "seq 1: "+me.Error())
 	require.NoError(t, enc.Flush())
 	require.Empty(t, buf.String())
 }
@@ -226,8 +231,24 @@ func TestEncodeWriteError(t *testing.T) {
 	require.EqualError(t, enc.Flush(), "disk full")
 }
 
+func TestEncodeReturnsWriteErrors(t *testing.T) {
+	// once the buffer fills, Encode flushes it and returns that error
+	enc := NewEncoder(failWriter{})
+	var err error
+	for seq := int64(1); err == nil && seq <= 100; seq++ {
+		err = enc.Encode(ev(seq, Created))
+	}
+	require.EqualError(t, err, "disk full")
+
+	// a line longer than the buffer goes straight to the writer
+	e := ev(1, Created)
+	e.Message = strings.Repeat("x", 8192)
+	enc = NewEncoder(failWriter{})
+	require.EqualError(t, enc.Encode(e), "disk full")
+}
+
 func TestRead(t *testing.T) {
-	falling := strings.Replace(seq2(line1),
+	falling := strings.Replace(seq2(),
 		`"observed_at":"2026-10-10T10:00:01Z"`, `"observed_at":"2026-10-10T10:00:00.999Z"`, 1)
 	testCases := []struct {
 		name string
@@ -242,12 +263,12 @@ func TestRead(t *testing.T) {
 		},
 		{
 			name: "two events observed at the same instant",
-			in:   line1 + "\n" + seq2(line1) + "\n",
+			in:   line1 + "\n" + seq2() + "\n",
 			n:    2,
 		},
 		{
 			name: "last line without a newline",
-			in:   line1 + "\n" + seq2(line1),
+			in:   line1 + "\n" + seq2(),
 			n:    2,
 		},
 		{
@@ -262,7 +283,7 @@ func TestRead(t *testing.T) {
 		},
 		{
 			name: "first seq is not 1",
-			in:   seq2(line1) + "\n",
+			in:   seq2() + "\n",
 			err:  "line 1: seq 2, want 1",
 		},
 		{
@@ -287,7 +308,7 @@ func TestRead(t *testing.T) {
 		},
 		{
 			name: "two events joined on one line",
-			in:   line1 + seq2(line1) + "\n",
+			in:   line1 + seq2() + "\n",
 			err:  "line 1: unexpected data after the event",
 		},
 		{
@@ -351,7 +372,7 @@ func TestReadFile(t *testing.T) {
 	dir := t.TempDir()
 
 	good := filepath.Join(dir, "good.jsonl")
-	require.NoError(t, os.WriteFile(good, []byte(line1+"\n"+seq2(line1)+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(good, []byte(line1+"\n"+seq2()+"\n"), 0o644))
 	got, err := ReadFile(good)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
