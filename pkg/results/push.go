@@ -202,7 +202,7 @@ type sample struct {
 
 // samples turns a decoded results.json into one sample per metric value. Numbers become
 // knavigator_<field>, booleans 0 or 1. An object of count, mean, p95 and max becomes the label
-// stat. A list of objects with a bucket, gang_size or priority field becomes that label.
+// stat. A list of objects with a bucket, gang_size, priority or class field becomes that label.
 // Everything else is skipped.
 func samples(tree interface{}) []sample {
 	var out []sample
@@ -253,6 +253,8 @@ func samples(tree interface{}) []sample {
 					key, id = "gang_size", strconv.Itoa(int(n))
 				} else if n, ok := m["priority"].(float64); ok {
 					key, id = "priority", strconv.Itoa(int(n))
+				} else if c, ok := m["class"].(string); ok {
+					key, id = "class", c
 				} else {
 					continue
 				}

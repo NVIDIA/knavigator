@@ -39,7 +39,7 @@ Pod gauges:
 - `knavigator_gpus_in_use` and `knavigator_gpus_pending`: GPUs requested by running pods and by pods not yet placed.
 - `knavigator_speedup`: the factor `-speedup` compresses time by (1 without it). The summary gauges already report simulated time, while these pod gauges and the time axis are real time, so multiply any total you compute from them by this factor.
 
-Every push also carries the summary of the run so far, as one gauge per `results.json` field, named `knavigator_<field>`. The final push replaces it with the values for the whole run. Booleans become 0 or 1, and `null` and text fields are skipped. A field with `count`, `mean`, `p95` and `max` gets the label `stat`. A list whose rows have a `bucket` or `gang_size` field gets that field as a label. For example, `job_wait_sec.p95` is `knavigator_job_wait_sec{stat="p95"}`. New `results.json` fields appear with no further change.
+Every push also carries the summary of the run so far, as one gauge per `results.json` field, named `knavigator_<field>`. The final push replaces it with the values for the whole run. Booleans become 0 or 1, and `null` and text fields are skipped. A field with `count`, `mean`, `p95` and `max` gets the label `stat`. A list whose rows have a `bucket`, `gang_size`, `priority` or `class` field gets that field as a label. For example, `job_wait_sec.p95` is `knavigator_job_wait_sec{stat="p95"}`. New `results.json` fields appear with no further change.
 
 During the run these are numbers so far. Makespan is the time since the first submission, utilization covers that span, and job wait counts only jobs that have started, so it reads low while jobs are still queued. With `-speedup`, summary values report simulated time and the pod gauges report real time.
 
@@ -68,6 +68,8 @@ A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares
 - `jobs_never_admitted`: jobs with a pod that never got placed. `jobs_abandoned`, `abandoned_gpu_hours`: jobs fully placed but still running when the run ended, and the GPU-hours they used.
 
 Metrics that cannot be computed, such as a correlation over one job, are null.
+
+When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each of its classes, `wait_by_class` has one row per class with `jobs`, `started`, `wait_sec` and `slo_attainment`. `slo_attainment` gives the share of the class's jobs that started within each wait in a fixed ladder: `1m`, `5m`, `15m`, `1h` and `4h`, in simulated time under `-speedup`. A job that never started counts as a miss, so a class that reads 0.98 at `5m` started 98% of its jobs within five minutes. Jobs without a class are left out, and the field is absent when no job has one. The ladder needs no target chosen in advance, so classes with different latency needs, such as inference and training, can be read side by side.
 
 ```bash
 ./bin/knavigator -results ./out \

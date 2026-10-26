@@ -28,6 +28,8 @@ type Options struct {
 	MaxNodeGPUs float64
 	// BSLDFloor bounds the runtime in bounded slowdown. Scale it with -speedup.
 	BSLDFloor time.Duration
+	// Speedup converts real waits to simulated time for the SLO limits; 0 means 1.
+	Speedup float64
 }
 
 // DefaultBSLDFloor is the runtime below which slowdown reports queueing noise rather than service.
