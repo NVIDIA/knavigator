@@ -139,6 +139,20 @@ func TestGang(t *testing.T) {
 			params: params,
 			err:    "no events recorded for job gang-b",
 		},
+		{
+			// gang-a is partly placed for exactly the grace (1 to 6 s) and
+			// completes; gang-b never gets a pod scheduled
+			name: "a gang partly placed for exactly the grace is not in the reason",
+			tl: verdict.Build(fixture("gang",
+				done("a0", "gang-a", "n1", 0, 1, 7, 27), done("a1", "gang-a", "n2", 0, 6, 7, 27),
+				pending("b0", "gang-b", 0), pending("b1", "gang-b", 0),
+			), "gang", at(60)),
+			params: params,
+			want: want{
+				outcome: verdict.NotSupported,
+				reason:  "gang gang-b did not complete before the probe ended",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

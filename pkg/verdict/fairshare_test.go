@@ -151,6 +151,19 @@ func TestFairShare(t *testing.T) {
 				some:    map[string]float64{"b_max_gpus_by_check": 8},
 			},
 		},
+		{
+			// b0, submitted at 10 s, runs from 12 s; b1, submitted at 40 s, runs
+			// from 90 s. The check at 10 + 65 = 75 s sees only b0's 8 GPUs;
+			// timing it from b1's submission would check at 105 s and see 16.
+			name: "the check runs from B's earliest submission",
+			tl: run(200, tenantPod("a0", "a", 8, 0, 0.5, 60),
+				tenantPod("b0", "b", 8, 10, 12, -1), tenantPod("b1", "b", 8, 40, 90, -1)),
+			params: params,
+			want: want{
+				outcome: verdict.Partial,
+				some:    map[string]float64{"b_max_gpus_by_check": 8, "b_after_first_submit_s": 10},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,6 +340,34 @@ func TestFairnessOverTime(t *testing.T) {
 			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 1, JobLengthSec: 10,
 				ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10},
 			want: map[string]float64{"jain_median": 1, "worst_shortfall_gpu_s": 0},
+		},
+		{
+			// capacity 4, 10 s windows, horizon 210 s: 21 windows. Tenant a runs
+			// 2 GPUs throughout; tenant b's 2-GPU pod is submitted at 0 and runs
+			// from 15 s. Window [0,10): x = (1, 0), J = 0.5. Window [10,20): b
+			// gets half its 20 GPU-s, x = (1, 0.5), J = 0.9. Every later window:
+			// J = 1. Sorted, p5 is J[ceil(0.05 * 21) - 1] = J[1] = 0.9, and b's
+			// shortfall is 20 + 10 = 30 GPU-s.
+			name: "the 5th percentile over 21 windows",
+			tl: verdict.Build(fixture("fair-share",
+				tenantPod("a1", "a", 2, 0, 0, -1), tenantPod("b1", "b", 2, 0, 15, -1),
+			), "fair-share", at(210)),
+			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 2, JobLengthSec: 10,
+				ToleranceSec: 0, CapacityGPUs: 4, WindowSec: 10},
+			want: map[string]float64{"windows_used": 21, "jain_p5": 0.9, "jain_median": 1,
+				"worst_shortfall_gpu_s": 30},
+		},
+		{
+			// capacity 2, 10 s windows, horizon 25 s: the last window is [20,25),
+			// with 10 GPU-s of capacity split 5 and 5. Tenant b never runs, so its
+			// shortfall is 10 + 10 + 5 = 25 GPU-s; a full last window would give 30.
+			name: "the last window is shorter when the horizon is not a multiple of the window",
+			tl: verdict.Build(fixture("fair-share",
+				tenantPod("a1", "a", 2, 0, 0, -1), tenantPod("b1", "b", 2, 0, -1, -1),
+			), "fair-share", at(25)),
+			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 1, JobLengthSec: 10,
+				ToleranceSec: 0, CapacityGPUs: 2, WindowSec: 10},
+			want: map[string]float64{"windows_used": 3, "worst_shortfall_gpu_s": 25},
 		},
 	}
 	for _, tc := range tests {
