@@ -104,7 +104,8 @@ func sizeMetrics(pods []Pod, jobs []Job, start map[string]map[string]time.Time, 
 		}
 		sort.Slice(ts, func(a, b int) bool { return ts[a].Before(ts[b]) })
 		assembled := ts[j.Pods-1]
-		wait := assembled.Sub(j.Submitted).Seconds()
+		// Pod timestamps have one second resolution, so a fast placement can read as before submission.
+		wait := math.Max(0, assembled.Sub(j.Submitted).Seconds())
 
 		if bi >= 0 {
 			counts[bi].Started++

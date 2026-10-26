@@ -154,12 +154,13 @@ func TestByGangSize(t *testing.T) {
 func TestByGangSizeSubSecondPlacement(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0.Add(500 * time.Millisecond), Pods: 1, PodRegexp: "a-0"}}
-	pods := []Pod{{Namespace: "default", Name: "a-0", Created: t0, Scheduled: t0, Finished: t0.Add(time.Second)}}
+	pods := []Pod{{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0, Scheduled: t0, Finished: t0.Add(time.Second)}}
 
 	s := Summarize(pods, jobs, 8, t0.Add(time.Minute), Options{})
 
 	require.Equal(t, Stats{Count: 1}, s.JobWaitSec, "wait is never negative")
 	require.Equal(t, Stats{Count: 1}, s.JobsByGangSize[0].WaitSec, "wait is never negative")
+	require.Equal(t, Stats{Count: 1}, s.WaitByFootprint[0].WaitSec, "wait is never negative")
 }
 
 func TestByGangSizeReplacedPods(t *testing.T) {
