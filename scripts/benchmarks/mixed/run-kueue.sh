@@ -18,6 +18,7 @@ set -e
 
 REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../../)
 
-# The trace covers about a simulated day, so replay it 60 times faster by default.
+# The traces cover about a simulated day, so replay them 60 times faster by default.
+# TRACE=burst replays run-burst.yaml instead of run-mixed.yaml.
 $REPO_HOME/bin/knavigator -speedup 60 "$@" \
-  -workflow "$REPO_HOME/resources/benchmarks/mixed/workflows/{config-nodes.yaml,config-kueue.yaml,run.yaml}"
+  -workflow "$REPO_HOME/resources/benchmarks/mixed/workflows/{config-nodes.yaml,config-kueue.yaml,run-${TRACE:-mixed}.yaml}"
