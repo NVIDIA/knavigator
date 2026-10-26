@@ -125,7 +125,7 @@ function deploy_prometheus() {
 function deploy_mpi_operator() {
   MPI_OPERATOR_VERSION=v0.6.0
   printGreen Deploying mpi-operator $MPI_OPERATOR_VERSION
-  kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
+  kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/kubeflow/mpi-operator/$MPI_OPERATOR_VERSION/deploy/v2beta1/mpi-operator.yaml
 }
 
 function deploy_kuberay_operator() {
