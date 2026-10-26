@@ -99,6 +99,16 @@ func TestParseErrors(t *testing.T) {
 			err:  `claims: capability "priority": citation "http://example.org/priority" is not an https URL`,
 		},
 		{
+			name: "a claim of only spaces",
+			in:   strings.Replace(valid, "claim: Pods of a group are scheduled together or not at all.", `claim: "   "`, 1),
+			err:  `claims: capability "gang": claim is empty`,
+		},
+		{
+			name: "a mechanism of only spaces",
+			in:   strings.Replace(valid, "mechanism: plain Jobs", `mechanism: "   "`, 1),
+			err:  `claims: capability "backfill": mechanism is empty`,
+		},
+		{
 			name: "an expected outcome outside the three",
 			in:   strings.Replace(valid, "expected: partial\n    mechanism: plain Jobs", "expected: maybe\n    mechanism: plain Jobs", 1),
 			err:  `claims: capability "backfill": expected "maybe", want supported, partial or not_supported`,
