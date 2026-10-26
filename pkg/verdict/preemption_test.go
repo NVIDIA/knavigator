@@ -119,6 +119,22 @@ func TestPreemption(t *testing.T) {
 			},
 		},
 		{
+			// v3 is scheduled and deleted without ever running: it counts as
+			// evicted but lost no GPU-time. Lost: 3 pods * 8 GPUs * 8.5 s = 204.
+			name: "a victim pod that never ran loses no GPU-seconds",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 10.5, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
+				victim("v2", "n3", 10.5, eventlog.Deleted),
+				pod{name: "v3", job: "victim", tenant: "t1", gpus: 8, node: "n4", created: 0, scheduled: 1, running: -1, end: 10.5, endBy: eventlog.Deleted},
+				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				some:    map[string]float64{"victim_pods_evicted": 4},
+				near:    map[string]float64{"gpu_seconds_lost": 204},
+			},
+		},
+		{
 			name: "no victim running first is a harness error",
 			tl: verdict.Build(fixture("preemption",
 				pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
