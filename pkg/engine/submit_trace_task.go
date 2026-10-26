@@ -60,8 +60,12 @@ type submitTraceTaskParams struct {
 type traceClass struct {
 	Name string `yaml:"name"`
 	Jobs int    `yaml:"jobs"`
-	// ArrivalInterval: mean seconds between arrivals (Poisson)
+	// ArrivalInterval: mean seconds between arrivals (Poisson); 0 submits every job at Start
 	ArrivalInterval float64 `yaml:"arrivalInterval"`
+	// Start: seconds before the class's arrivals begin
+	Start float64 `yaml:"start"`
+	// Regular: arrivals exactly ArrivalInterval apart instead of Poisson, the first at Start
+	Regular bool `yaml:"regular"`
 	// Runtime: log-normal runtime in log-seconds, capped at Max seconds
 	Runtime struct {
 		Mu    float64 `yaml:"mu"`
@@ -142,8 +146,11 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: must specify classes", task.ID())
 	}
 	for _, c := range task.Classes {
-		if c.Jobs <= 0 || c.ArrivalInterval <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
-			return fmt.Errorf("%s: class %q needs positive jobs, arrivalInterval and runtime.max, and gpus", task.ID(), c.Name)
+		if c.Jobs <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
+			return fmt.Errorf("%s: class %q needs positive jobs and runtime.max, and gpus", task.ID(), c.Name)
+		}
+		if c.ArrivalInterval < 0 || c.Start < 0 {
+			return fmt.Errorf("%s: class %q has a negative arrivalInterval or start", task.ID(), c.Name)
 		}
 		if c.GangFraction > 0 && len(c.GangSizes) == 0 {
 			return fmt.Errorf("%s: class %q has gangFraction but no gangSizes", task.ID(), c.Name)
@@ -163,9 +170,13 @@ func generateTrace(classes []traceClass, seed uint64) []traceJob {
 	var jobs []traceJob
 	for i, c := range classes {
 		rng := rand.New(rand.NewPCG(seed, uint64(i)))
-		now := 0.0
-		for range c.Jobs {
-			now += rng.ExpFloat64() * c.ArrivalInterval
+		now := c.Start
+		for k := range c.Jobs {
+			if c.Regular {
+				now = c.Start + float64(k)*c.ArrivalInterval
+			} else {
+				now += rng.ExpFloat64() * c.ArrivalInterval
+			}
 			job := traceJob{
 				Class:    c.Name,
 				Submit:   now,

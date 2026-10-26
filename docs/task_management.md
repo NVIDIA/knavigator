@@ -50,3 +50,27 @@ Each job gets these template parameters on top of `params`: `jobId`, `class`, `a
 ```
 
 Register the template with `podNameFormat` and `podCount: "{{.gangSize}}"` so `-results` can measure each job's wait.
+
+A class can also arrive in bursts. `start` delays the class's arrivals by that many seconds, and `regular: true` submits its jobs exactly `arrivalInterval` apart, the first at `start`, instead of drawing the gaps at random. With `arrivalInterval: 0`, every job in the class arrives at `start` at once. These two classes add a pile of 40 training jobs at hour 6 and whole-fleet gangs at hours 8 and 16, on top of the classes above:
+
+```yaml
+    - name: training-pile
+      jobs: 40
+      start: 21600
+      arrivalInterval: 0
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [8]
+      priorities: [50]
+    - name: full-fleet
+      jobs: 2
+      start: 28800
+      arrivalInterval: 28800
+      regular: true
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [8]
+      gangFraction: 1
+      gangSizes: [64]
+      priorities: [50]
+```
+
+Each class draws from its own random stream, so adding a class leaves the jobs of the others unchanged.
