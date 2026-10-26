@@ -25,7 +25,8 @@ KAI_VERSION=${KAI_VERSION:-v0.18.6}
 printGreen Deploying kai scheduler $KAI_VERSION
 
 # The KAI operator crashloops without this CRD, which a GPU cluster gets from the GPU Operator.
-kubectl apply -f - <<EOF
+# Create it only when missing, so a real GPU Operator CRD keeps its schema.
+kubectl get crd clusterpolicies.nvidia.com >/dev/null 2>&1 || kubectl create -f - <<EOF
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -57,5 +58,7 @@ helm upgrade --install kai-scheduler oci://ghcr.io/kai-scheduler/kai-scheduler/k
 
 # The scheduler Deployment can lose a race with its ServiceAccount on a fresh install.
 kubectl -n kai-scheduler wait --for=create sa/scheduler --timeout=180s
+# A different controller creates the Deployment, so the ServiceAccount existing does not imply it.
+kubectl -n kai-scheduler wait --for=create deploy/kai-scheduler-default --timeout=180s
 kubectl -n kai-scheduler rollout restart deploy/kai-scheduler-default
 kubectl -n kai-scheduler rollout status deploy/kai-scheduler-default --timeout=180s
