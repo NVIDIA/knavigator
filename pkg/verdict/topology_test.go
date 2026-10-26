@@ -78,6 +78,22 @@ func TestTopology(t *testing.T) {
 			want:   want{outcome: verdict.NotSupported, reason: "no attempt placed its pods in one rack"},
 		},
 		{
+			// t1-2 is created first but scheduled last, in rack A; the first
+			// two scheduled pods are both in rack B
+			name: "only the first pods_per_job pods to be scheduled count",
+			tl: run([]pod{
+				done("t1-2", "t1", "n1", 0, 5, 5.5, 20),
+				done("t1-0", "t1", "n3", 0.5, 1, 1.5, 20),
+				done("t1-1", "t1", "n4", 0.5, 1.2, 1.7, 20),
+			}),
+			params: verdict.TopologyParams{AttemptJobs: []string{"t1"}, PodsPerJob: 2, RackOf: racks},
+			want: want{
+				outcome:      verdict.Supported,
+				reason:       "all 1 attempts placed every pod in one rack",
+				measurements: map[string]float64{"attempts": 1, "attempts_one_rack": 1},
+			},
+		},
+		{
 			// t1 lands in rack B; t2 has one pod on n3 and one pending; a queue
 			// holds t3 as a Job with no pods
 			name: "an attempt a queue holds, or one half placed, is not one rack",

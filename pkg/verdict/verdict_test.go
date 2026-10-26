@@ -44,6 +44,21 @@ func TestPodsKeepsTheFirstTerminalTransition(t *testing.T) {
 	require.Len(t, pods[0].Seqs, 5)
 }
 
+func TestPodsEndsAPodAtEveryTerminalTransition(t *testing.T) {
+	for _, tr := range []eventlog.Transition{
+		eventlog.Succeeded, eventlog.Failed, eventlog.Deleted, eventlog.Preempted, eventlog.Evicted,
+	} {
+		t.Run(string(tr), func(t *testing.T) {
+			p := done("v0", "victim", "n1", 0, 1, 2, 12)
+			p.endBy = tr
+			pods := verdict.Pods(fixture("preemption", p), "preemption", at(100))
+			require.Len(t, pods, 1)
+			require.Equal(t, at(12), pods[0].End)
+			require.Equal(t, tr, pods[0].EndBy)
+		})
+	}
+}
+
 func TestPodsKeepsOnlyTheNamedProbe(t *testing.T) {
 	evs := append(fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22)),
 		fixture("priority", done("x", "low", "n1", 0, 1, 2, 3))...)

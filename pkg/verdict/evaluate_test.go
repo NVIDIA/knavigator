@@ -63,6 +63,22 @@ func TestEvaluateJudgesTheTopologyControlUnderItsOwnName(t *testing.T) {
 	require.Equal(t, "2 of 3 attempts placed every pod in one rack", v.Reason)
 }
 
+func TestEvaluateJudgesTheGangControlUnderItsOwnName(t *testing.T) {
+	evs := fixture("gang-control",
+		done("a0", "gang-a", "n1", 0, 1.0, 2, 22), done("a1", "gang-a", "n2", 0, 1.5, 2, 22),
+		done("b0", "gang-b", "n1", 0, 22.5, 23.5, 44), done("b1", "gang-b", "n2", 0, 23.0, 24, 44),
+	)
+	v, err := verdict.Evaluate(evs, verdict.Probe{
+		Capability: "gang-control",
+		Params:     json.RawMessage(`{"jobs":["gang-a","gang-b"],"size":2,"grace_sec":5}`),
+		WindowEnd:  at(60),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gang-control", v.Capability)
+	require.Equal(t, verdict.Supported, v.Outcome)
+	require.Equal(t, "no gang was partly placed for more than 5 s, and all 2 gangs completed", v.Reason)
+}
+
 func TestEvaluateErrors(t *testing.T) {
 	tests := []struct {
 		name  string

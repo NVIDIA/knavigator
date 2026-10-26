@@ -139,6 +139,18 @@ func TestFairShare(t *testing.T) {
 			params: params,
 			want:   want{some: map[string]float64{"b_after_first_submit_s": 23.5}},
 		},
+		{
+			// b0 ends at 40 s as b1 starts: B never runs both at once
+			name: "a B pod ending as another starts does not count both",
+			tl: run(200, tenantPod("a0", "a", 8, 0, 0.5, 60),
+				tenantPod("b0", "b", 8, 10, 12, 40), tenantPod("b1", "b", 8, 10, 40, 100)),
+			params: params,
+			want: want{
+				outcome: verdict.Partial,
+				reason:  "tenant b had at most 8 of its 16 entitled GPUs running within 65 s of submitting",
+				some:    map[string]float64{"b_max_gpus_by_check": 8},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

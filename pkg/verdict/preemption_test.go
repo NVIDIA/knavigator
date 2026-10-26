@@ -103,6 +103,22 @@ func TestPreemption(t *testing.T) {
 			err: "victim pod v0 completed instead of being evicted, so the probe did not exercise preemption",
 		},
 		{
+			// v4 is scheduled at 10 s, the instant the high-priority job is
+			// created, and never ends: it is not a victim considered
+			name: "a victim pod scheduled as the high-priority job is created is not counted",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 10.5, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
+				victim("v2", "n3", 10.5, eventlog.Deleted), victim("v3", "n4", 10.5, eventlog.Deleted),
+				pod{name: "v4", job: "victim", tenant: "t1", gpus: 8, node: "n5", created: 9, scheduled: 10, running: 10.5, end: -1},
+				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				reason:  "no victim pod was left running 5 s after the high-priority job was scheduled",
+				some:    map[string]float64{"victim_pods_before": 4, "victim_pods_remaining": 0},
+			},
+		},
+		{
 			name: "no victim running first is a harness error",
 			tl: verdict.Build(fixture("preemption",
 				pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
