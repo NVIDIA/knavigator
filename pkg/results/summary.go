@@ -103,6 +103,7 @@ type Summary struct {
 	MaxEvictionsPerJob int `json:"max_evictions_per_job"`
 	// Stalled is set when the run stopped because nothing was placed or finished for -results.stall.
 	Stalled bool `json:"stalled"`
+	Sizes
 }
 
 // PriorityEvictions counts the evicted pods of one priority.
@@ -114,7 +115,7 @@ type PriorityEvictions struct {
 }
 
 // Summarize sets Pod.Job and computes run metrics. Pods still running at end count as running until end.
-func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summary {
+func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt Options) Summary {
 	assignJobs(pods, jobs)
 
 	s := Summary{Pods: len(pods), Jobs: len(jobs), GPUCapacity: gpuCapacity}
@@ -219,6 +220,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time) Summa
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
 	s.JobsByGangSize = byGangSize(pods, jobs, scheduled)
+	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
 	return s
 }
 
@@ -239,6 +241,13 @@ func (s *Summary) ScaleTime(speedup float64) {
 		st.Mean *= speedup
 		st.P95 *= speedup
 		st.Max *= speedup
+	}
+	s.AbandonedGPUHours *= speedup
+	for i := range s.WaitByFootprint {
+		w := &s.WaitByFootprint[i].WaitSec
+		w.Mean *= speedup
+		w.P95 *= speedup
+		w.Max *= speedup
 	}
 	for i := range s.JobsByGangSize {
 		w := &s.JobsByGangSize[i].WaitSec

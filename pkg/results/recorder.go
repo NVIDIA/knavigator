@@ -21,6 +21,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,11 +109,15 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
-		capacity, err := r.gpuCapacity(ctx)
+		capacity, maxNode, err := r.gpuCapacity(ctx)
 		if err != nil {
 			return Summary{}, err
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now())
+		floor := DefaultBSLDFloor
+		if speedup > 1 {
+			floor = time.Duration(float64(floor) / speedup)
+		}
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, BSLDFloor: floor})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -281,7 +286,7 @@ func idle(pods []Pod, jobs []Job) bool {
 }
 
 // Finish waits until the run drains or the timeout passes, then writes the results into dir.
-func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64, stall time.Duration) error {
+func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64, stall, bsldFloor time.Duration) error {
 	defer close(r.stop)
 	if r.pusher != nil {
 		defer r.pusher.Stop()
@@ -318,13 +323,17 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	end := time.Now()
 
-	capacity, err := r.gpuCapacity(ctx)
+	capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
 	}
 	pods := r.snapshot()
 	events := r.eventList()
-	summary := Summarize(pods, jobs, capacity, end)
+	if speedup > 1 {
+		// Runtimes are measured in real time; the floor is given in simulated time.
+		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
+	}
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, BSLDFloor: bsldFloor})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	if speedup > 1 {
@@ -373,19 +382,20 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity sums allocatable GPUs over all nodes at the end of the run.
-func (r *Recorder) gpuCapacity(ctx context.Context) (float64, error) {
+// gpuCapacity sums allocatable GPUs over all nodes at the end of the run and finds the biggest node.
+func (r *Recorder) gpuCapacity(ctx context.Context) (total, maxNode float64, err error) {
 	nodes, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("failed to list nodes: %v", err)
+		return 0, 0, fmt.Errorf("failed to list nodes: %v", err)
 	}
-	var n float64
 	for _, node := range nodes.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
-			n += q.AsApproximateFloat64()
+			g := q.AsApproximateFloat64()
+			total += g
+			maxNode = math.Max(maxNode, g)
 		}
 	}
-	return n, nil
+	return total, maxNode, nil
 }
 
 func writeTimeline(path string, pods []Pod) error {

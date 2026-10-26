@@ -45,6 +45,7 @@ type Args struct {
 	pushRun      string
 	pushEvery    time.Duration
 	resultsStall time.Duration
+	bsldFloor    time.Duration
 }
 
 func mainInternal() error {
@@ -59,6 +60,7 @@ func mainInternal() error {
 	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
 	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
 	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
+	flag.DurationVar(&args.bsldFloor, "results.bsld-floor", results.DefaultBSLDFloor, "runtime floor for bounded slowdown, in simulated time")
 
 	flag.StringVar(&args.pushURL, "results.pushgateway", "", "Prometheus Pushgateway URL; pushes live run metrics and the summary (requires 'results')")
 	flag.StringVar(&args.pushRun, "results.run", "", "run label on pushed metrics (default: start time)")
@@ -140,7 +142,7 @@ func mainInternal() error {
 		return runErr
 	}
 	if runErr == nil {
-		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall)
+		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
 	}
 	// Cleanup waits for the results so running pods are recorded before they are deleted.
 	if err := eng.Reset(ctx); runErr == nil {
