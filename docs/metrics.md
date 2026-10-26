@@ -92,3 +92,22 @@ A compressed run shows how jobs stack up and how a scheduler places them. It doe
 - Wait times measured in simulated seconds resolve to N times the real-time resolution. A difference between two configurations of a few times N seconds is not a measurement.
 
 Use a speedup to compare configurations quickly. Run at `-speedup 1` before drawing conclusions about wait or latency.
+
+### Repeated Runs
+
+One run is one sample. Kueue's mean wait, for example, can move by 10% between identical runs, so a gap of that size between two schedulers says nothing on its own. Repeat each configuration, ideally on a fresh cluster each time, and summarize the runs with `-aggregate`:
+
+```bash
+for i in 1 2 3 4 5; do
+  ./bin/knavigator -speedup 60 -results ./out/volcano-$i -workflow ...
+done
+./bin/knavigator -aggregate './out/volcano-*' > volcano.json
+```
+
+`-aggregate` reads `results.json` from every directory the glob matches and prints JSON with one entry per metric, named like the Prometheus series without the `knavigator_` prefix, such as `job_wait_sec{stat=p95}`. Each entry has:
+
+- `n`: runs that reported the metric. A null value, such as `bsld_macro` in a run that did not finish, does not count.
+- `mean`, `min`, `max`, and `sd`, the sample standard deviation, which is null for a single run.
+- `cv`: `sd` over the absolute mean, null when the mean is 0.
+- `ci95`: a 95% interval for the mean, from 4000 bootstrap resamples with a fixed seed, so the same runs always give the same interval.
+- `stable`: at least two runs, and either no variation or a `cv` of at most 5%. Treat a difference between two configurations as real only when their intervals do not overlap.
