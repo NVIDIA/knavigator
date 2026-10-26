@@ -58,7 +58,7 @@ func fusedSites(listing string, fused *regexp.Regexp) ([]string, int) {
 // no fixture's arithmetic shows the difference.
 func TestNoFusedMultiplyAdd(t *testing.T) {
 	if testing.Short() {
-		t.Skip("compiles this package for two architectures: about 20 s with a cold build cache")
+		t.Skip("compiles this package for two more architectures; a few seconds, longer with a cold build cache")
 	}
 	goBin, err := exec.LookPath("go")
 	require.NoError(t, err, "the go command must be on PATH")
