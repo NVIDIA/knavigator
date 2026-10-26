@@ -32,7 +32,7 @@ tasks:
   params:
     template: "resources/benchmarks/templates/kueue/job.yaml"
     nameFormat: "job{{._ENUM_}}"
-    podNameFormat: "{{._NAME_}}-[0-9]-.*"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
     podCount: "{{.replicas}}"
 #- id: register-lw
 #  type: RegisterObj
@@ -87,13 +87,12 @@ tasks:
       op: create
       data:
         controller_manager_config.yaml: |
-          apiVersion: config.kueue.x-k8s.io/v1beta1
+          apiVersion: config.kueue.x-k8s.io/v1beta2
           kind: Configuration
           health:
             healthProbeBindAddress: :8081
           metrics:
-            bindAddress: :8080
-          # enableClusterQueueResources: true
+            bindAddress: :8443
           webhook:
             port: 9443
           leaderElection:
@@ -103,16 +102,29 @@ tasks:
             groupKindConcurrency:
               Job.batch: 5
               Pod: 5
-              Workload.kueue.x-k8s.io: 5
-              LocalQueue.kueue.x-k8s.io: 1
-              ClusterQueue.kueue.x-k8s.io: 1
+              Workload.kueue.x-k8s.io: 10
+              LocalQueue.kueue.x-k8s.io: 5
+              Cohort.kueue.x-k8s.io: 1
+              ClusterQueue.kueue.x-k8s.io: 5
               ResourceFlavor.kueue.x-k8s.io: 1
           clientConnection:
-            qps: 50
-            burst: 100
-          #pprofBindAddress: :8083
+            qps: 300
+            burst: 500
+          integrations:
+            frameworks:
+            - "batch/job"
+            - "kubeflow.org/mpijob"
+            - "ray.io/rayjob"
+            - "ray.io/raycluster"
+            - "ray.io/rayservice"
+            - "jobset.x-k8s.io/jobset"
+            - "workload.codeflare.dev/appwrapper"
+            - "trainer.kubeflow.org/trainjob"
+            - "pod"
+            - "deployment"
+            - "statefulset"
+            - "leaderworkerset.x-k8s.io/leaderworkerset"
           waitForPodsReady:
-            enable: true
             timeout: 5m
             blockAdmission: true
             requeuingStrategy:
@@ -120,36 +132,6 @@ tasks:
               backoffLimitCount: null # null indicates infinite requeuing
               backoffBaseSeconds: 60
               backoffMaxSeconds: 3600
-          #manageJobsWithoutQueueName: true
-          #internalCertManagement:
-          #  enable: false
-          #  webhookServiceName: ""
-          #  webhookSecretName: ""
-          integrations:
-            frameworks:
-            - "batch/job"
-            - "kubeflow.org/mpijob"
-            - "ray.io/rayjob"
-            - "ray.io/raycluster"
-            - "jobset.x-k8s.io/jobset"
-            - "kubeflow.org/paddlejob"
-            - "kubeflow.org/pytorchjob"
-            - "kubeflow.org/tfjob"
-            - "kubeflow.org/xgboostjob"
-          #  - "pod"
-          #  externalFrameworks:
-          #  - "Foo.v1.example.com"
-          #  podOptions:
-          #    namespaceSelector:
-          #      matchExpressions:
-          #        - key: kubernetes.io/metadata.name
-          #          operator: NotIn
-          #          values: [ kube-system, kueue-system ]
-          #fairSharing:
-          #  enable: true
-          #  preemptionStrategies: [LessThanOrEqualToFinalShare, LessThanInitialShare]
-          #resources:
-          #  excludeResourcePrefixes: []
     deploymentRestarts:
     - namespace: kueue-system
       name: kueue-controller-manager
