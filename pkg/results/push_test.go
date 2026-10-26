@@ -37,7 +37,7 @@ func values(ss []sample) map[string]float64 {
 	out := map[string]float64{}
 	for _, s := range ss {
 		key := s.name
-		for _, l := range []string{"bucket", "gang_size", "priority", "stat"} {
+		for _, l := range []string{"bucket", "gang_size", "priority", "class", "stat"} {
 			if v, ok := s.labels[l]; ok {
 				key += "," + l + "=" + v
 			}
@@ -66,6 +66,9 @@ func TestSamples(t *testing.T) {
 		"wait_by_footprint": [
 			{"bucket": "1", "jobs": 7, "wait_sec": {"count": 1, "mean": 2, "p95": 2, "max": 2}},
 			{"bucket": "17+", "jobs": 1, "wait_sec": {"count": 0, "mean": 0, "p95": 0, "max": 0}}
+		],
+		"wait_by_class": [
+			{"class": "inference", "jobs": 3, "slo_attainment": {"5m": 0.75}}
 		]
 	}`), &tree))
 
@@ -84,6 +87,8 @@ func TestSamples(t *testing.T) {
 	require.Equal(t, 3.0, got["knavigator_jobs_by_gang_size_submitted,gang_size=8"])
 	require.Equal(t, 1.0, got["knavigator_jobs_by_gang_size_waiting,gang_size=8"])
 	require.Equal(t, 6.0, got["knavigator_jobs_by_gang_size_wait_sec,gang_size=8,stat=p95"])
+	require.Equal(t, 3.0, got["knavigator_wait_by_class_jobs,class=inference"])
+	require.Equal(t, 0.75, got["knavigator_wait_by_class_slo_attainment_5m,class=inference"])
 	require.NotContains(t, got, "knavigator_note")
 	require.NotContains(t, got, "knavigator_missing")
 }

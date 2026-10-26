@@ -117,6 +117,38 @@ func TestScaleTimeSizes(t *testing.T) {
 	require.Equal(t, 1.5, s.WaitByFootprint[0].BSLD.Mean, "slowdown is a ratio")
 }
 
+func TestWaitByClass(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	job := func(name, class string) Job {
+		return Job{Name: "default/" + name, Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: name + "-0", Class: class}
+	}
+	jobs := []Job{job("a", "inference"), job("b", "inference"), job("c", "training"), job("d", "")}
+	pods := []Pod{
+		{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0, Scheduled: at(30), Finished: at(40)},
+		// b never starts, so it misses every limit.
+		{Namespace: "default", Name: "b-0", GPUs: 1, Created: t0},
+		{Namespace: "default", Name: "c-0", GPUs: 8, Created: t0, Scheduled: at(100), Finished: at(200)},
+		{Namespace: "default", Name: "d-0", GPUs: 1, Created: t0, Scheduled: at(1), Finished: at(2)},
+	}
+
+	// At 10x, a's 30s wait is 5 simulated minutes and c's 100s wait is about 17.
+	s := Summarize(pods, jobs, 16, at(300), Options{Speedup: 10})
+
+	require.Equal(t, []ClassWait{
+		{Class: "inference", Jobs: 2, Started: 1, WaitSec: Stats{Count: 1, Mean: 30, P95: 30, Max: 30},
+			SLOAttainment: map[string]float64{"1m": 0, "5m": 0.5, "15m": 0.5, "1h": 0.5, "4h": 0.5}},
+		{Class: "training", Jobs: 1, Started: 1, WaitSec: Stats{Count: 1, Mean: 100, P95: 100, Max: 100},
+			SLOAttainment: map[string]float64{"1m": 0, "5m": 0, "15m": 0, "1h": 1, "4h": 1}},
+	}, s.WaitByClass, "jobs without a class are left out")
+
+	s.ScaleTime(10)
+	require.Equal(t, Stats{Count: 1, Mean: 300, P95: 300, Max: 300}, s.WaitByClass[0].WaitSec)
+	require.Equal(t, 0.5, s.WaitByClass[0].SLOAttainment["5m"], "shares do not scale")
+
+	require.Empty(t, Summarize(pods, jobs[3:], 16, at(300), Options{}).WaitByClass)
+}
+
 func TestByGangSize(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }

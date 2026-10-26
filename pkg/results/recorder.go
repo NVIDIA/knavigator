@@ -117,7 +117,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, BSLDFloor: floor})
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -333,7 +333,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, BSLDFloor: bsldFloor})
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	if speedup > 1 {

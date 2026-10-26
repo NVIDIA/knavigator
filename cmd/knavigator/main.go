@@ -215,6 +215,7 @@ func submittedJobs(eng *engine.Eng) []results.Job {
 				Submitted: info.Submitted,
 				Pods:      info.PodCount / len(info.Names),
 				PodRegexp: info.PodRegexp[i],
+				Class:     info.Class,
 			})
 		}
 	}

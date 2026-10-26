@@ -52,6 +52,7 @@ type Job struct {
 	Submitted time.Time
 	Pods      int    // pods the object should create
 	PodRegexp string // matches the full pod name
+	Class     string // the class the job was submitted with, if any
 }
 
 // Stats holds durations in seconds.
@@ -77,6 +78,8 @@ type Summary struct {
 	JobWaitSec      Stats   `json:"job_wait_sec"`
 	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
 	JobsByGangSize []GangSize `json:"jobs_by_gang_size"`
+	// WaitByClass breaks job wait down by the class jobs were submitted with; empty without classes.
+	WaitByClass []ClassWait `json:"wait_by_class,omitempty"`
 	// PodsEvicted counts pods deleted after they were placed and before they finished; schedulers
 	// preempt by deleting pods, and job controllers and cleanup do too.
 	PodsEvicted int `json:"pods_evicted"`
@@ -178,6 +181,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	}
 	sort.Slice(s.EvictionsByPriority, func(a, b int) bool { return s.EvictionsByPriority[a].Priority < s.EvictionsByPriority[b].Priority })
 	var jobWaits []float64
+	waitOf := map[string]float64{}
 	for _, j := range jobs {
 		first = earliest(first, j.Submitted)
 		if j.Pods == 0 {
@@ -194,7 +198,8 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 		sort.Slice(ts, func(a, b int) bool { return ts[a].Before(ts[b]) })
 		s.JobsStarted++
 		// Pod timestamps have one second resolution, so a fast placement can read as before submission.
-		jobWaits = append(jobWaits, math.Max(0, ts[j.Pods-1].Sub(j.Submitted).Seconds()))
+		waitOf[j.Name] = math.Max(0, ts[j.Pods-1].Sub(j.Submitted).Seconds())
+		jobWaits = append(jobWaits, waitOf[j.Name])
 	}
 
 	for _, j := range jobs {
@@ -220,6 +225,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
 	s.JobsByGangSize = byGangSize(pods, jobs, scheduled)
+	s.WaitByClass = byClass(jobs, waitOf, opt.Speedup)
 	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
 	return s
 }
@@ -251,6 +257,12 @@ func (s *Summary) ScaleTime(speedup float64) {
 	}
 	for i := range s.JobsByGangSize {
 		w := &s.JobsByGangSize[i].WaitSec
+		w.Mean *= speedup
+		w.P95 *= speedup
+		w.Max *= speedup
+	}
+	for i := range s.WaitByClass {
+		w := &s.WaitByClass[i].WaitSec
 		w.Mean *= speedup
 		w.P95 *= speedup
 		w.Max *= speedup

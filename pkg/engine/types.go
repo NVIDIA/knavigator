@@ -111,6 +111,8 @@ type ObjInfo struct {
 	PodCount  int
 	PodRegexp []string
 	Submitted time.Time
+	// Class is the "class" parameter the object was submitted with, such as a SubmitTrace class
+	Class string
 }
 
 // NewObjInfo creates new ObjInfo
