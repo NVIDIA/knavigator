@@ -5,10 +5,17 @@ Moreover, Knavigator's functionality relies on a Prometheus server  to execute t
 
 ## Run Results
 
-The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes two files:
+The `-results <dir>` flag records every pod that requests `nvidia.com/gpu` while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes three files:
 
 - `timeline.csv`: one row per pod with its job, node, GPUs, phase, and created, scheduled and finished times.
 - `results.json`: failed pods, makespan, GPU-hours, GPU utilization against allocatable GPUs, pods never scheduled, jobs started, and mean, p95 and max wait for pods and jobs.
+- `events.csv`: warning events and every eviction or preemption event (`Preempted`, `Preempting`, `Evict`, `Evicted`) since the run started, up to 10000. It shows why a scheduler left work waiting or removed pods.
+
+`results.json` also reports preemption. `pods_evicted` counts pods deleted after they were placed and before they finished. Schedulers preempt by deleting pods, and job controllers and cleanup delete pods too, so compare it with `preemption_events`, the number of `Preempted` and `Evict` events (one per removed pod). `jobs_evicted` counts jobs that lost a pod this way, and `evicted_gpu_hours` is the GPU time those pods had already used. `evictions_by_priority` groups the evicted pods by the victim's pod priority (`priority`, `pods`, `jobs`, `gpu_hours`), so you can see who a scheduler evicts. `jobs_evicted_again` counts jobs that lost more pods than they have, meaning at least one pod was evicted twice, and `max_evictions_per_job` is the most evictions any one job suffered, with a whole gang evicted at once counting once. `timeline.csv` gains a `priority` column. `binding_gap_gpu_hours` is GPU time that gang pods held while the rest of their gang had not yet been bound, so the gang could not start. `wasted_gpu_hours` is `evicted_gpu_hours` plus `binding_gap_gpu_hours`. `idle_waiting_gpu_hours` is a separate measure of unused capacity: GPU time that sat idle while pods were waiting for GPUs (at each moment, the smaller of the idle GPUs and the GPUs the waiting pods request). All three follow `-speedup`.
+
+A run counts as drained once every job has placed and finished its pods. A pod that a scheduler evicted does not count, so a job finishes only when its replacement does.
+
+`-results.stall <duration>` stops the wait when no pod has been placed or has finished for that long, in real time, so a scheduler that has stopped making progress does not hold the run until `-results.timeout`. The files are written as for a timeout, `stalled` is true in `results.json`, and the exit status is an error. It is off by default. Set it longer than your longest job, because a run of long jobs that are all still running also makes no progress.
 
 Knavigator exits with an error after writing the files if the run did not drain, any pod failed, or any job never started, so CI can gate on the exit code.
 

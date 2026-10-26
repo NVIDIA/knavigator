@@ -82,10 +82,17 @@ func TestSummarizeOutstanding(t *testing.T) {
 	s = Summarize(pods[:1], jobs[:1], 8, at(3600))
 	require.Equal(t, 10.0, s.MakespanSec)
 	require.InDelta(t, 1.0, s.GPUUtilization, 1e-9)
+
+	// An evicted pod whose replacement does not exist yet keeps the run open too.
+	evicted := []Pod{{Namespace: "default", Name: "a-0", GPUs: 8, Phase: phaseDeleted, Created: at(0), Scheduled: at(0), Finished: at(10)}}
+	s = Summarize(evicted, jobs[:1], 8, at(100))
+	require.Equal(t, 100.0, s.MakespanSec)
+	require.InDelta(t, 0.1, s.GPUUtilization, 1e-9)
 }
 
 func TestCheck(t *testing.T) {
 	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
+	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1, Stalled: true}.check(false), "run stalled: 1/2 jobs started")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(false), "run did not drain: 1/2 jobs started")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 2, PodsFailed: 1}.check(true), "1 pods failed")
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1}.check(true), "only 1/2 jobs started")
@@ -167,4 +174,181 @@ func TestByGangSizeReplacedPods(t *testing.T) {
 
 	require.Equal(t, 1, s.JobsByGangSize[0].Complete, "job a finished despite its lost attempts")
 	require.Equal(t, 1, s.JobsByGangSize[0].Running, "job b is still running its replacement")
+}
+
+func TestSummarizeEvicted(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"},
+		{Name: "default/b", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "b-[0-9]+"},
+	}
+	pods := []Pod{
+		// Placed, then deleted after 3600s: preempted. The replacement finishes normally.
+		{Namespace: "default", Name: "a-0", GPUs: 8, Phase: "Deleted", Created: t0, Scheduled: t0, Finished: at(3600)},
+		{Namespace: "default", Name: "a-0", GPUs: 8, Phase: "Succeeded", Created: at(3600), Scheduled: at(3601), Finished: at(3700)},
+		// Deleted before it was ever placed: nothing was lost.
+		{Namespace: "default", Name: "b-0", GPUs: 8, Phase: "Deleted", Created: t0, Finished: at(10)},
+		// Deleted but owned by no submitted job.
+		{Namespace: "other", Name: "x", GPUs: 4, Phase: "Deleted", Created: t0, Scheduled: t0, Finished: at(1800)},
+	}
+
+	s := Summarize(pods, jobs, 16, at(4000))
+
+	require.Equal(t, 2, s.PodsEvicted)
+	require.Equal(t, 1, s.JobsEvicted)
+	require.InDelta(t, 8.0+2.0, s.EvictedGPUHours, 1e-9)
+
+	s.ScaleTime(60)
+	require.InDelta(t, 600.0, s.EvictedGPUHours, 1e-9)
+}
+
+func TestSummarizeEvictionsByPriority(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"},
+		{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[0-9]+"},
+		{Name: "default/b", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "b-[0-9]+"},
+	}
+	evicted := func(name string, prio int, gpus float64, start, end int) Pod {
+		return Pod{Namespace: "default", Name: name, GPUs: gpus, Priority: prio, Phase: phaseDeleted,
+			Created: at(start), Scheduled: at(start), Finished: at(end)}
+	}
+	pods := []Pod{
+		// Job a, priority 50, is evicted three times: its pod restarts each time.
+		evicted("a-0", 50, 4, 0, 3600), evicted("a-1", 50, 4, 3600, 7200), evicted("a-2", 50, 4, 7200, 10800),
+		// Gang g, priority 100, loses both pods once: one round, not a repeat.
+		evicted("g-0", 100, 8, 0, 3600), evicted("g-1", 100, 8, 0, 3600),
+		// Job b, priority 50, is evicted once.
+		evicted("b-0", 50, 2, 0, 3600),
+	}
+
+	s := Summarize(pods, jobs, 16, at(20000))
+
+	require.Equal(t, []PriorityEvictions{
+		{Priority: 50, Pods: 4, Jobs: 2, GPUHours: 3*4 + 2},
+		{Priority: 100, Pods: 2, Jobs: 1, GPUHours: 16},
+	}, s.EvictionsByPriority)
+	require.Equal(t, 1, s.JobsEvictedAgain, "only job a lost more pods than it has")
+	require.Equal(t, 3, s.MaxEvictionsPerJob)
+
+	s.ScaleTime(60)
+	require.Equal(t, 840.0, s.EvictionsByPriority[0].GPUHours)
+}
+
+func TestSummarizeNoEvictionsByPriority(t *testing.T) {
+	s := Summarize(nil, nil, 8, time.Now())
+	require.Empty(t, s.EvictionsByPriority)
+	require.Zero(t, s.JobsEvictedAgain)
+	require.Zero(t, s.MaxEvictionsPerJob)
+}
+
+func TestIdleWaitingGPUHours(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	pods := []Pod{
+		// Runs on half the cluster for 300s.
+		{Name: "a", GPUs: 4, Created: at(0), Scheduled: at(0), Finished: at(300)},
+		// Needs the whole cluster, so it waits from 50s until a finishes.
+		{Name: "b", GPUs: 8, Created: at(50), Scheduled: at(300), Finished: at(400)},
+		// Never placed and deleted at 100s; it waited the whole time.
+		{Name: "c", GPUs: 2, Created: at(0), Finished: at(100)},
+	}
+
+	got := idleWaitingGPUHours(pods, 8, at(1000))
+
+	// 0-50s: 4 idle, 2 waiting (c) -> 2; 50-100s: 4 idle, 10 waiting -> 4; 100-300s: 4 idle, 8 waiting -> 4;
+	// 300-400s: nothing idle, nothing waiting.
+	require.InDelta(t, (2*50.0+4*50+4*200)/3600, got, 1e-9)
+	require.Zero(t, idleWaitingGPUHours(pods, 0, at(1000)), "no capacity, no waste")
+	require.Zero(t, idleWaitingGPUHours(nil, 8, at(1000)))
+}
+
+func TestBindingGapGPUHours(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	gang := func(name string, pods int) Job {
+		return Job{Name: "default/" + name, Namespace: "default", Submitted: t0, Pods: pods, PodRegexp: name + "-[a-z0-9]+"}
+	}
+	jobs := []Job{gang("g", 2), gang("h", 3), gang("s", 1)}
+	pods := []Pod{
+		// g: its first pod is bound at 10s and holds 8 GPUs until the second binds at 50s.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(200)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(50), Finished: at(200)},
+		// h needs 3 pods but only 2 ever bind: both hold their GPUs until the run ends at 1000s.
+		{Namespace: "default", Name: "h-0", GPUs: 4, Created: t0, Scheduled: at(0)},
+		{Namespace: "default", Name: "h-1", GPUs: 4, Created: t0, Scheduled: at(100)},
+		// A single pod has no gang to wait for.
+		{Namespace: "default", Name: "s-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(300), Finished: at(400)},
+		// An evicted gang pod is counted by the eviction metric, not here.
+		{Namespace: "default", Name: "h-2", GPUs: 4, Phase: phaseDeleted, Created: t0, Scheduled: at(0), Finished: at(50)},
+	}
+
+	assignJobs(pods, jobs)
+	got := bindingGapGPUHours(pods, jobs, at(1000))
+
+	require.InDelta(t, (8*40.0+4*1000+4*900)/3600, got, 1e-9)
+	require.Zero(t, bindingGapGPUHours(nil, jobs, at(1000)))
+}
+
+func TestSummarizeWasted(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{
+		{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[a-z0-9]+"},
+		{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[a-z0-9]+"},
+	}
+	pods := []Pod{
+		// Evicted after an hour on 4 GPUs: 4 GPU-hours lost.
+		{Namespace: "default", Name: "a-0", GPUs: 4, Phase: phaseDeleted, Created: at(0), Scheduled: at(0), Finished: at(3600)},
+		{Namespace: "default", Name: "a-1", GPUs: 4, Phase: "Succeeded", Created: at(3600), Scheduled: at(3600), Finished: at(4000)},
+		// A gang whose first pod waits an hour for the second: 8 GPU-hours held.
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: at(0), Scheduled: at(0), Finished: at(5000)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: at(0), Scheduled: at(3600), Finished: at(5000)},
+	}
+
+	s := Summarize(pods, jobs, 16, at(10000))
+
+	require.InDelta(t, 4.0, s.EvictedGPUHours, 1e-9)
+	require.InDelta(t, 8.0, s.BindingGapGPUHours, 1e-9)
+	require.InDelta(t, 12.0, s.WastedGPUHours, 1e-9, "evictions plus binding gaps")
+
+	s.ScaleTime(60)
+	require.InDelta(t, 480.0, s.BindingGapGPUHours, 1e-9)
+	require.InDelta(t, 720.0, s.WastedGPUHours, 1e-9)
+}
+
+func TestBindingGapAfterEviction(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	jobs := []Job{{Name: "default/g", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "g-[a-z0-9]+"}}
+
+	// Both pods bind at once, so the gang never waited, even though one is evicted later.
+	pods := []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: "Succeeded", Created: t0, Scheduled: t0, Finished: at(100)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(100)},
+	}
+	assignJobs(pods, jobs)
+	require.Zero(t, bindingGapGPUHours(pods, jobs, at(1000)))
+
+	// Evicted before its partner binds: the gang is short again until the replacement binds at 50s.
+	pods = []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(5)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(200)},
+		{Namespace: "default", Name: "g-2", GPUs: 1, Phase: "Succeeded", Created: at(5), Scheduled: at(50), Finished: at(200)},
+	}
+	assignJobs(pods, jobs)
+	require.InDelta(t, 40.0/3600, bindingGapGPUHours(pods, jobs, at(1000)), 1e-9)
+
+	// The whole gang is evicted at 10s and its replacements bind at 20s and 30s, so the first
+	// replacement waits 10s for its partner.
+	pods = []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(10)},
+		{Namespace: "default", Name: "g-1", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: t0, Finished: at(10)},
+		{Namespace: "default", Name: "g-2", GPUs: 1, Phase: "Succeeded", Created: at(10), Scheduled: at(20), Finished: at(100)},
+		{Namespace: "default", Name: "g-3", GPUs: 1, Phase: "Succeeded", Created: at(10), Scheduled: at(30), Finished: at(100)},
+	}
+	assignJobs(pods, jobs)
+	require.InDelta(t, 10.0/3600, bindingGapGPUHours(pods, jobs, at(1000)), 1e-9)
 }

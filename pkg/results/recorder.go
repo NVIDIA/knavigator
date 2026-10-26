@@ -40,7 +40,8 @@ import (
 // Only pods requesting this resource are recorded; make it a flag if other accelerators matter.
 const gpuResource corev1.ResourceName = "nvidia.com/gpu"
 
-const pollInterval = 5 * time.Second
+// A variable so tests can poll quickly.
+var pollInterval = 5 * time.Second
 
 // Recorder watches GPU pods created after it starts.
 type Recorder struct {
@@ -50,6 +51,9 @@ type Recorder struct {
 	mutex  sync.Mutex
 	pods   map[types.UID]*Pod
 	pusher *Pusher
+	events map[types.UID]*Event
+	// Occurrences an event had before the run, left out of its count during the run.
+	eventsBefore map[types.UID]int32
 }
 
 // Start begins watching pods and returns once the watch cache has synced.
@@ -57,9 +61,12 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 	r := &Recorder{
 		client: client,
 		// Creation timestamps have one second resolution.
-		start: time.Now().Truncate(time.Second),
-		stop:  make(chan struct{}),
-		pods:  make(map[types.UID]*Pod),
+		start:  time.Now().Truncate(time.Second),
+		stop:   make(chan struct{}),
+		pods:   make(map[types.UID]*Pod),
+		events: make(map[types.UID]*Event),
+
+		eventsBefore: make(map[types.UID]int32),
 	}
 
 	factory := informers.NewSharedInformerFactory(client, 0)
@@ -78,10 +85,19 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 		return nil, err
 	}
 
+	eventInformer := factory.Core().V1().Events().Informer()
+	_, err = eventInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    r.observeEvent,
+		UpdateFunc: func(_, obj interface{}) { r.observeEvent(obj) },
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	factory.Start(r.stop)
-	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced, eventInformer.HasSynced) {
 		close(r.stop)
-		return nil, fmt.Errorf("pod informer failed to sync")
+		return nil, fmt.Errorf("informers failed to sync")
 	}
 	return r, nil
 }
@@ -104,6 +120,36 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	}, interval)
 }
 
+func (r *Recorder) observeEvent(obj interface{}) {
+	e, ok := obj.(*corev1.Event)
+	if !ok || !keepEvent(e) {
+		return
+	}
+	ev := toEvent(e)
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if ev.Time.Before(r.start) {
+		r.eventsBefore[e.UID] = ev.Count
+		return
+	}
+	ev.Count -= r.eventsBefore[e.UID]
+	if _, seen := r.events[e.UID]; !seen && len(r.events) >= maxEvents {
+		return
+	}
+	r.events[e.UID] = &ev
+}
+
+func (r *Recorder) eventList() []Event {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	events := make([]Event, 0, len(r.events))
+	for _, e := range r.events {
+		events = append(events, *e)
+	}
+	return events
+}
+
 func (r *Recorder) observe(obj interface{}, deleted bool) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok || pod.CreationTimestamp.Time.Before(r.start) {
@@ -121,9 +167,15 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 	p, ok := r.pods[pod.UID]
 	if !ok {
 		p = &Pod{Namespace: pod.Namespace, Name: pod.Name, GPUs: gpus, Created: pod.CreationTimestamp.Time}
+		if pod.Spec.Priority != nil {
+			p.Priority = int(*pod.Spec.Priority)
+		}
 		r.pods[pod.UID] = p
 	}
-	p.Phase = string(pod.Status.Phase)
+	// A removed pod stays removed; later updates report the terminal phase it was given on the way out.
+	if p.Phase != phaseDeleted {
+		p.Phase = string(pod.Status.Phase)
+	}
 	if pod.Spec.NodeName != "" {
 		p.Node = pod.Spec.NodeName
 		if p.Scheduled.IsZero() {
@@ -134,6 +186,10 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 		switch {
 		case pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed:
 			p.Finished = finishedTime(pod, now)
+			// Since Kubernetes 1.27 a deleted or preempted pod first turns Failed, then disappears.
+			if pod.Status.Phase == corev1.PodFailed && removed(pod) {
+				p.Phase = phaseDeleted
+			}
 		case deleted:
 			p.Finished = now
 			p.Phase = phaseDeleted
@@ -149,6 +205,19 @@ func podGPUs(pod *corev1.Pod) float64 {
 		}
 	}
 	return n
+}
+
+// removed reports whether the pod is being deleted or was disrupted by preemption or eviction.
+func removed(pod *corev1.Pod) bool {
+	if pod.DeletionTimestamp != nil {
+		return true
+	}
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.DisruptionTarget && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 func scheduledTime(pod *corev1.Pod, fallback time.Time) time.Time {
@@ -189,7 +258,7 @@ func (r *Recorder) snapshot() []Pod {
 	return pods
 }
 
-// idle reports whether every job has created its pods and no recorded pod is still active.
+// idle reports whether every job has placed and finished its pods and no recorded pod is still active.
 func idle(pods []Pod, jobs []Job) bool {
 	assignJobs(pods, jobs)
 	seen := map[string]int{}
@@ -197,7 +266,11 @@ func idle(pods []Pod, jobs []Job) bool {
 		if p.Finished.IsZero() {
 			return false
 		}
-		seen[p.Job]++
+		// An evicted pod does not finish its job: the controller creates a replacement. A pod that
+		// ended without ever being placed does not either.
+		if !p.Scheduled.IsZero() && p.Phase != phaseDeleted {
+			seen[p.Job]++
+		}
 	}
 	for _, j := range jobs {
 		if seen[j.Name] < j.Pods {
@@ -208,14 +281,15 @@ func idle(pods []Pod, jobs []Job) bool {
 }
 
 // Finish waits until the run drains or the timeout passes, then writes the results into dir.
-func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64) error {
+func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration, jobs []Job, speedup float64, stall time.Duration) error {
 	defer close(r.stop)
 	if r.pusher != nil {
 		defer r.pusher.Stop()
 	}
 
 	deadline := time.Now().Add(timeout)
-	drained := true
+	drained, stalled := true, false
+	lastProgress, lastCount := time.Now(), -1
 	// Two idle polls in a row give controllers time to create the next pods.
 	for idleCount := 0; idleCount < 2; {
 		if time.Now().After(deadline) {
@@ -223,10 +297,18 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 			drained = false
 			break
 		}
-		if idle(r.snapshot(), jobs) {
+		pods := r.snapshot()
+		if idle(pods, jobs) {
 			idleCount++
 		} else {
 			idleCount = 0
+		}
+		if n := progress(pods); n != lastCount {
+			lastCount, lastProgress = n, time.Now()
+		} else if stall > 0 && idleCount == 0 && time.Since(lastProgress) > stall {
+			log.Warningf("Results: no pod was placed or finished for %s; stopping the run and recording pods as they are", stall)
+			drained, stalled = false, true
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -241,7 +323,10 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		return err
 	}
 	pods := r.snapshot()
+	events := r.eventList()
 	summary := Summarize(pods, jobs, capacity, end)
+	summary.PreemptionEvents = preemptionEvents(events)
+	summary.Stalled = stalled
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
 	}
@@ -268,7 +353,24 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := writeTimeline(filepath.Join(dir, "timeline.csv"), pods); err != nil {
 		return err
 	}
+	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
+		return err
+	}
 	return summary.check(drained)
+}
+
+// progress counts placements and completions; a run that stops changing it is not advancing.
+func progress(pods []Pod) int {
+	var n int
+	for _, p := range pods {
+		if !p.Scheduled.IsZero() {
+			n++
+		}
+		if !p.Finished.IsZero() {
+			n++
+		}
+	}
+	return n
 }
 
 // gpuCapacity sums allocatable GPUs over all nodes at the end of the run.
@@ -300,10 +402,10 @@ func writeTimeline(path string, pods []Pod) error {
 		return t.UTC().Format(time.RFC3339Nano)
 	}
 	w := csv.NewWriter(f)
-	_ = w.Write([]string{"namespace", "pod", "job", "node", "gpus", "phase", "created", "scheduled", "finished"})
+	_ = w.Write([]string{"namespace", "pod", "job", "node", "gpus", "priority", "phase", "created", "scheduled", "finished"})
 	for _, p := range pods {
 		_ = w.Write([]string{p.Namespace, p.Name, p.Job, p.Node, strconv.FormatFloat(p.GPUs, 'f', -1, 64),
-			p.Phase, ts(p.Created), ts(p.Scheduled), ts(p.Finished)})
+			strconv.Itoa(p.Priority), p.Phase, ts(p.Created), ts(p.Scheduled), ts(p.Finished)})
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {

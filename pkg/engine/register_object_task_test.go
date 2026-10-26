@@ -17,10 +17,14 @@
 package engine
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -152,4 +156,40 @@ func TestNewRegisterObjTask(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRegisterObjExecMapsBuiltInKinds(t *testing.T) {
+	// The API server leaves Group and Version empty on built-in resources.
+	client := &fakediscovery.FakeDiscovery{Fake: &k8stesting.Fake{Resources: []*metav1.APIResourceList{
+		{GroupVersion: "batch/v1", APIResources: []metav1.APIResource{{Name: "jobs", Kind: "Job", Namespaced: true}}},
+		{GroupVersion: "scheduling.k8s.io/v1beta1", APIResources: []metav1.APIResource{
+			{Name: "workloads", Kind: "Workload", Namespaced: true},
+		}},
+		{GroupVersion: "scheduling.k8s.io/v1alpha3", APIResources: []metav1.APIResource{
+			{Name: "workloads", Kind: "Workload", Namespaced: true},
+			{Name: "compositepodgroups", Kind: "CompositePodGroup", Namespaced: true},
+		}},
+	}}}
+	eng, err := New(nil, nil, true)
+	require.NoError(t, err)
+
+	task := &RegisterObjTask{
+		BaseTask: BaseTask{taskType: TaskRegisterObj, taskID: "register"},
+		client:   client,
+		accessor: eng,
+		gvk: []schema.GroupVersionKind{
+			{Group: "batch", Version: "v1", Kind: "Job"},
+			{Group: "scheduling.k8s.io", Version: "v1beta1", Kind: "Workload"},
+			{Group: "scheduling.k8s.io", Version: "v1alpha3", Kind: "CompositePodGroup"},
+		},
+	}
+	require.NoError(t, task.Exec(context.Background()))
+	require.Equal(t, []schema.GroupVersionResource{
+		{Group: "batch", Version: "v1", Resource: "jobs"},
+		{Group: "scheduling.k8s.io", Version: "v1beta1", Resource: "workloads"},
+		{Group: "scheduling.k8s.io", Version: "v1alpha3", Resource: "compositepodgroups"},
+	}, task.gvr)
+
+	task.gvk = []schema.GroupVersionKind{{Group: "scheduling.k8s.io", Version: "v1alpha2", Kind: "Workload"}}
+	require.Error(t, task.Exec(context.Background()))
 }

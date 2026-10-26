@@ -13,12 +13,12 @@ jobs:
   check:
     runs-on: linux-amd64-cpu8
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.3'
 
@@ -40,12 +40,12 @@ jobs:
   test:
     runs-on: linux-amd64-cpu8
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.3'
 
@@ -63,12 +63,12 @@ jobs:
   build:
     runs-on: linux-amd64-cpu8
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.3'
 
@@ -79,12 +79,12 @@ jobs:
     needs: [check, test, build]
     runs-on: linux-amd64-cpu8
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.3'
 
@@ -95,7 +95,7 @@ jobs:
       uses: helm/kind-action@v1
 
     - name: Install Helm
-      uses: azure/setup-helm@v4
+      uses: azure/setup-helm@v5
 
     - name: Run test scripts
       run: ./tests/ci/test_k8s.sh
@@ -104,12 +104,12 @@ jobs:
     runs-on: linux-amd64-cpu8
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.3'
         cache: true
