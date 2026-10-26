@@ -1,0 +1,48 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-mixed
+description: replay the mixed inference and training trace
+tasks:
+- id: trace
+  type: SubmitTrace
+  params:
+    refTaskId: register
+    # This seed gives a typical draw (1427 pods, 51 gangs, eight 48-pod gangs, about 10400
+    # GPU-hours); seed 0 is unusually light, with three 48-pod gangs.
+    seed: 648
+    classes:
+    # Numerous, 1 GPU, short (median about 2.5 minutes), high priority, never gangs.
+    - name: inference
+      jobs: 600
+      arrivalInterval: 6
+      runtime: {mu: 5.0, sigma: 0.9, max: 1200}
+      gpus: [1]
+      priorities: [100, 100, 500]
+      accounts:
+      - {name: inference, weight: 1}
+    # Rarer, multi-GPU, long (median about 75 minutes, capped at 4 hours), low priority.
+    # The 16 and 48 pod gangs are a quarter and three quarters of the 64 nodes.
+    - name: training
+      jobs: 200
+      arrivalInterval: 40
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [2, 4, 8]
+      gangFraction: 0.225
+      gangSizes: [2, 2, 4, 8, 16, 48]
+      gangGpus: 8
+      priorities: [50]
+      accounts:
+      - {name: research, weight: 0.6}
+      - {name: trading, weight: 0.4}
