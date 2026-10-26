@@ -55,12 +55,12 @@ done
 read -p "> " choice
 
 if [[ -n "$choice" ]]; then
-  script=${schedulers[$((choice - 1))]:-}
-  if [[ -z "$script" ]]; then
+  # Reject 0, negatives, and words before indexing; bash would treat them as arithmetic.
+  if [[ ! $choice =~ ^[1-9][0-9]*$ ]] || ((choice > ${#schedulers[@]})); then
     printRed "No workload manager $choice"
     exit 1
   fi
-  "$script"
+  "${schedulers[$((choice - 1))]}"
 fi
 
 printYellow Cluster is ready
