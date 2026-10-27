@@ -181,11 +181,11 @@ func writeTrace(t *testing.T, content string) string {
 const traceHeader = "job_id,account,submit_time,duration,gpus,gang_size,priority\n"
 
 func TestReadTrace(t *testing.T) {
-	// The lab writes times with three decimals. Jobs 7 and 3 arrive together and keep file order.
+	// The lab writes times with three decimals. Jobs 7 and 3 arrive first, together, and keep file order.
 	path := writeTrace(t, "\ufeff"+traceHeader+
-		"5,research,30.500,600.000,8,4,0\n"+
-		"7,trading,0.000,90.250,1,1,500\n"+
-		"3,infra,0.000,45.000,2,1,-10\n")
+		"5,research,3630.500,600.000,8,4,0\n"+
+		"7,trading,3600.000,90.250,1,1,500\n"+
+		"3,infra,3600.000,45.000,2,1,-10\n")
 	jobs, err := readTrace(path)
 	require.NoError(t, err)
 	require.Equal(t, []traceJob{

@@ -228,7 +228,8 @@ func generateTrace(classes []traceClass, seed uint64) []traceJob {
 // traceColumns is the header of a CSV trace.
 var traceColumns = []string{"job_id", "account", "submit_time", "duration", "gpus", "gang_size", "priority"}
 
-// readTrace reads jobs from a CSV trace and orders them by submit time, keeping file order for ties.
+// readTrace reads jobs from a CSV trace, orders them by submit time with file order for ties, and
+// shifts the times so the first job arrives at 0.
 func readTrace(path string) ([]traceJob, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -272,6 +273,10 @@ func readTrace(path string) ([]traceJob, error) {
 	}
 
 	sort.SliceStable(jobs, func(a, b int) bool { return jobs[a].Submit < jobs[b].Submit })
+	first := jobs[0].Submit
+	for i := range jobs {
+		jobs[i].Submit -= first
+	}
 	return jobs, nil
 }
 

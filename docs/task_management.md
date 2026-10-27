@@ -75,7 +75,7 @@ A class can also arrive in bursts. `start` delays the class's arrivals by that m
 
 Each class draws from its own random stream, so adding a class leaves the jobs of the others unchanged.
 
-To replay a recorded trace, set `file` to a CSV file instead of `classes`. The header must be `job_id,account,submit_time,duration,gpus,gang_size,priority`. Times are seconds from the start of the trace, `gpus` is per pod and `gang_size` is pods per job. Each job keeps its `job_id` as `jobId` and gets the same template parameters as a generated one, with an empty `class`, so `wait_by_class` is absent. `-speedup` and `timeLimitFactor` apply as above. Every job must request GPUs, since `-results` only records GPU pods, so filter CPU-only rows out first. The file is read when the task is built, so a bad row stops the workflow before any job is submitted. A `nameFormat` such as `trace{{.jobId}}` names each object after its trace row.
+To replay a recorded trace, set `file` to a CSV file instead of `classes`. The header must be `job_id,account,submit_time,duration,gpus,gang_size,priority`. Times are in seconds, shifted so the first job arrives at 0, which lets an export in epoch seconds replay as is. `gpus` is per pod and `gang_size` is pods per job. Each job keeps its `job_id` as `jobId` and gets the same template parameters as a generated one, with an empty `class`, so `wait_by_class` is absent. `-speedup` and `timeLimitFactor` apply as above. Every job must request GPUs, since `-results` only records GPU pods, so filter CPU-only rows out first. The file is read when the task is built, so a bad row stops the workflow before any job is submitted. A `nameFormat` such as `trace{{.jobId}}` names each object after its trace row.
 
 ```yaml
 - id: trace
