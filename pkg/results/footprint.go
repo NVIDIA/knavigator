@@ -30,6 +30,8 @@ type Options struct {
 	BSLDFloor time.Duration
 	// Speedup converts real waits to simulated time for the SLO limits; 0 means 1.
 	Speedup float64
+	// NodeGPUs maps each node to its allocatable GPUs, for fragmentation.
+	NodeGPUs map[string]float64
 }
 
 // DefaultBSLDFloor is the runtime below which slowdown reports queueing noise rather than service.

@@ -109,7 +109,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
-		capacity, maxNode, err := r.gpuCapacity(ctx)
+		nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
 		if err != nil {
 			return Summary{}, err
 		}
@@ -117,7 +117,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, BSLDFloor: floor, Speedup: speedup})
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -323,7 +323,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	end := time.Now()
 
-	capacity, maxNode, err := r.gpuCapacity(ctx)
+	nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, BSLDFloor: bsldFloor, Speedup: speedup})
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	if speedup > 1 {
@@ -382,20 +382,22 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity sums allocatable GPUs over all nodes at the end of the run and finds the biggest node.
-func (r *Recorder) gpuCapacity(ctx context.Context) (total, maxNode float64, err error) {
-	nodes, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+// gpuCapacity reads allocatable GPUs per node at the end of the run, and their sum and maximum.
+func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
+	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to list nodes: %v", err)
+		return nil, 0, 0, fmt.Errorf("failed to list nodes: %v", err)
 	}
-	for _, node := range nodes.Items {
+	nodes = map[string]float64{}
+	for _, node := range list.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
 			g := q.AsApproximateFloat64()
+			nodes[node.Name] = g
 			total += g
 			maxNode = math.Max(maxNode, g)
 		}
 	}
-	return total, maxNode, nil
+	return nodes, total, maxNode, nil
 }
 
 func writeTimeline(path string, pods []Pod) error {

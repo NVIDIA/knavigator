@@ -71,6 +71,14 @@ Metrics that cannot be computed, such as a correlation over one job, are null.
 
 When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each of its classes, `wait_by_class` has one row per class with `jobs`, `started`, `wait_sec` and `slo_attainment`. `slo_attainment` gives the share of the class's jobs that started within each wait in a fixed ladder: `1m`, `5m`, `15m`, `1h` and `4h`, in simulated time under `-speedup`. A job that never started counts as a miss, so a class that reads 0.98 at `5m` started 98% of its jobs within five minutes. Jobs without a class are left out, and the field is absent when no job has one. The ladder needs no target chosen in advance, so classes with different latency needs, such as inference and training, can be read side by side.
 
+`results.json` also shows where the free GPUs were, since free GPUs spread over partly used nodes cannot run a pod that needs a whole node.
+
+- `fragmented_gpu_hours`: free GPU time on nodes that were partly in use. It follows `-speedup`.
+- `gpu_fragmentation`: `fragmented_gpu_hours` over all free GPU time across the makespan. 0 means every free GPU sat on an empty node, and null means no GPU was free.
+- `free_nodes_mean`: time-weighted mean number of nodes with every GPU free.
+
+Node capacity is read at the end of the run, so a node that joined during it counts as there the whole time, and one that left is not counted at all.
+
 ```bash
 ./bin/knavigator -results ./out \
   -workflow 'resources/benchmarks/gang-scheduling/workflows/{config-nodes.yaml,config-volcano.yaml,run-test.yaml}'
