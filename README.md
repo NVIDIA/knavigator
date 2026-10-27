@@ -46,3 +46,4 @@ Regardless of the configuration mode, Knavigator executes tasks sequentially. Ea
 - [Task management](docs/task_management.md)
 - [Metrics and Dashboards](docs/metrics.md)
 - [Benchmarking](resources/benchmarks/README.md)
+- [Changelog](CHANGELOG.md)
