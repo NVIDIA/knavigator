@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -59,10 +60,10 @@ type Recorder struct {
 }
 
 // Start begins watching pods and returns once the watch cache has synced. It refuses to start while
-// GPU pods from before the run are active. A restart of a control-plane container, or of any
-// container in restartNamespaces, during the run fails it.
-func Start(ctx context.Context, client kubernetes.Interface, restartNamespaces []string) (*Recorder, error) {
-	harness, err := startHarness(ctx, client, restartNamespaces)
+// GPU pods from before the run are active, unless opts.AllowLeftovers is set. A restart of a
+// control-plane container, or of any container in opts.RestartNamespaces, during the run fails it.
+func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*Recorder, error) {
+	harness, err := startHarness(ctx, client, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -392,10 +393,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
 		return err
 	}
-	if err := harness.check(); err != nil {
-		return err
-	}
-	return summary.check(drained)
+	return errors.Join(harness.check(), summary.check(drained))
 }
 
 // progress counts placements and completions; a run that stops changing it is not advancing.
@@ -412,7 +410,8 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity reads allocatable GPUs per node at the end of the run, and their sum and maximum.
+// gpuCapacity reads allocatable GPUs per node at the end of the run, their sum less the GPUs of pods
+// from before the run that AllowLeftovers let stay, and their maximum.
 func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -426,6 +425,10 @@ func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, t
 			total += g
 			maxNode = math.Max(maxNode, g)
 		}
+	}
+	// The final summary and every interim push use this, so they agree.
+	if g := r.harness.leftoverGPUs; g != nil {
+		total -= *g
 	}
 	return nodes, total, maxNode, nil
 }

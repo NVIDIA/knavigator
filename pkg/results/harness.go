@@ -18,6 +18,7 @@ package results
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -33,12 +34,23 @@ import (
 // kube-proxy and coredns, can restart without invalidating a scheduling measurement.
 const controlPlaneSelector = "tier=control-plane"
 
+// HarnessOptions configures the checks Start runs on the cluster under the run.
+type HarnessOptions struct {
+	// RestartNamespaces are watched for container restarts, besides the control-plane pods.
+	RestartNamespaces []string
+	// AllowLeftovers lets the run start while GPU pods from before it are active. Their GPUs are
+	// subtracted from capacity, as if they were held for the whole run.
+	AllowLeftovers bool
+}
+
 // Harness reports on the cluster under the run, so a run whose measurement cannot be trusted fails.
 type Harness struct {
 	// ClockOffsetStartSec and ClockOffsetEndSec are the API server's clock minus the host's, in
 	// seconds, at the start and end of the run. The server stamps whole seconds.
 	ClockOffsetStartSec *float64 `json:"clock_offset_start_s,omitempty"`
 	ClockOffsetEndSec   *float64 `json:"clock_offset_end_s,omitempty"`
+	// LeftoverGPUs are the GPUs held by pods from before the run, set with AllowLeftovers.
+	LeftoverGPUs *float64 `json:"leftover_gpus,omitempty"`
 	// ControlPlaneRestarts lists the containers whose restart count rose during the run.
 	ControlPlaneRestarts []Restart `json:"control_plane_restarts"`
 }
@@ -52,22 +64,28 @@ type Restart struct {
 
 // harnessStart is what the checks recorded when the run started.
 type harnessStart struct {
-	namespaces []string
-	restarts   map[string]int32
-	clock      *float64
+	namespaces   []string
+	restarts     map[string]int32
+	clock        *float64
+	leftoverGPUs *float64
 }
 
-// startHarness refuses a run that GPU pods from before it would distort, then records restart
-// counts and the clock offset.
-func startHarness(ctx context.Context, client kubernetes.Interface, namespaces []string) (*harnessStart, error) {
-	if err := checkLeftovers(ctx, client); err != nil {
-		return nil, err
-	}
-	restarts, err := restartCounts(ctx, client, namespaces)
+// startHarness refuses a run that GPU pods from before it would distort, unless opts allows them,
+// then records restart counts and the clock offset.
+func startHarness(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*harnessStart, error) {
+	gpus, err := checkLeftovers(ctx, client, opts.AllowLeftovers)
 	if err != nil {
 		return nil, err
 	}
-	return &harnessStart{namespaces: namespaces, restarts: restarts, clock: clockOffset(ctx, client)}, nil
+	restarts, err := restartCounts(ctx, client, opts.RestartNamespaces)
+	if err != nil {
+		return nil, err
+	}
+	h := &harnessStart{namespaces: opts.RestartNamespaces, restarts: restarts, clock: clockOffset(ctx, client)}
+	if opts.AllowLeftovers {
+		h.leftoverGPUs = &gpus
+	}
+	return h, nil
 }
 
 // finish reads the restart counts and the clock offset again.
@@ -76,7 +94,8 @@ func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) 
 	if err != nil {
 		return Harness{}, err
 	}
-	out := Harness{ClockOffsetStartSec: h.clock, ClockOffsetEndSec: clockOffset(ctx, client), ControlPlaneRestarts: []Restart{}}
+	out := Harness{ClockOffsetStartSec: h.clock, ClockOffsetEndSec: clockOffset(ctx, client), LeftoverGPUs: h.leftoverGPUs,
+		ControlPlaneRestarts: []Restart{}}
 	for c, before := range h.restarts {
 		if n, ok := after[c]; ok && n > before {
 			out.ControlPlaneRestarts = append(out.ControlPlaneRestarts, Restart{Container: c, Before: before, After: n})
@@ -101,24 +120,32 @@ func (h Harness) check() error {
 }
 
 // checkLeftovers fails when GPU pods that have not finished already exist: they hold GPUs the run
-// would count as free.
-func checkLeftovers(ctx context.Context, client kubernetes.Interface) error {
+// would count as free. With allow it logs them instead and returns the GPUs they request.
+func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool) (float64, error) {
 	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return 0, fmt.Errorf("failed to list pods: %w", err)
 	}
 	var active []string
+	var gpus float64
 	for _, p := range pods.Items {
-		if podGPUs(&p) == 0 || p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
+		n := podGPUs(&p)
+		if n == 0 || p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
 			continue
 		}
 		active = append(active, p.Namespace+"/"+p.Name)
+		gpus += n
 	}
 	if len(active) == 0 {
-		return nil
+		return 0, nil
 	}
 	sort.Strings(active)
-	return fmt.Errorf("%d GPU pods are still active from before the run: %s", len(active), strings.Join(active, ", "))
+	msg := fmt.Sprintf("%d GPU pods are still active from before the run: %s", len(active), strings.Join(active, ", "))
+	if !allow {
+		return 0, errors.New(msg)
+	}
+	log.Warningf("Results: %s; counting their %g GPUs as busy for the whole run", msg, gpus)
+	return gpus, nil
 }
 
 // restartCounts maps namespace/pod/container to its restart count, for the control-plane pods and

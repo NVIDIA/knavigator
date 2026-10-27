@@ -54,6 +54,7 @@ type Args struct {
 	bsldFloor    time.Duration
 	aggregate    string
 	restartNS    string
+	leftovers    bool
 }
 
 func mainInternal() error {
@@ -78,6 +79,7 @@ func mainInternal() error {
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
+	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record their GPUs as harness.leftover_gpus and subtract them from capacity for the whole run, so utilization reads high if they finish during it")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -140,8 +142,11 @@ func mainInternal() error {
 		if err != nil {
 			return err
 		}
-		namespaces := strings.FieldsFunc(args.restartNS, func(c rune) bool { return c == ',' || c == ' ' })
-		if rec, err = results.Start(ctx, client, namespaces); err != nil {
+		opts := results.HarnessOptions{
+			RestartNamespaces: strings.FieldsFunc(args.restartNS, func(c rune) bool { return c == ',' || c == ' ' }),
+			AllowLeftovers:    args.leftovers,
+		}
+		if rec, err = results.Start(ctx, client, opts); err != nil {
 			return err
 		}
 		if len(args.pushURL) != 0 {
