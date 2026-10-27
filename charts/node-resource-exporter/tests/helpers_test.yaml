@@ -1,0 +1,44 @@
+suite: helpers (naming)
+templates:
+  - templates/service.yaml
+chart:
+  version: 0.0.0-dev
+  appVersion: 0.0.0-dev
+tests:
+  - it: does not repeat the chart name when the release contains it
+    release:
+      name: node-resource-exporter
+    asserts:
+      - equal:
+          path: metadata.name
+          value: node-resource-exporter
+  - it: nameOverride changes name and selector label
+    release:
+      name: nre
+    set:
+      nameOverride: foo
+    asserts:
+      - equal:
+          path: metadata.name
+          value: nre-foo
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: foo
+  - it: fullnameOverride wins
+    release:
+      name: nre
+    set:
+      fullnameOverride: full
+    asserts:
+      - equal:
+          path: metadata.name
+          value: full
+  - it: names are truncated to 63 chars
+    release:
+      name: nre
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: ^a{63}$
