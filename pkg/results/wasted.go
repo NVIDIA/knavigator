@@ -105,8 +105,8 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 	return gpuSeconds / 3600
 }
 
-// gangAssemblySec is, for each gang that was ever complete, the time from its first bind until it
-// first held all its pods. A pod lost before that keeps the gang open until its replacement binds.
+// gangAssemblySec is, for each gang that was ever complete, the time from its first bind until
+// all its pods are bound. A pod lost before that keeps the gang open until its replacement binds.
 func gangAssemblySec(pods []Pod, jobs []Job) []float64 {
 	byJob := map[string][]Pod{}
 	for _, p := range pods {

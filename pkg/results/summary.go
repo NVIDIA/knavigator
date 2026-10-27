@@ -76,7 +76,7 @@ type Summary struct {
 	GPUUtilization  float64 `json:"gpu_utilization"`
 	PodWaitSec      Stats   `json:"pod_wait_sec"`
 	JobWaitSec      Stats   `json:"job_wait_sec"`
-	// GangAssemblySec is the time from a gang's first bind until it first held all its pods.
+	// GangAssemblySec is the time from a gang's first bind until all its pods are bound.
 	GangAssemblySec Stats `json:"gang_assembly_sec"`
 	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
 	JobsByGangSize []GangSize `json:"jobs_by_gang_size"`
