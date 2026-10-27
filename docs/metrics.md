@@ -92,8 +92,9 @@ When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each
 - `gpu_fragmentation_largest_pod`: the share of free GPU time on nodes with fewer free GPUs than the run's largest pod requests, so that pod could not have run there. That pod is the largest `gpus` in `timeline.csv`, and one larger than any node makes the field read 1. Unlike `gpu_fragmentation` it counts empty nodes smaller than that pod, so the two differ on a fleet that mixes node sizes. 0 means every free GPU sat on a node with room for that pod, and null means no GPU was free.
 - `free_nodes_mean`: time-weighted mean number of nodes with every GPU free.
 - `stranded_gpu_hours`: free GPU-hours, while pods waited, on nodes with fewer free GPUs than the smallest waiting pod requests, in simulated time under `-speedup`. `idle_waiting_gpu_hours` caps idle time at what the waiting pods request and this field does not, so it can be larger when many small gaps face few waiting pods.
+- `gpu_fragmentation_rack`: with `-results.rack-label <label>`, the share of free GPU time that sat in racks with a GPU in use, where a job that needs a whole rack could not run. Nodes are grouped by that label's value, such as the `example.com/rack` label in the [deployment](deployment.md) example, and nodes without it are left out. Any topology label works, such as a switch or zone. 0 means every free GPU sat in a rack with no GPU in use, and null means the flag was not set or no GPU on a node with the label was free, as when no GPU node carries it. The flag requires `-results` and must be a label key. [resources/workflows/k8s/test-racks.yml](../resources/workflows/k8s/test-racks.yml) labels two racks of two nodes.
 
-Node capacity is read at the end of the run, so a node that joined during it counts as there the whole time, and one that left is not counted at all. With `-results.allow-leftovers`, the GPUs that pods from before the run hold on a node count as in use for the whole run, as described above.
+Node capacity and racks are read at the end of the run, so a node that joined during it counts as there the whole time, and one that left is not counted at all. With `-results.allow-leftovers`, the GPUs that pods from before the run hold on a node count as in use for the whole run, as described above.
 
 ```bash
 ./bin/knavigator -results ./out \
@@ -136,4 +137,4 @@ done
 - `ci95`: a 95% interval for the mean, from 4000 bootstrap resamples with a fixed seed, so the same runs always give the same interval.
 - `stable`: at least two runs, and either no variation or a `cv` of at most 5%. Treat a difference between two configurations as real only when their intervals do not overlap.
 
-Combine only runs made with the same `-results.allow-leftovers` setting: with it, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity.
+Combine only runs made with the same `-results.allow-leftovers` and `-results.rack-label` settings. With `-results.allow-leftovers`, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity. With different `-results.rack-label` values, `gpu_fragmentation_rack` measures different groups, such as racks and zones.
