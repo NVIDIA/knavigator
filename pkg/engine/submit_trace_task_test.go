@@ -67,6 +67,32 @@ func TestGenerateTrace(t *testing.T) {
 	require.InDelta(t, 60, accounts["research"], 20)
 }
 
+func TestGenerateTraceBursts(t *testing.T) {
+	class := func(name string, jobs int, interval, start float64, regular bool) traceClass {
+		c := traceClass{Name: name, Jobs: jobs, ArrivalInterval: interval, Start: start, Regular: regular, GPUs: []int{8}}
+		c.Runtime.Mu, c.Runtime.Max = 8, 3600
+		return c
+	}
+	trickle := class("trickle", 50, 60, 0, false)
+	poisson := generateTrace([]traceClass{trickle}, 3)
+
+	jobs := generateTrace([]traceClass{
+		trickle,
+		class("pile", 4, 0, 3600, false),
+		class("spaced", 3, 7200, 1800, true),
+	}, 3)
+
+	submits := map[string][]float64{}
+	for _, j := range jobs {
+		submits[j.Class] = append(submits[j.Class], j.Submit)
+	}
+	require.Equal(t, []float64{3600, 3600, 3600, 3600}, submits["pile"], "interval 0 lands every job at start")
+	require.Equal(t, []float64{1800, 9000, 16200}, submits["spaced"], "regular arrivals start at start, evenly spaced")
+	for i, j := range poisson {
+		require.Equal(t, j.Submit, submits["trickle"][i], "new classes leave an existing class's draws alone")
+	}
+}
+
 func TestNewSubmitTraceTask(t *testing.T) {
 	_, err := newSubmitTraceTask(nil, nil, &config.Task{Type: TaskSubmitTrace, ID: "trace"})
 	require.Error(t, err)
@@ -77,7 +103,12 @@ func TestNewSubmitTraceTask(t *testing.T) {
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes":   []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "arrivalInterval": 1, "gpus": []int{1}}},
-	}), `SubmitTrace/trace: class "a" needs positive jobs, arrivalInterval and runtime.max, and gpus`)
+	}), `SubmitTrace/trace: class "a" needs positive jobs and runtime.max, and gpus`)
+	require.EqualError(t, task.validate(map[string]interface{}{
+		"refTaskId": "job",
+		"classes": []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "start": -1,
+			"gpus": []int{1}, "runtime": map[string]interface{}{"max": 60}}},
+	}), `SubmitTrace/trace: class "a" has a negative arrivalInterval or start`)
 	for _, size := range []int{0, -2} {
 		require.EqualError(t, task.validate(map[string]interface{}{
 			"refTaskId": "job",
