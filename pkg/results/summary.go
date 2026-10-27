@@ -246,6 +246,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.BindingGapGPUHours *= speedup
 	s.WastedGPUHours *= speedup
 	s.FragmentedGPUHours *= speedup
+	s.StrandedGPUHours *= speedup
 	for i := range s.EvictionsByPriority {
 		s.EvictionsByPriority[i].GPUHours *= speedup
 	}
