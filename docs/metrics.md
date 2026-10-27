@@ -73,7 +73,7 @@ When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each
 
 `results.json` also shows where the free GPUs were, since free GPUs spread over partly used nodes cannot run a pod that needs a whole node.
 
-- `fragmented_gpu_hours`: free GPU time on nodes that were partly in use. It follows `-speedup`.
+- `fragmented_gpu_hours`: free GPU-hours on nodes that were partly in use, in simulated time under `-speedup`.
 - `gpu_fragmentation`: `fragmented_gpu_hours` over all free GPU time across the makespan. 0 means every free GPU sat on an empty node, and null means no GPU was free.
 - `free_nodes_mean`: time-weighted mean number of nodes with every GPU free.
 
