@@ -17,12 +17,14 @@
 package results
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	log "k8s.io/klog/v2"
 )
 
 func fastPoll(t *testing.T) {
@@ -85,15 +88,32 @@ func readHarness(t *testing.T, dir string) map[string]json.RawMessage {
 
 func controlPlane() map[string]string { return map[string]string{"tier": "control-plane"} }
 
-// leftoverCluster is one node with 8 GPUs; from before the run, a 2-GPU pod still running, a
+// gpuNode is a node with gpus allocatable GPUs.
+func gpuNode(name, gpus string) *corev1.Node {
+	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name},
+		Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{gpuResource: resource.MustParse(gpus)}}}
+}
+
+// leftoverPod is a GPU pod from before the run, bound to node unless node is empty.
+func leftoverPod(namespace, name string, phase corev1.PodPhase, gpus, node string) *corev1.Pod {
+	p := phasePod(namespace, name, phase, true)
+	p.Spec.Containers[0].Resources.Requests[gpuResource] = resource.MustParse(gpus)
+	p.Spec.NodeName = node
+	return p
+}
+
+// leftoverCluster is one node with 8 GPUs; from before the run, a 2-GPU pod running on it, a
 // finished 8-GPU pod and a pod without GPUs; and one pod of the run that held 3 GPUs for exactly an
 // hour.
 func leftoverCluster() *fake.Clientset {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"},
-		Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{gpuResource: resource.MustParse("8")}}}
-	leftover := phasePod("default", "leftover-0", corev1.PodRunning, true)
-	leftover.Spec.Containers[0].Resources.Requests[gpuResource] = resource.MustParse("2")
+	return runCluster(leftoverPod("default", "leftover-0", corev1.PodRunning, "2", "n1"),
+		phasePod("default", "done-0", corev1.PodSucceeded, true),
+		phasePod("default", "web-0", corev1.PodRunning, false))
+}
 
+// runCluster is node n1 with 8 GPUs and one pod of the run that held 3 GPUs on it for exactly an
+// hour, plus pods.
+func runCluster(pods ...*corev1.Pod) *fake.Clientset {
 	run := gpuPod("w-0")
 	run.Spec.Containers[0].Resources.Requests[gpuResource] = resource.MustParse("3")
 	run.Spec.NodeName = "n1"
@@ -104,10 +124,42 @@ func leftoverCluster() *fake.Clientset {
 		ContainerStatuses: []corev1.ContainerStatus{{Name: "c", State: corev1.ContainerState{
 			Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(placed.Add(time.Hour))}}}},
 	}
-	return fake.NewSimpleClientset(node, leftover,
-		phasePod("default", "done-0", corev1.PodSucceeded, true),
-		phasePod("default", "web-0", corev1.PodRunning, false),
-		run)
+	objects := []runtime.Object{gpuNode("n1", "8"), run}
+	for _, p := range pods {
+		objects = append(objects, p)
+	}
+	return fake.NewSimpleClientset(objects...)
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLog collects klog output for the rest of the test.
+func captureLog(t *testing.T) *syncBuffer {
+	t.Helper()
+	out := &syncBuffer{}
+	log.LogToStderr(false)
+	log.SetOutput(out)
+	t.Cleanup(func() {
+		log.Flush()
+		log.SetOutput(os.Stderr)
+		log.LogToStderr(true)
+	})
+	return out
 }
 
 func readSummary(t *testing.T, dir string) Summary {
@@ -170,8 +222,13 @@ func TestStartRefusesLeftoversByDefault(t *testing.T) {
 
 func TestAllowLeftoversSubtractsTheirGPUs(t *testing.T) {
 	fastPoll(t)
+	logs := captureLog(t)
 	rec, err := Start(context.Background(), leftoverCluster(), HarnessOptions{AllowLeftovers: true})
 	require.NoError(t, err)
+	// The biggest node is a node size for the size-bias metrics, not free capacity.
+	_, _, maxNode, err := rec.gpuCapacity(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 8.0, maxNode)
 
 	dir := t.TempDir()
 	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
@@ -182,6 +239,64 @@ func TestAllowLeftoversSubtractsTheirGPUs(t *testing.T) {
 	require.Equal(t, 6.0, s.GPUCapacity, "8 GPUs minus the 2 the leftover pod holds")
 	// 3 GPUs busy for the whole hour-long run, out of 6.
 	require.Equal(t, 0.5, s.GPUUtilization)
+	require.Contains(t, logs.String(), "Results: 1 GPU pods are still active from before the run: default/leftover-0; "+
+		"counting the 2 GPUs of those bound to a node as busy for the whole run\n")
+	require.NotContains(t, logs.String(), "GPU capacity is")
+}
+
+func TestAllowLeftoversSkipsUnboundPods(t *testing.T) {
+	fastPoll(t)
+	for _, tc := range []struct {
+		name        string
+		pods        []*corev1.Pod
+		leftover    string
+		capacity    float64
+		utilization float64
+		warning     string
+	}{
+		// A pod not yet bound to a node holds no GPUs, whatever it requests: 3 of 8 GPUs for the run.
+		{"pending 6", []*corev1.Pod{leftoverPod("team", "queued-0", corev1.PodPending, "6", "")},
+			"0", 8, 0.375, "1 GPU pods are still active from before the run: team/queued-0; counting the 0 GPUs"},
+		{"pending 8", []*corev1.Pod{leftoverPod("team", "queued-0", corev1.PodPending, "8", "")},
+			"0", 8, 0.375, "1 GPU pods are still active from before the run: team/queued-0; counting the 0 GPUs"},
+		{"pending 16", []*corev1.Pod{leftoverPod("team", "queued-0", corev1.PodPending, "16", "")},
+			"0", 8, 0.375, "1 GPU pods are still active from before the run: team/queued-0; counting the 0 GPUs"},
+		{"bound 2 and pending 8", []*corev1.Pod{
+			leftoverPod("default", "leftover-0", corev1.PodRunning, "2", "n1"),
+			leftoverPod("team", "queued-0", corev1.PodPending, "8", ""),
+		}, "2", 6, 0.5, "2 GPU pods are still active from before the run: default/leftover-0, team/queued-0; counting the 2 GPUs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := captureLog(t)
+			rec, err := Start(context.Background(), runCluster(tc.pods...), HarnessOptions{AllowLeftovers: true})
+			require.NoError(t, err)
+
+			dir := t.TempDir()
+			require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+
+			require.Equal(t, tc.leftover, string(readHarness(t, dir)["leftover_gpus"]))
+			s := readSummary(t, dir)
+			require.Equal(t, tc.capacity, s.GPUCapacity)
+			require.Equal(t, tc.utilization, s.GPUUtilization)
+			// Every unfinished pod is named, bound or not.
+			require.Contains(t, logs.String(), "Results: "+tc.warning+" of those bound to a node as busy for the whole run\n")
+		})
+	}
+}
+
+func TestAllowLeftoversWarnsWhenNoCapacityIsLeft(t *testing.T) {
+	fastPoll(t)
+	logs := captureLog(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"), leftoverPod("default", "train-0", corev1.PodRunning, "8", "n1"))
+	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+
+	require.Equal(t, 0.0, readSummary(t, dir).GPUCapacity)
+	require.Contains(t, logs.String(), "Results: GPU capacity is 0 after subtracting the 8 GPUs that pods from before the run hold; "+
+		"gpu_utilization and idle_waiting_gpu_hours read 0\n")
 }
 
 func TestAllowLeftoversWithNoneRecordsZero(t *testing.T) {
