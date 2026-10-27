@@ -38,8 +38,8 @@ const controlPlaneSelector = "tier=control-plane"
 type HarnessOptions struct {
 	// RestartNamespaces are watched for container restarts, besides the control-plane pods.
 	RestartNamespaces []string
-	// AllowLeftovers lets the run start while GPU pods from before it are active. Their GPUs are
-	// subtracted from capacity, as if they were held for the whole run.
+	// AllowLeftovers lets the run start while GPU pods from before it are active. The GPUs of those
+	// bound to a node are subtracted from capacity, as if they were held for the whole run.
 	AllowLeftovers bool
 }
 
@@ -49,7 +49,8 @@ type Harness struct {
 	// seconds, at the start and end of the run. The server stamps whole seconds.
 	ClockOffsetStartSec *float64 `json:"clock_offset_start_s,omitempty"`
 	ClockOffsetEndSec   *float64 `json:"clock_offset_end_s,omitempty"`
-	// LeftoverGPUs are the GPUs held by pods from before the run, set with AllowLeftovers.
+	// LeftoverGPUs are the GPUs held by pods from before the run that are bound to a node, set with
+	// AllowLeftovers.
 	LeftoverGPUs *float64 `json:"leftover_gpus,omitempty"`
 	// ControlPlaneRestarts lists the containers whose restart count rose during the run.
 	ControlPlaneRestarts []Restart `json:"control_plane_restarts"`
@@ -120,7 +121,8 @@ func (h Harness) check() error {
 }
 
 // checkLeftovers fails when GPU pods that have not finished already exist: they hold GPUs the run
-// would count as free. With allow it logs them instead and returns the GPUs they request.
+// would count as free. With allow it logs them instead and returns the GPUs requested by those bound
+// to a node.
 func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool) (float64, error) {
 	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -134,7 +136,10 @@ func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool
 			continue
 		}
 		active = append(active, p.Namespace+"/"+p.Name)
-		gpus += n
+		// A pod not yet bound to a node holds no GPUs.
+		if p.Spec.NodeName != "" {
+			gpus += n
+		}
 	}
 	if len(active) == 0 {
 		return 0, nil
@@ -144,7 +149,7 @@ func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool
 	if !allow {
 		return 0, errors.New(msg)
 	}
-	log.Warningf("Results: %s; counting their %g GPUs as busy for the whole run", msg, gpus)
+	log.Warningf("Results: %s; counting the %g GPUs of those bound to a node as busy for the whole run", msg, gpus)
 	return gpus, nil
 }
 

@@ -354,6 +354,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err != nil {
 		return err
 	}
+	if g := r.harness.leftoverGPUs; g != nil && capacity <= 0 {
+		log.Warningf("Results: GPU capacity is %g after subtracting the %g GPUs that pods from before the run hold; gpu_utilization and idle_waiting_gpu_hours read 0", capacity, *g)
+	}
 	pods := r.snapshot()
 	events := r.eventList()
 	if speedup > 1 {

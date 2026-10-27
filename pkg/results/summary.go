@@ -108,7 +108,8 @@ type Summary struct {
 	MaxEvictionsPerJob int `json:"max_evictions_per_job"`
 	// Stalled is set when the run stopped because nothing was placed or finished for -results.stall.
 	Stalled bool `json:"stalled"`
-	// Harness reports on the cluster under the run: clock offsets and control-plane restarts.
+	// Harness reports on the cluster under the run: clock offsets, control-plane restarts and, with
+	// -results.allow-leftovers, the GPUs pods from before the run hold.
 	Harness Harness `json:"harness"`
 	Sizes
 	Fragmentation
