@@ -69,7 +69,13 @@ func GetK8sConfig(cfg *cfg.KubeConfig) (*rest.Config, error) {
 		config.CurrentContext = cfg.KubeCtx
 	}
 
-	return clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{}).ClientConfig()
+	restConfig, err = clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	restConfig.Burst = cfg.Burst
+	restConfig.QPS = float32(cfg.QPS)
+	return restConfig, nil
 }
 
 func validateKubeContext(config *clientcmdapi.Config, kubectx string) error {

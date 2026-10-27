@@ -136,8 +136,8 @@ func TestGetK8sConfig(t *testing.T) {
 			c := &config.KubeConfig{
 				KubeConfigPath: cfgPath,
 				KubeCtx:        tc.kubeCtx,
-				QPS:            10,
-				Burst:          10,
+				QPS:            300,
+				Burst:          400,
 			}
 			cfg, err := GetK8sConfig(c)
 			if len(tc.expectedErr) != 0 {
@@ -145,6 +145,8 @@ func TestGetK8sConfig(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedHost, cfg.Host)
+				require.Equal(t, float32(300), cfg.QPS, "client-go defaults to 5")
+				require.Equal(t, 400, cfg.Burst)
 			}
 		})
 	}
