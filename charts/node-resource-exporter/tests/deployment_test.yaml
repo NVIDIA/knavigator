@@ -1,0 +1,131 @@
+suite: deployment
+templates:
+  - templates/deployment.yaml
+release:
+  name: nre
+  namespace: monitoring
+chart:
+  version: 0.0.0-dev
+  appVersion: 0.0.0-dev
+tests:
+  - it: matches the default-values snapshot
+    asserts:
+      - matchSnapshot: {}
+
+  - it: propagates cmd overrides
+    set:
+      cmd:
+        port: 9100
+        namespace: team-a
+        resources: cpu
+        nodeLabels: zone
+        verbosity: 4
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [-p, "9100", -r, cpu, -l, zone, -v, "4", -n, team-a]
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9100
+
+  - it: omits -n when namespace is empty (track all namespaces)
+    set:
+      cmd:
+        namespace: ''
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: -n
+
+  - it: falls back to appVersion when tag is empty
+    set:
+      image:
+        tag: ''
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/nvidia/knavigator:0.0.0-dev
+
+  - it: sets replicas unless autoscaling is enabled
+    set:
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+  - it: drops replicas when autoscaling is enabled
+    set:
+      autoscaling:
+        enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: renders optional pod settings
+    set:
+      podAnnotations:
+        a: b
+      podLabels:
+        team: x
+      imagePullSecrets:
+        - name: regcred
+      nodeSelector:
+        disk: ssd
+      tolerations:
+        - key: k
+          operator: Exists
+      affinity:
+        nodeAffinity: {}
+      volumes:
+        - name: foo
+          emptyDir: {}
+      volumeMounts:
+        - name: foo
+          mountPath: /etc/foo
+      resources:
+        limits:
+          cpu: 100m
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations.a
+          value: b
+      - equal:
+          path: spec.template.metadata.labels.team
+          value: x
+      - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: regcred
+      - equal:
+          path: spec.template.spec.nodeSelector.disk
+          value: ssd
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: k
+      - exists:
+          path: spec.template.spec.affinity.nodeAffinity
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: foo
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /etc/foo
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 100m
+
+  - it: uses the created or custom service account name
+    set:
+      serviceAccount:
+        name: custom
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: custom
+  - it: uses the default service account when not created
+    set:
+      serviceAccount:
+        create: false
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default

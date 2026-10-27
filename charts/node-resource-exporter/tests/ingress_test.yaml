@@ -1,0 +1,83 @@
+suite: ingress
+templates:
+  - templates/ingress.yaml
+release:
+  name: nre
+  namespace: monitoring
+chart:
+  version: 0.0.0-dev
+  appVersion: 0.0.0-dev
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a networking.k8s.io/v1 Ingress on modern clusters
+    capabilities:
+      majorVersion: 1
+      minorVersion: 30
+    set:
+      ingress:
+        enabled: true
+        className: nginx
+        annotations:
+          a: b
+    asserts:
+      - isAPIVersion:
+          of: networking.k8s.io/v1
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: metadata.annotations.a
+          value: b
+      - equal:
+          path: spec.rules[0].host
+          value: chart-example.local
+      - equal:
+          path: spec.rules[0].http.paths[0]
+          value:
+            path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: nre-node-resource-exporter
+                port:
+                  number: 8080
+
+  - it: renders TLS block
+    capabilities:
+      majorVersion: 1
+      minorVersion: 30
+    set:
+      ingress:
+        enabled: true
+        tls:
+          - secretName: tls-secret
+            hosts:
+              - chart-example.local
+    asserts:
+      - equal:
+          path: spec.tls
+          value:
+            - hosts: [chart-example.local]
+              secretName: tls-secret
+
+  - it: falls back to v1beta1 on 1.14-1.18
+    capabilities:
+      majorVersion: 1
+      minorVersion: 16
+    set:
+      ingress:
+        enabled: true
+    asserts:
+      - isAPIVersion:
+          of: networking.k8s.io/v1beta1
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.serviceName
+          value: nre-node-resource-exporter
+      - notExists:
+          path: spec.rules[0].http.paths[0].pathType

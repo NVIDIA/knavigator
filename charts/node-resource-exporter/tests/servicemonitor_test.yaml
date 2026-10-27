@@ -1,0 +1,21 @@
+suite: servicemonitor
+templates:
+  - templates/servicemonitor.yaml
+release:
+  name: nre
+  namespace: monitoring
+chart:
+  version: 0.0.0-dev
+  appVersion: 0.0.0-dev
+tests:
+  - it: matches the default-values snapshot
+    asserts:
+      - matchSnapshot: {}
+
+  - it: renders nothing when monitoring is disabled
+    set:
+      monitoring:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
