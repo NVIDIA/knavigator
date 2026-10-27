@@ -38,6 +38,8 @@ func TestFragmentationGolden(t *testing.T) {
 	require.InDelta(t, 30.0/3600, f.FragmentedGPUHours, 1e-15)
 	require.NotNil(t, f.GPUFragmentation)
 	require.InDelta(t, 1.0/13, *f.GPUFragmentation, 1e-15)
+	require.NotNil(t, f.GPUFragmentationLargestPod)
+	require.InDelta(t, 5.0/13, *f.GPUFragmentationLargestPod, 1e-15, "150 GPU-seconds on nodes with fewer than 5 free")
 	require.InDelta(t, 3.0, f.FreeNodesMean, 1e-12)
 }
 
@@ -50,6 +52,8 @@ func TestFragmentationEdges(t *testing.T) {
 	require.Zero(t, idle.FragmentedGPUHours)
 	require.NotNil(t, idle.GPUFragmentation)
 	require.Zero(t, *idle.GPUFragmentation)
+	require.NotNil(t, idle.GPUFragmentationLargestPod)
+	require.Zero(t, *idle.GPUFragmentationLargestPod, "no pods, so no free GPU is too small")
 	require.Equal(t, 2.0, idle.FreeNodesMean)
 
 	full := fragmentation([]Pod{
@@ -57,6 +61,7 @@ func TestFragmentationEdges(t *testing.T) {
 		{Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(10)},
 	}, nodes, at(0), at(10))
 	require.Nil(t, full.GPUFragmentation, "no free GPU, so the share is undefined")
+	require.Nil(t, full.GPUFragmentationLargestPod)
 	require.Zero(t, full.FreeNodesMean)
 
 	// A handover in the same second never leaves both nodes free.
@@ -89,17 +94,21 @@ func TestFragmentationOverMakespan(t *testing.T) {
 	require.InDelta(t, 400.0/3600, s.FragmentedGPUHours, 1e-12)
 	require.NotNil(t, s.GPUFragmentation)
 	require.InDelta(t, 1.0/3, *s.GPUFragmentation, 1e-12)
+	require.NotNil(t, s.GPUFragmentationLargestPod)
+	require.Zero(t, *s.GPUFragmentationLargestPod, "n0's 4 free GPUs still fit the largest pod")
 	require.Equal(t, 1.0, s.FreeNodesMean)
 
 	s.ScaleTime(10)
 	require.InDelta(t, 4000.0/3600, s.FragmentedGPUHours, 1e-12)
 	require.InDelta(t, 1.0/3, *s.GPUFragmentation, 1e-12, "a share does not scale")
+	require.Zero(t, *s.GPUFragmentationLargestPod)
 
 	data, err := json.Marshal(s)
 	require.NoError(t, err)
 	var tree interface{}
 	require.NoError(t, json.Unmarshal(data, &tree))
 	require.InDelta(t, 1.0/3, values(samples(tree))["knavigator_gpu_fragmentation"], 1e-12)
+	require.Contains(t, values(samples(tree)), "knavigator_gpu_fragmentation_largest_pod")
 
 	data, err = json.Marshal(Summary{})
 	require.NoError(t, err)
