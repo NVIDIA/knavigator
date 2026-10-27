@@ -82,42 +82,7 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 		if j.Pods <= 1 {
 			continue
 		}
-		// The gang is complete once it holds all its pods at once. A bind adds a member and an
-		// eviction removes one; a pod that finished stays a member.
-		type change struct {
-			t time.Time
-			d int
-		}
-		var changes []change
-		for _, p := range byJob[j.Name] {
-			if p.Scheduled.IsZero() {
-				continue
-			}
-			changes = append(changes, change{p.Scheduled, 1})
-			if p.Phase == phaseDeleted && !p.Finished.IsZero() {
-				changes = append(changes, change{p.Finished, -1})
-			}
-		}
-		sort.Slice(changes, func(a, b int) bool {
-			if !changes[a].t.Equal(changes[b].t) {
-				return changes[a].t.Before(changes[b].t)
-			}
-			return changes[a].d < changes[b].d // an eviction at the same instant comes first
-		})
-		// Spans while the gang is short of pods; a zero end leaves the span open.
-		type span struct{ from, to time.Time }
-		short := []span{{}}
-		members := 0
-		for _, c := range changes {
-			was := members >= j.Pods
-			members += c.d
-			switch is := members >= j.Pods; {
-			case is && !was:
-				short[len(short)-1].to = c.t
-			case was && !is:
-				short = append(short, span{from: c.t})
-			}
-		}
+		short := shortSpans(byJob[j.Name], j.Pods)
 		for _, p := range byJob[j.Name] {
 			if p.Scheduled.IsZero() || p.Phase == phaseDeleted {
 				continue
@@ -138,4 +103,67 @@ func bindingGapGPUHours(pods []Pod, jobs []Job, end time.Time) float64 {
 		}
 	}
 	return gpuSeconds / 3600
+}
+
+// gangAssemblySec is, for each gang that was ever complete, the time from its first bind until it
+// first held all its pods. A pod lost before that keeps the gang open until its replacement binds.
+func gangAssemblySec(pods []Pod, jobs []Job) []float64 {
+	byJob := map[string][]Pod{}
+	for _, p := range pods {
+		byJob[p.Job] = append(byJob[p.Job], p)
+	}
+	var out []float64
+	for _, j := range jobs {
+		if j.Pods <= 1 {
+			continue
+		}
+		if short := shortSpans(byJob[j.Name], j.Pods); len(short) > 0 && !short[0].to.IsZero() {
+			out = append(out, short[0].to.Sub(short[0].from).Seconds())
+		}
+	}
+	return out
+}
+
+// span is a stretch of time; a zero end leaves it open.
+type span struct{ from, to time.Time }
+
+// shortSpans returns the spans, from the gang's first bind, while it holds fewer than want pods. A
+// bind adds a member and an eviction removes one; a pod that finished stays a member.
+func shortSpans(pods []Pod, want int) []span {
+	type change struct {
+		t time.Time
+		d int
+	}
+	var changes []change
+	for _, p := range pods {
+		if p.Scheduled.IsZero() {
+			continue
+		}
+		changes = append(changes, change{p.Scheduled, 1})
+		if p.Phase == phaseDeleted && !p.Finished.IsZero() {
+			changes = append(changes, change{p.Finished, -1})
+		}
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	sort.Slice(changes, func(a, b int) bool {
+		if !changes[a].t.Equal(changes[b].t) {
+			return changes[a].t.Before(changes[b].t)
+		}
+		return changes[a].d < changes[b].d // an eviction at the same instant comes first
+	})
+	short := []span{{from: changes[0].t}}
+	members := 0
+	for _, c := range changes {
+		was := members >= want
+		members += c.d
+		switch is := members >= want; {
+		case is && !was:
+			short[len(short)-1].to = c.t
+		case was && !is:
+			short = append(short, span{from: c.t})
+		}
+	}
+	return short
 }
