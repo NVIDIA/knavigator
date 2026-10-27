@@ -137,3 +137,22 @@ func TestStrandedGPUHours(t *testing.T) {
 	s.ScaleTime(10)
 	require.InDelta(t, 10*400.0/3600, s.StrandedGPUHours, 1e-12)
 }
+
+func TestRackFragmentation(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	nodes := map[string]float64{"n0": 8, "n1": 8, "n2": 8, "n3": 8, "n4": 8}
+	racks := map[string]string{"n0": "a", "n1": "a", "n2": "b", "n3": "b"}
+	// One pod fills n0 to the end; no node is partly used, but rack a is, so its other 8 GPUs count.
+	pods := []Pod{{Node: "n0", GPUs: 8, Created: at(0), Scheduled: at(0)}}
+
+	s := Summarize(pods, nil, 40, at(100), Options{NodeGPUs: nodes, NodeRacks: racks})
+	require.NotNil(t, s.GPUFragmentation)
+	require.Zero(t, *s.GPUFragmentation)
+	require.NotNil(t, s.GPUFragmentationRack)
+	require.InDelta(t, 8.0/24, *s.GPUFragmentationRack, 1e-12, "n4 has no rack and is left out")
+
+	require.Nil(t, Summarize(pods, nil, 40, at(100), Options{NodeGPUs: nodes}).GPUFragmentationRack)
+	full := []Pod{{Node: "n0", GPUs: 8, Scheduled: at(0), Finished: at(100)}, {Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(100)}}
+	require.Nil(t, rackFragmentation(full, nodes, map[string]string{"n0": "a", "n1": "a"}, at(0), at(100)), "no free GPU")
+}

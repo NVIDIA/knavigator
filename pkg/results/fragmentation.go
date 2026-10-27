@@ -36,6 +36,9 @@ type Fragmentation struct {
 	// StrandedGPUHours is free GPU time, while pods waited, on nodes with fewer free GPUs than the
 	// smallest waiting pod requests.
 	StrandedGPUHours float64 `json:"stranded_gpu_hours"`
+	// GPUFragmentationRack is the share of free GPU time in racks with a GPU in use, so a job that
+	// needs a whole rack could not run there; null without -results.rack-label or when no GPU was free.
+	GPUFragmentationRack *float64 `json:"gpu_fragmentation_rack"`
 }
 
 // fragmentation sweeps the window from first to last. nodes maps each node to its allocatable GPUs;
@@ -202,4 +205,64 @@ func strandedGPUHours(pods []Pod, nodes map[string]float64, first, last time.Tim
 	}
 	hold(last)
 	return gpuSeconds / 3600
+}
+
+// rackFragmentation sweeps the window like fragmentation, per rack. racks maps nodes to racks;
+// nodes without a rack are left out.
+func rackFragmentation(pods []Pod, nodes map[string]float64, racks map[string]string, first, last time.Time) *float64 {
+	capacity := map[string]float64{}
+	for node, rack := range racks {
+		capacity[rack] += nodes[node]
+	}
+	if !last.After(first) || len(capacity) == 0 {
+		return nil
+	}
+	type change struct {
+		t    time.Time
+		rack string
+		gpus float64
+	}
+	var changes []change
+	for _, p := range pods {
+		rack, ok := racks[p.Node]
+		if !ok || p.Scheduled.IsZero() {
+			continue
+		}
+		fin := p.Finished
+		if fin.IsZero() || fin.After(last) {
+			fin = last
+		}
+		if fin.After(p.Scheduled) {
+			changes = append(changes, change{p.Scheduled, rack, p.GPUs}, change{fin, rack, -p.GPUs})
+		}
+	}
+	sort.Slice(changes, func(a, b int) bool { return changes[a].t.Before(changes[b].t) })
+
+	used := map[string]float64{}
+	var freeSec, fragmentedSec float64
+	prev := first
+	hold := func(until time.Time) {
+		dt := until.Sub(prev).Seconds()
+		if dt <= 0 {
+			return
+		}
+		for rack, c := range capacity {
+			f := math.Max(c-used[rack], 0)
+			freeSec += f * dt
+			if used[rack] > 0 {
+				fragmentedSec += f * dt
+			}
+		}
+		prev = until
+	}
+	for _, c := range changes {
+		hold(c.t)
+		used[c.rack] += c.gpus
+	}
+	hold(last)
+	if freeSec == 0 {
+		return nil
+	}
+	f := fragmentedSec / freeSec
+	return &f
 }

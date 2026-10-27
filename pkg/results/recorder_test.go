@@ -74,12 +74,13 @@ func TestFinishReportsFragmentation(t *testing.T) {
 	defer func() { pollInterval = old }()
 
 	gpuNode := func(name string) *corev1.Node {
-		return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name},
+		return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"example.com/rack": "a"}},
 			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{gpuResource: resource.MustParse("8")}}}
 	}
 	client := fake.NewSimpleClientset(gpuNode("n0"), gpuNode("n1"), &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "cpu"}})
 	rec, err := Start(context.Background(), client)
 	require.NoError(t, err)
+	rec.SetRackLabel("example.com/rack")
 	// A pod holds half of n0 until the run ends; n1 stays empty.
 	now := metav1.Now()
 	pod := gpuPod("p-0")
@@ -103,6 +104,8 @@ func TestFinishReportsFragmentation(t *testing.T) {
 	require.NotNil(t, s.GPUFragmentation)
 	require.InDelta(t, 1.0/3, *s.GPUFragmentation, 1e-9, "4 of the 12 free GPUs sit on a partly used node")
 	require.InDelta(t, 1.0, s.FreeNodesMean, 1e-9)
+	require.NotNil(t, s.GPUFragmentationRack)
+	require.InDelta(t, 1.0, *s.GPUFragmentationRack, 1e-9, "n0 and n1 share a rack that is in use")
 }
 
 func TestProgress(t *testing.T) {

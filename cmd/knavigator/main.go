@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
@@ -50,6 +51,7 @@ type Args struct {
 	resultsStall time.Duration
 	bsldFloor    time.Duration
 	aggregate    string
+	rackLabel    string
 }
 
 func mainInternal() error {
@@ -73,6 +75,7 @@ func mainInternal() error {
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
+	flag.StringVar(&args.rackLabel, "results.rack-label", "", "node label that names each node's rack; adds gpu_fragmentation_rack to the results (requires 'results')")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -132,6 +135,7 @@ func mainInternal() error {
 		if rec, err = results.Start(ctx, client); err != nil {
 			return err
 		}
+		rec.SetRackLabel(args.rackLabel)
 		if len(args.pushURL) != 0 {
 			if len(args.pushRun) == 0 {
 				args.pushRun = time.Now().UTC().Format("20060102T150405")
@@ -283,6 +287,15 @@ func validate(args *Args) error {
 
 	if len(args.results) != 0 && len(args.workflow) == 0 {
 		return fmt.Errorf("'results' requires 'workflow'")
+	}
+
+	if len(args.rackLabel) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.rack-label' requires 'results'")
+		}
+		if errs := validation.IsQualifiedName(args.rackLabel); len(errs) != 0 {
+			return fmt.Errorf("'results.rack-label' must be a label key such as example.com/rack: %s", errs[0])
+		}
 	}
 
 	return nil

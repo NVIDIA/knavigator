@@ -51,3 +51,13 @@ func TestSpeedUpTraceMismatch(t *testing.T) {
 	require.Error(t, speedUp(trace(1), 60))
 	require.Error(t, speedUp(trace(60), 1))
 }
+
+func TestValidateRackLabel(t *testing.T) {
+	args := func(label, results string) *Args {
+		return &Args{workflow: "w.yml", speedup: 1, results: results, rackLabel: label}
+	}
+	require.NoError(t, validate(args("example.com/rack", "out")))
+	require.EqualError(t, validate(args("example.com/rack", "")), "'results.rack-label' requires 'results'")
+	require.ErrorContains(t, validate(args("example.com/rack=rack-1", "out")), "'results.rack-label' must be a label key")
+	require.ErrorContains(t, validate(args("Bad Key", "out")), "'results.rack-label' must be a label key")
+}
