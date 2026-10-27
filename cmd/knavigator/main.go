@@ -79,7 +79,7 @@ func mainInternal() error {
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
-	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record their GPUs as harness.leftover_gpus and subtract them from capacity for the whole run, so utilization reads high if they finish during it")
+	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
 
 	log.InitFlags(nil)
 	flag.Parse()
