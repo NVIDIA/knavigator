@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -57,6 +58,7 @@ type Args struct {
 	restartNS    string
 	leftovers    bool
 	rackLabel    string
+	baseline     string
 }
 
 func mainInternal() error {
@@ -83,12 +85,13 @@ func mainInternal() error {
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
 	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
 	flag.StringVar(&args.rackLabel, "results.rack-label", "", "node label that names each node's rack; fills gpu_fragmentation_rack in the results (requires 'results')")
+	flag.StringVar(&args.baseline, "aggregate.baseline", "", "glob of -results directories to compare against; adds each metric's difference from them and its 95% interval (requires 'aggregate')")
 
 	log.InitFlags(nil)
 	flag.Parse()
 
 	if len(args.aggregate) != 0 {
-		return aggregate(args.aggregate)
+		return aggregate(os.Stdout, args.aggregate, args.baseline)
 	}
 
 	if err := validate(&args); err != nil {
@@ -257,10 +260,33 @@ func submittedJobs(eng *engine.Eng) []results.Job {
 	return jobs
 }
 
-func aggregate(pattern string) error {
-	matches, err := filepath.Glob(pattern)
+func aggregate(w io.Writer, pattern, baseline string) error {
+	dirs, err := resultDirs(pattern)
 	if err != nil {
 		return err
+	}
+	var spreads map[string]results.Spread
+	if len(baseline) == 0 {
+		spreads, err = results.Aggregate(dirs)
+	} else {
+		var base []string
+		if base, err = resultDirs(baseline); err != nil {
+			return err
+		}
+		spreads, err = results.Compare(dirs, base)
+	}
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(spreads)
+}
+
+func resultDirs(pattern string) ([]string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("%q: %v", pattern, err)
 	}
 	// Skip files such as run logs that sit next to the result directories.
 	var dirs []string
@@ -270,18 +296,16 @@ func aggregate(pattern string) error {
 		}
 	}
 	if len(dirs) == 0 {
-		return fmt.Errorf("no directories match %q", pattern)
+		return nil, fmt.Errorf("no directories match %q", pattern)
 	}
-	spreads, err := results.Aggregate(dirs)
-	if err != nil {
-		return err
-	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(spreads)
+	return dirs, nil
 }
 
 func validate(args *Args) error {
+	if len(args.baseline) != 0 && len(args.aggregate) == 0 {
+		return fmt.Errorf("'aggregate.baseline' requires 'aggregate'")
+	}
+
 	if len(args.workflow) == 0 && args.port == 0 {
 		return fmt.Errorf("must specify 'workflow' or 'port'")
 	}
