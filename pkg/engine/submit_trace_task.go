@@ -18,7 +18,9 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -225,6 +227,17 @@ func generateTrace(classes []traceClass, seed uint64) []traceJob {
 	return jobs
 }
 
+// traceDigest is a short fingerprint of a trace's jobs, so results can show whether two runs
+// replayed the same trace. Times count to the millisecond, so a trace shifted to start at 0 keeps
+// its digest when its times have at most three decimals.
+func traceDigest(jobs []traceJob) string {
+	h := sha256.New()
+	for _, j := range jobs {
+		fmt.Fprintf(h, "%d,%s,%s,%.3f,%.3f,%d,%d,%d\n", j.ID, j.Class, j.Account, j.Submit, j.Runtime, j.GPUs, j.GangSize, j.Priority)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}
+
 // traceColumns is the header of a CSV trace.
 var traceColumns = []string{"job_id", "account", "submit_time", "duration", "gpus", "gang_size", "priority"}
 
@@ -328,7 +341,8 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 	if jobs == nil {
 		jobs = generateTrace(task.Classes, task.Seed)
 	}
-	log.Infof("%s: submitting %d jobs at %gx speed", task.ID(), len(jobs), task.Speedup)
+	digest := traceDigest(jobs)
+	log.Infof("%s: submitting %d jobs of trace %s at %gx speed", task.ID(), len(jobs), digest, task.Speedup)
 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -350,13 +364,15 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 			break
 		}
 
+		params := task.jobParams(job)
+		params["traceDigest"] = digest
 		wg.Add(1)
 		go func(id int, params map[string]interface{}) {
 			defer wg.Done()
 			if err := task.submitJob(subCtx, id, params); err != nil {
 				once.Do(func() { firstErr = err; cancel() })
 			}
-		}(job.ID, task.jobParams(job))
+		}(job.ID, params)
 		if (i+1)%100 == 0 {
 			log.Infof("%s: dispatched %d/%d jobs", task.ID(), i+1, len(jobs))
 		}

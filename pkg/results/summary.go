@@ -22,6 +22,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -53,6 +54,7 @@ type Job struct {
 	Pods      int    // pods the object should create
 	PodRegexp string // matches the full pod name
 	Class     string // the class the job was submitted with, if any
+	Trace     string // the traceDigest parameter the job was submitted with, if any
 }
 
 // Stats holds durations in seconds.
@@ -64,7 +66,10 @@ type Stats struct {
 }
 
 type Summary struct {
-	Speedup         float64 `json:"speedup,omitempty"`
+	Speedup float64 `json:"speedup,omitempty"`
+	// TraceDigest lists the traceDigest parameters the jobs were submitted with, such as
+	// SubmitTrace digests, comma-separated if several.
+	TraceDigest     string  `json:"trace_digest,omitempty"`
 	Pods            int     `json:"pods"`
 	PodsUnscheduled int     `json:"pods_unscheduled"`
 	PodsFailed      int     `json:"pods_failed"`
@@ -235,6 +240,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	s.GangAssemblySec = stats(gangAssemblySec(pods, jobs))
 	s.JobsByGangSize = byGangSize(pods, jobs, scheduled)
 	s.WaitByClass = byClass(jobs, waitOf, opt.Speedup)
+	s.TraceDigest = traceDigests(jobs)
 	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
 	return s
 }
@@ -339,4 +345,18 @@ func (s Summary) check(drained bool) error {
 		return fmt.Errorf("only %d/%d jobs started", s.JobsStarted, s.Jobs)
 	}
 	return nil
+}
+
+// traceDigests lists the trace digests of the jobs once each, sorted.
+func traceDigests(jobs []Job) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, j := range jobs {
+		if j.Trace != "" && !seen[j.Trace] {
+			seen[j.Trace] = true
+			out = append(out, j.Trace)
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
 }
