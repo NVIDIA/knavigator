@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -60,18 +62,97 @@ func New(data []byte) (*Workflow, error) {
 	return &config, nil
 }
 
-// NewFromFile populates workflow config from YAML file
-func NewFromFile(path string) (*Workflow, error) {
+// Vars holds -var values for ${name} and ${name:-default} references in workflow files.
+type Vars map[string]string
+
+var (
+	varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	varRef  = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}`)
+)
+
+// Set implements flag.Value, so -var name=value can repeat.
+func (v Vars) Set(s string) error {
+	name, value, ok := strings.Cut(s, "=")
+	if !ok || !varName.MatchString(name) {
+		return fmt.Errorf("want name=value, got %q", s)
+	}
+	v[name] = value
+	return nil
+}
+
+func (v Vars) String() string {
+	pairs := make([]string, 0, len(v))
+	for name, value := range v {
+		pairs = append(pairs, name+"="+value)
+	}
+	slices.Sort(pairs)
+	return strings.Join(pairs, ",")
+}
+
+// expand replaces ${name} and ${name:-default} in data before YAML parsing, so values keep
+// their YAML types. It records each var it uses in used.
+func (v Vars) expand(data []byte, used map[string]bool) ([]byte, error) {
+	var missing []string
+	out := varRef.ReplaceAllFunc(data, func(ref []byte) []byte {
+		m := varRef.FindSubmatch(ref)
+		name := string(m[1])
+		if value, ok := v[name]; ok {
+			used[name] = true
+			return []byte(value)
+		}
+		if m[2] != nil {
+			return m[2]
+		}
+		missing = append(missing, name)
+		return ref
+	})
+	if len(missing) != 0 {
+		return nil, fmt.Errorf("no value for %s; pass -var name=value", strings.Join(missing, ", "))
+	}
+	return out, nil
+}
+
+// unused returns an error naming vars that no workflow referenced, which catches typos.
+func (v Vars) unused(used map[string]bool) error {
+	var names []string
+	for name := range v {
+		if !used[name] {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	slices.Sort(names)
+	return fmt.Errorf("no workflow uses -var %s", strings.Join(names, ", "))
+}
+
+// NewFromFile populates workflow config from YAML file, after expanding vars
+func NewFromFile(path string, vars Vars) (*Workflow, error) {
+	used := map[string]bool{}
+	cfg, err := newFromFile(path, vars, used)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, vars.unused(used)
+}
+
+func newFromFile(path string, vars Vars, used map[string]bool) (*Workflow, error) {
 	path = filepath.Clean(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
+	if data, err = vars.expand(data, used); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
 	return New(data)
 }
 
-func NewFromPaths(paths string) ([]*Workflow, error) {
+// NewFromPaths populates workflow configs from files and dirs, after expanding vars
+func NewFromPaths(paths string, vars Vars) ([]*Workflow, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("empty filepaths")
 	}
@@ -82,6 +163,7 @@ func NewFromPaths(paths string) ([]*Workflow, error) {
 	}
 
 	configs := []*Workflow{}
+	used := map[string]bool{}
 	var cfg *Workflow
 	for _, path := range files {
 		fileInfo, err := os.Stat(path)
@@ -96,21 +178,21 @@ func NewFromPaths(paths string) ([]*Workflow, error) {
 			}
 			for _, file := range files {
 				if !file.IsDir() {
-					if cfg, err = NewFromFile(filepath.Join(path, file.Name())); err != nil {
+					if cfg, err = newFromFile(filepath.Join(path, file.Name()), vars, used); err != nil {
 						return nil, err
 					}
 					configs = append(configs, cfg)
 				}
 			}
 		} else {
-			if cfg, err = NewFromFile(path); err != nil {
+			if cfg, err = newFromFile(path, vars, used); err != nil {
 				return nil, err
 			}
 			configs = append(configs, cfg)
 		}
 	}
 
-	return configs, nil
+	return configs, vars.unused(used)
 }
 
 // validate performs checks of mandatory fields

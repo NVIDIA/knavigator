@@ -35,6 +35,8 @@ func mainInternal() error {
 	var addr, workflow string
 	flag.StringVar(&addr, "address", "", "server address")
 	flag.StringVar(&workflow, "workflow", "", "comma-separated list of workflow config files and dirs")
+	vars := config.Vars{}
+	flag.Var(vars, "var", "name=value for ${name} or ${name:-default} in workflow files; repeatable")
 	flag.Parse()
 
 	if len(addr) == 0 {
@@ -44,7 +46,7 @@ func mainInternal() error {
 		return fmt.Errorf("missing 'workload' argument")
 	}
 
-	workflows, err := config.NewFromPaths(workflow)
+	workflows, err := config.NewFromPaths(workflow, vars)
 	if err != nil {
 		return err
 	}

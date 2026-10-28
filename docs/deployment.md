@@ -157,6 +157,11 @@ For example,
 ./bin/knavigator -workflow resources/workflows/k8s/test-job.yml -v 4 -cleanup
 ```
 
+Workflow files can reference `${name}` or `${name:-default}`, and `-var name=value` (repeatable) sets them. Knavigator substitutes values into the file text before parsing the YAML, so `count: ${nodes:-64}` stays a number. A reference with no value and no default fails the run, and so does a `-var` that no workflow uses. For example,
+```bash
+./bin/knavigator -workflow my-workflow.yaml -var nodes=2048 -var gangSize=2048
+```
+
 In this mode, Knavigator requires the `KUBECONFIG` environment variable or the presence of the `-kubeconfig` or `-kubectx` command-line arguments.
 
 ### Running Knavigator inside the cluster
