@@ -21,6 +21,8 @@ Knavigator exits with an error after writing the files if the run did not drain,
 
 `results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.
 
+`gang_assembly_sec` gives the count, mean, p95 and max time from a gang's first pod placed until all its pods have been placed, over gangs (jobs of more than one pod) that were ever complete. A pod lost before then keeps the gang open until its replacement is placed. A scheduler that places a gang all at once reads 0. One that places pods as room frees up shows how long its gangs sat half placed, and `binding_gap_gpu_hours` gives the GPU time those pods held meanwhile.
+
 ### Prometheus and Grafana
 
 `-results.pushgateway <url>` also sends the run to a [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), so the run shows up next to the node metrics. Knavigator pushes the pod gauges and the summary of the run so far every `-results.push-interval` (default 10s), and the final summary when the run ends. Every series carries a `run` label, set with `-results.run` and defaulting to the start time, so separate runs stay apart. A failed push logs a warning and never fails the run.

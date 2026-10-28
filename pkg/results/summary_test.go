@@ -99,13 +99,15 @@ func TestCheck(t *testing.T) {
 }
 
 func TestScaleTime(t *testing.T) {
-	s := Summary{MakespanSec: 10, GPUHours: 2, GPUUtilization: 0.5, JobWaitSec: Stats{Mean: 1, P95: 2, Max: 3}}
+	s := Summary{MakespanSec: 10, GPUHours: 2, GPUUtilization: 0.5, JobWaitSec: Stats{Mean: 1, P95: 2, Max: 3},
+		GangAssemblySec: Stats{Count: 1, Mean: 1, P95: 1, Max: 1}}
 	s.ScaleTime(60)
 	require.Equal(t, 60.0, s.Speedup)
 	require.Equal(t, 600.0, s.MakespanSec)
 	require.Equal(t, 120.0, s.GPUHours)
 	require.Equal(t, 0.5, s.GPUUtilization)
 	require.Equal(t, Stats{Mean: 60, P95: 120, Max: 180}, s.JobWaitSec)
+	require.Equal(t, Stats{Count: 1, Mean: 60, P95: 60, Max: 60}, s.GangAssemblySec)
 }
 
 func TestScaleTimeSizes(t *testing.T) {
@@ -332,6 +334,43 @@ func TestBindingGapGPUHours(t *testing.T) {
 
 	require.InDelta(t, (8*40.0+4*1000+4*900)/3600, got, 1e-9)
 	require.Zero(t, bindingGapGPUHours(nil, jobs, at(1000)))
+}
+
+func TestGangAssembly(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	gang := func(name string, pods int) Job {
+		return Job{Name: "default/" + name, Namespace: "default", Submitted: t0, Pods: pods, PodRegexp: name + "-[a-z0-9]+"}
+	}
+	jobs := []Job{gang("g", 2), gang("k", 2), gang("r", 2), gang("e", 3), gang("f", 3), gang("h", 3), gang("s", 1)}
+	pods := []Pod{
+		{Namespace: "default", Name: "g-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(200)},
+		{Namespace: "default", Name: "g-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(50), Finished: at(200)},
+		{Namespace: "default", Name: "k-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(300), Finished: at(400)},
+		{Namespace: "default", Name: "k-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(300), Finished: at(400)},
+		// r loses a pod after both are placed; its replacement does not reopen the assembly.
+		{Namespace: "default", Name: "r-0", GPUs: 8, Phase: phaseDeleted, Created: t0, Scheduled: at(0), Finished: at(30)},
+		{Namespace: "default", Name: "r-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(20), Finished: at(500)},
+		{Namespace: "default", Name: "r-2", GPUs: 8, Phase: "Succeeded", Created: at(30), Scheduled: at(90), Finished: at(500)},
+		// e and f lose a pod before they are complete; the replacement is named anew in e, reused in f.
+		{Namespace: "default", Name: "e-a", GPUs: 8, Phase: phaseDeleted, Created: t0, Scheduled: at(0), Finished: at(20)},
+		{Namespace: "default", Name: "e-b", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(500)},
+		{Namespace: "default", Name: "e-d", GPUs: 8, Phase: "Succeeded", Created: at(20), Scheduled: at(30), Finished: at(500)},
+		{Namespace: "default", Name: "e-c", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(200), Finished: at(500)},
+		{Namespace: "default", Name: "f-0", GPUs: 8, Phase: phaseDeleted, Created: t0, Scheduled: at(0), Finished: at(20)},
+		{Namespace: "default", Name: "f-1", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(10), Finished: at(500)},
+		{Namespace: "default", Name: "f-0", GPUs: 8, Phase: "Succeeded", Created: at(20), Scheduled: at(30), Finished: at(500)},
+		{Namespace: "default", Name: "f-2", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(200), Finished: at(500)},
+		// h never gets its third pod, and s is not a gang.
+		{Namespace: "default", Name: "h-0", GPUs: 4, Created: t0, Scheduled: at(0)},
+		{Namespace: "default", Name: "h-1", GPUs: 4, Created: t0, Scheduled: at(100)},
+		{Namespace: "default", Name: "s-0", GPUs: 8, Phase: "Succeeded", Created: t0, Scheduled: at(300), Finished: at(400)},
+	}
+
+	s := Summarize(pods, jobs, 32, at(1000), Options{})
+
+	require.Equal(t, Stats{Count: 5, Mean: 92, P95: 200, Max: 200}, s.GangAssemblySec)
+	require.Equal(t, Stats{}, Summarize(nil, jobs, 32, at(1000), Options{}).GangAssemblySec)
 }
 
 func TestSummarizeWasted(t *testing.T) {
