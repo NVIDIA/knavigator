@@ -46,6 +46,8 @@ func TestGenerateTrace(t *testing.T) {
 	require.Equal(t, jobs, generateTrace(classes, 7))
 	require.NotEqual(t, jobs, generateTrace(classes, 8))
 	require.Len(t, jobs, 400)
+	require.Equal(t, traceDigest(jobs), traceDigest(generateTrace(classes, 7)))
+	require.NotEqual(t, traceDigest(jobs), traceDigest(generateTrace(classes, 8)))
 
 	gangs, accounts := 0, map[string]int{}
 	for i, j := range jobs {
@@ -313,4 +315,11 @@ func TestSubmitTraceFile(t *testing.T) {
 	require.Equal(t, 2, got[2]["gangSize"])
 	require.Equal(t, 100, got[2]["priority"])
 	require.Equal(t, "60.000s", got[2]["runtime"])
+	require.Len(t, got[1]["traceDigest"], 12)
+	require.Equal(t, got[1]["traceDigest"], got[2]["traceDigest"])
+
+	// The same jobs an hour later are the same trace.
+	later, err := readTrace(writeTrace(t, traceHeader+"2,research,3600.200,120,8,2,100\n1,trading,3600,60,1,1,0\n"))
+	require.NoError(t, err)
+	require.Equal(t, got[1]["traceDigest"], traceDigest(later))
 }

@@ -17,18 +17,20 @@
 package results
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	log "k8s.io/klog/v2"
 )
 
 func TestAggregate(t *testing.T) {
 	runs := []string{
-		`{"pods": 4, "gpu_utilization": 0.5, "bsld_macro": 1.5, "job_wait_sec": {"count": 2, "mean": 3, "p95": 10, "max": 10},
+		`{"trace_digest": "3f2a9c41d07e", "pods": 4, "gpu_utilization": 0.5, "bsld_macro": 1.5, "job_wait_sec": {"count": 2, "mean": 3, "p95": 10, "max": 10},
 		  "wait_by_footprint": [{"bucket": "17+", "jobs": 2}]}`,
-		`{"pods": 4, "gpu_utilization": 0.6, "bsld_macro": null, "job_wait_sec": {"count": 2, "mean": 3, "p95": 12, "max": 12},
+		`{"trace_digest": "3f2a9c41d07e", "pods": 4, "gpu_utilization": 0.6, "bsld_macro": null, "job_wait_sec": {"count": 2, "mean": 3, "p95": 12, "max": 12},
 		  "wait_by_footprint": [{"bucket": "17+", "jobs": 2}]}`,
 	}
 	var dirs []string
@@ -40,6 +42,7 @@ func TestAggregate(t *testing.T) {
 
 	got, err := Aggregate(dirs)
 	require.NoError(t, err)
+	require.NotContains(t, got, "trace_digest")
 
 	pods := got["pods"]
 	require.Equal(t, 2, pods.N)
@@ -65,6 +68,22 @@ func TestAggregate(t *testing.T) {
 	require.Nil(t, bsld.SD)
 	require.Nil(t, bsld.CV)
 	require.False(t, bsld.Stable, "one run cannot show reproducibility")
+
+	state := log.CaptureState()
+	defer state.Restore()
+	var buf bytes.Buffer
+	log.LogToStderr(false)
+	log.SetOutput(&buf)
+	_, err = Aggregate(dirs)
+	require.NoError(t, err)
+	log.Flush()
+	require.NotContains(t, buf.String(), "different traces", "both runs replayed one trace")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dirs[1], "results.json"), []byte(`{"trace_digest": "08c1e5b7aa20", "pods": 4}`), 0o644))
+	_, err = Aggregate(dirs)
+	require.NoError(t, err)
+	log.Flush()
+	require.Contains(t, buf.String(), "the runs replayed 2 different traces (08c1e5b7aa20, 3f2a9c41d07e)")
 
 	_, err = Aggregate([]string{t.TempDir()})
 	require.Error(t, err, "a directory without results.json")

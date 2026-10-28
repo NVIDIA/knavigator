@@ -113,6 +113,8 @@ type ObjInfo struct {
 	Submitted time.Time
 	// Class is the "class" parameter the object was submitted with, such as a SubmitTrace class
 	Class string
+	// Trace is the digest of the SubmitTrace trace the object came from, if any
+	Trace string
 }
 
 // NewObjInfo creates new ObjInfo
