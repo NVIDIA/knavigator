@@ -35,6 +35,22 @@ To run the benchmark test for Run:ai
 ./scripts/benchmarks/gang-scheduling/run-runai.sh
 ```
 
+## Mixed Trace Benchmark Test
+
+The mixed trace benchmarks replay a day of inference and training on 64 virtual GPU nodes with a [`SubmitTrace`](../../docs/task_management.md#submittrace) task. The classes compete for the same GPUs, so a run shows how a scheduler trades inference latency against gang progress. With `-results`, `wait_by_class` reports each class's wait separately.
+
+- [`mixed`](mixed/workflows/run-mixed.yaml) is a steady trickle. Inference is 600 short, high-priority, single-GPU jobs. Training is 200 long, low-priority jobs on 2 to 8 GPUs, about a quarter of them gangs of up to 48 nodes, all arriving at random.
+- [`burst`](mixed/workflows/run-burst.yaml) adds bursts on top of a steady trickle. Inference and part of the training arrive evenly over the day, 40 training jobs land at once at hours 0 and 12, and gangs of 48 and all 64 nodes arrive at fixed hours. Gang sizes do not divide the fleet evenly, and a 64-node gang can only start once every node is free.
+
+The run scripts replay a trace at 60 times speed and pass extra flags through to Knavigator. `TRACE=burst` selects the burst trace. Volcano and Kueue are supported.
+
+#### Example
+
+```bash
+./scripts/benchmarks/mixed/run-volcano.sh -results ./results-volcano
+TRACE=burst ./scripts/benchmarks/mixed/run-volcano.sh -results ./results-volcano-burst
+```
+
 ## Scaling Benchmark Test
 
 The scaling benchmark workflow operates on 700 virtual GPU nodes with tho workflows. The first [workflow](scaling/workflows/run-test-multi.yaml) submits is a job with 700 replicas, the second [workflow](scaling/workflows/run-test-single.yaml) submits a batch of 700 single-node jobs.
