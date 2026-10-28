@@ -69,6 +69,8 @@ type virtualNode struct {
 	Racks int `yaml:"racks,omitempty" json:"racks,omitempty"`
 	// GPUs sets the GPU resource and product labels, and publishes the GPUs through DRA.
 	GPUs *nodeGPUs `yaml:"gpus,omitempty" json:"gpus,omitempty"`
+	// Address sets the nodes' InternalIP. The chart marks nodes Ready, so KWOK never assigns one.
+	Address string `yaml:"address,omitempty" json:"address,omitempty"`
 }
 
 type nodeGPUs struct {

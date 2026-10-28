@@ -46,7 +46,7 @@ For convenience, we have included them in [scripts/install_kwok.sh](../scripts/i
 
 ## Setting up virtual nodes
 
-Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, and `racks`. The `type` and `count` attributes are mandatory, while the rest are optional.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, `racks`, and `address`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
 There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)

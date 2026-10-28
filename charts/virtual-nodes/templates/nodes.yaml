@@ -120,6 +120,11 @@ spec:
     {{- toYaml . | nindent 4 }}
 {{- end }}
 status:
+  {{- with $node.address }}
+  addresses:
+  - address: {{ . | quote }}
+    type: InternalIP
+  {{- end }}
   conditions:
   - message: kubelet has sufficient memory available
     reason: KubeletHasSufficientMemory
