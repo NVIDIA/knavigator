@@ -18,9 +18,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
@@ -46,6 +48,7 @@ type Args struct {
 	pushEvery    time.Duration
 	resultsStall time.Duration
 	bsldFloor    time.Duration
+	aggregate    string
 }
 
 func mainInternal() error {
@@ -67,9 +70,14 @@ func mainInternal() error {
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
+	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 
 	log.InitFlags(nil)
 	flag.Parse()
+
+	if len(args.aggregate) != 0 {
+		return aggregate(args.aggregate)
+	}
 
 	if err := validate(&args); err != nil {
 		flag.Usage()
@@ -220,6 +228,30 @@ func submittedJobs(eng *engine.Eng) []results.Job {
 		}
 	}
 	return jobs
+}
+
+func aggregate(pattern string) error {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+	// Skip files such as run logs that sit next to the result directories.
+	var dirs []string
+	for _, m := range matches {
+		if fi, err := os.Stat(m); err == nil && fi.IsDir() {
+			dirs = append(dirs, m)
+		}
+	}
+	if len(dirs) == 0 {
+		return fmt.Errorf("no directories match %q", pattern)
+	}
+	spreads, err := results.Aggregate(dirs)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(spreads)
 }
 
 func validate(args *Args) error {

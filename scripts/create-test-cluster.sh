@@ -20,6 +20,37 @@ REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../)
 
 source $REPO_HOME/scripts/env.sh
 
+cluster_name=kind
+workers=0
+config=""
+
+function usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--name NAME] [--workers N | --config PATH]
+
+Creates a kind cluster and deploys Prometheus, KWOK, and a workload manager of your choice.
+
+  --name NAME     kind cluster name (default: kind)
+  --workers N     worker nodes besides the control plane (default: 0)
+  --config PATH   kind config to use instead of --workers
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --name) cluster_name=${2:?--name needs a value}; shift 2 ;;
+    --workers) workers=${2:?--workers needs a value}; shift 2 ;;
+    --config) config=${2:?--config needs a value}; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) printRed "Unknown option: $1"; usage; exit 1 ;;
+  esac
+done
+
+if [[ ! $workers =~ ^[0-9]+$ ]]; then
+  printRed "--workers must be 0 or more"
+  exit 1
+fi
+
 printYellow Creating test cluster
 
 echo "This script installs a kind cluster and deploys Prometheus, KWOK, and workload manager of your choice"
@@ -28,18 +59,41 @@ fail_if_command_not_found kind
 fail_if_command_not_found helm
 fail_if_command_not_found kubectl
 
-if kind get clusters > /dev/null 2>&1; then
-  echo "Kind is running. Delete? (y/n)"
+# Kind nodes fail to start or register when these host limits are low.
+if [[ $OSTYPE == linux* ]]; then
+  for limit in kernel.keys.maxkeys=2000 fs.inotify.max_user_instances=65535 fs.inotify.max_user_watches=1048576; do
+    if (( $(sysctl -n "${limit%=*}") < ${limit#*=} )); then
+      printYellow "Kind nodes may not start; raise the limit with: sudo sysctl -w $limit"
+    fi
+  done
+fi
+
+function create_cluster() {
+  if [[ -z "$config" ]]; then
+    config=$(mktemp)
+    trap 'rm -f "$config"' EXIT
+    {
+      echo "kind: Cluster"
+      echo "apiVersion: kind.x-k8s.io/v1alpha4"
+      echo "nodes:"
+      echo "- role: control-plane"
+      for ((i = 0; i < workers; i++)); do echo "- role: worker"; done
+    } > "$config"
+  fi
+  kind create cluster --name "$cluster_name" --config "$config"
+}
+
+if kind get clusters 2>/dev/null | grep -Fxq "$cluster_name"; then
+  echo "Kind cluster $cluster_name exists. Delete and recreate it? (y/n)"
   read -p "> " choice
   if [[ "$choice" == "y" ]]; then
-    kind delete cluster
-    kind create cluster
-    # --image=kindest/node:v1.29.7
+    kind delete cluster --name "$cluster_name"
+    create_cluster
   fi
 else
-  kind create cluster
-  # --image=kindest/node:v1.29.7
+  create_cluster
 fi
+kubectl config use-context "kind-$cluster_name"
 
 deploy_prometheus
 

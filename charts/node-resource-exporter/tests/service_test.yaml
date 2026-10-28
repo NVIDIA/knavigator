@@ -1,0 +1,26 @@
+suite: service
+templates:
+  - templates/service.yaml
+release:
+  name: nre
+  namespace: monitoring
+chart:
+  version: 0.0.0-dev
+  appVersion: 0.0.0-dev
+tests:
+  - it: matches the default-values snapshot
+    asserts:
+      - matchSnapshot: {}
+
+  - it: honours service type and port
+    set:
+      service:
+        type: NodePort
+        port: 9999
+    asserts:
+      - equal:
+          path: spec.type
+          value: NodePort
+      - equal:
+          path: spec.ports[0].port
+          value: 9999

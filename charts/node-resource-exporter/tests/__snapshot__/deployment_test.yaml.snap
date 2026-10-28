@@ -1,0 +1,53 @@
+matches the default-values snapshot:
+  1: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/instance: nre
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: node-resource-exporter
+        app.kubernetes.io/version: 0.0.0-dev
+        helm.sh/chart: node-resource-exporter-0.0.0-dev
+      name: nre-node-resource-exporter
+      namespace: monitoring
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/instance: nre
+          app.kubernetes.io/name: node-resource-exporter
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/instance: nre
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: node-resource-exporter
+            app.kubernetes.io/version: 0.0.0-dev
+            helm.sh/chart: node-resource-exporter-0.0.0-dev
+        spec:
+          containers:
+            - args:
+                - -p
+                - "9090"
+                - -r
+                - cpu,memory,nvidia.com/gpu
+                - -l
+                - nodeInstance,nodeType
+                - -v
+                - "1"
+                - -n
+                - default
+              command:
+                - /usr/local/bin/node-resource-exporter
+              image: ghcr.io/nvidia/knavigator:ff4aeb1
+              imagePullPolicy: Always
+              name: node-resource-exporter
+              ports:
+                - containerPort: 9090
+                  name: metrics
+                  protocol: TCP
+              resources: {}
+              securityContext: {}
+          securityContext: {}
+          serviceAccountName: nre-node-resource-exporter

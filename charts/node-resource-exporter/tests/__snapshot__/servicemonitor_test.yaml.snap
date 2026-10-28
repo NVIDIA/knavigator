@@ -1,0 +1,21 @@
+matches the default-values snapshot:
+  1: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      labels:
+        app: prometheus
+      name: nre-node-resource-exporter
+      namespace: monitoring
+    spec:
+      endpoints:
+        - interval: 10s
+          port: metrics
+          scheme: http
+      namespaceSelector:
+        matchNames:
+          - monitoring
+      selector:
+        matchLabels:
+          app.kubernetes.io/instance: nre
+          app.kubernetes.io/name: node-resource-exporter

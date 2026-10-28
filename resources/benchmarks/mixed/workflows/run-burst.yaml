@@ -1,0 +1,87 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-burst
+description: replay steady inference with piles of training and spaced whole-fleet gangs
+tasks:
+- id: trace
+  type: SubmitTrace
+  params:
+    refTaskId: register
+    seed: 0
+    classes:
+    # Steady: short, high-priority inference spread over the whole day.
+    - name: inference
+      jobs: 600
+      arrivalInterval: 144
+      runtime: {mu: 4.0, sigma: 0.9, max: 300}
+      gpus: [1]
+      priorities: [100, 100, 500]
+      accounts:
+      - {name: inference, weight: 1}
+    # Steady: training spread over the day, with gang sizes that do not tile 64 nodes.
+    - name: training
+      jobs: 120
+      arrivalInterval: 720
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [2, 4, 8]
+      gangFraction: 0.225
+      gangSizes: [3, 5, 6, 7, 9, 11, 13, 17]
+      gangGpus: 8
+      priorities: [50]
+      accounts:
+      - {name: research, weight: 0.6}
+      - {name: trading, weight: 0.4}
+    # Bursts: 40 training jobs land at once at hour 0 and again at hour 12.
+    - name: pile-0h
+      jobs: 40
+      arrivalInterval: 0
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [2, 4, 8]
+      gangFraction: 0.225
+      gangSizes: [3, 5, 6, 7, 9, 11, 13, 17]
+      gangGpus: 8
+      priorities: [50]
+    - name: pile-12h
+      jobs: 40
+      start: 43200
+      arrivalInterval: 0
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [2, 4, 8]
+      gangFraction: 0.225
+      gangSizes: [3, 5, 6, 7, 9, 11, 13, 17]
+      gangGpus: 8
+      priorities: [50]
+    # Spaced big gangs at ordinary training priority: 48 nodes at hours 6 and 18, all 64 at
+    # hours 10 and 20. A 64-node gang can only start once the whole fleet drains.
+    - name: gang-48
+      jobs: 2
+      start: 21600
+      arrivalInterval: 43200
+      regular: true
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [8]
+      gangFraction: 1
+      gangSizes: [48]
+      priorities: [50]
+    - name: gang-64
+      jobs: 2
+      start: 36000
+      arrivalInterval: 36000
+      regular: true
+      runtime: {mu: 8.4, sigma: 1.1, max: 14400}
+      gpus: [8]
+      gangFraction: 1
+      gangSizes: [64]
+      priorities: [50]

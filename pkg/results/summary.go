@@ -76,6 +76,8 @@ type Summary struct {
 	GPUUtilization  float64 `json:"gpu_utilization"`
 	PodWaitSec      Stats   `json:"pod_wait_sec"`
 	JobWaitSec      Stats   `json:"job_wait_sec"`
+	// GangAssemblySec is the time from a gang's first bind until all its pods are bound.
+	GangAssemblySec Stats `json:"gang_assembly_sec"`
 	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
 	JobsByGangSize []GangSize `json:"jobs_by_gang_size"`
 	// WaitByClass breaks job wait down by the class jobs were submitted with; empty without classes.
@@ -226,6 +228,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	}
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
+	s.GangAssemblySec = stats(gangAssemblySec(pods, jobs))
 	s.JobsByGangSize = byGangSize(pods, jobs, scheduled)
 	s.WaitByClass = byClass(jobs, waitOf, opt.Speedup)
 	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
@@ -246,7 +249,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 	for i := range s.EvictionsByPriority {
 		s.EvictionsByPriority[i].GPUHours *= speedup
 	}
-	for _, st := range []*Stats{&s.PodWaitSec, &s.JobWaitSec} {
+	for _, st := range []*Stats{&s.PodWaitSec, &s.JobWaitSec, &s.GangAssemblySec} {
 		st.Mean *= speedup
 		st.P95 *= speedup
 		st.Max *= speedup

@@ -1,0 +1,6 @@
+# chart-testing configuration, used by .github/workflows/helm.yml.
+chart-dirs:
+  - charts
+target-branch: main
+validate-maintainers: false
+check-version-increment: false

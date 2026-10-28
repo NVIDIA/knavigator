@@ -18,10 +18,17 @@ package engine
 
 import (
 	"context"
+	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
+	"os"
+	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,12 +39,15 @@ import (
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
 
-// SubmitTraceTask generates a seeded synthetic workload and submits each job at its arrival time.
+// SubmitTraceTask submits each job of a workload at its arrival time. The workload is either
+// generated from seeded job classes or read from a CSV trace file.
 type SubmitTraceTask struct {
 	BaseTask
 	submitTraceTaskParams
 	client   *dynamic.DynamicClient
 	accessor ObjInfoAccessor
+	// trace holds the jobs read from File; nil when they are generated from Classes.
+	trace []traceJob
 	// submitJob creates one job; tests replace it.
 	submitJob func(ctx context.Context, id int, params map[string]interface{}) error
 }
@@ -55,13 +65,19 @@ type submitTraceTaskParams struct {
 	Params map[string]interface{} `yaml:"params"`
 	// Classes: job populations, each with its own arrival rate and shape
 	Classes []traceClass `yaml:"classes"`
+	// File: CSV trace to replay instead of generating jobs from Classes
+	File string `yaml:"file"`
 }
 
 type traceClass struct {
 	Name string `yaml:"name"`
 	Jobs int    `yaml:"jobs"`
-	// ArrivalInterval: mean seconds between arrivals (Poisson)
+	// ArrivalInterval: mean seconds between arrivals (Poisson); 0 submits every job at Start
 	ArrivalInterval float64 `yaml:"arrivalInterval"`
+	// Start: seconds before the class's arrivals begin
+	Start float64 `yaml:"start"`
+	// Regular: arrivals exactly ArrivalInterval apart instead of Poisson, the first at Start
+	Regular bool `yaml:"regular"`
 	// Runtime: log-normal runtime in log-seconds, capped at Max seconds
 	Runtime struct {
 		Mu    float64 `yaml:"mu"`
@@ -138,12 +154,23 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 	if task.Speedup < 0 || task.TimeLimitFactor < 0 {
 		return fmt.Errorf("%s: 'speedup' and 'timeLimitFactor' must be positive", task.ID())
 	}
-	if len(task.Classes) == 0 {
-		return fmt.Errorf("%s: must specify classes", task.ID())
+	switch {
+	case len(task.File) != 0 && len(task.Classes) != 0:
+		return fmt.Errorf("%s: specify either classes or file, not both", task.ID())
+	case len(task.File) != 0:
+		if task.trace, err = readTrace(task.File); err != nil {
+			return fmt.Errorf("%s: %v", task.ID(), err)
+		}
+		return nil
+	case len(task.Classes) == 0:
+		return fmt.Errorf("%s: must specify classes or file", task.ID())
 	}
 	for _, c := range task.Classes {
-		if c.Jobs <= 0 || c.ArrivalInterval <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
-			return fmt.Errorf("%s: class %q needs positive jobs, arrivalInterval and runtime.max, and gpus", task.ID(), c.Name)
+		if c.Jobs <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
+			return fmt.Errorf("%s: class %q needs positive jobs and runtime.max, and gpus", task.ID(), c.Name)
+		}
+		if c.ArrivalInterval < 0 || c.Start < 0 {
+			return fmt.Errorf("%s: class %q has a negative arrivalInterval or start", task.ID(), c.Name)
 		}
 		if c.GangFraction > 0 && len(c.GangSizes) == 0 {
 			return fmt.Errorf("%s: class %q has gangFraction but no gangSizes", task.ID(), c.Name)
@@ -163,9 +190,13 @@ func generateTrace(classes []traceClass, seed uint64) []traceJob {
 	var jobs []traceJob
 	for i, c := range classes {
 		rng := rand.New(rand.NewPCG(seed, uint64(i)))
-		now := 0.0
-		for range c.Jobs {
-			now += rng.ExpFloat64() * c.ArrivalInterval
+		now := c.Start
+		for k := range c.Jobs {
+			if c.Regular {
+				now = c.Start + float64(k)*c.ArrivalInterval
+			} else {
+				now += rng.ExpFloat64() * c.ArrivalInterval
+			}
 			job := traceJob{
 				Class:    c.Name,
 				Submit:   now,
@@ -194,6 +225,86 @@ func generateTrace(classes []traceClass, seed uint64) []traceJob {
 	return jobs
 }
 
+// traceColumns is the header of a CSV trace.
+var traceColumns = []string{"job_id", "account", "submit_time", "duration", "gpus", "gang_size", "priority"}
+
+// readTrace reads jobs from a CSV trace, orders them by submit time with file order for ties, and
+// shifts the times so the first job arrives at 0.
+func readTrace(path string) ([]traceJob, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open trace: %v", err)
+	}
+	defer f.Close() //nolint:errcheck
+
+	r := csv.NewReader(f)
+	header, err := r.Read()
+	if err != nil {
+		return nil, fmt.Errorf("%s: failed to read header: %v", path, err)
+	}
+	header[0] = strings.TrimPrefix(header[0], "\ufeff")
+	if !slices.Equal(header, traceColumns) {
+		return nil, fmt.Errorf("%s: header must be %s, got %s", path, strings.Join(traceColumns, ","), strings.Join(header, ","))
+	}
+
+	var jobs []traceJob
+	lines := map[int]int{}
+	for {
+		record, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", path, err)
+		}
+		line, _ := r.FieldPos(0)
+		job, err := parseTraceJob(record)
+		if err != nil {
+			return nil, fmt.Errorf("%s: line %d: %v", path, line, err)
+		}
+		if prev, ok := lines[job.ID]; ok {
+			return nil, fmt.Errorf("%s: line %d: job_id %d is already used on line %d", path, line, job.ID, prev)
+		}
+		lines[job.ID] = line
+		jobs = append(jobs, job)
+	}
+	if len(jobs) == 0 {
+		return nil, fmt.Errorf("%s: trace has no jobs", path)
+	}
+
+	sort.SliceStable(jobs, func(a, b int) bool { return jobs[a].Submit < jobs[b].Submit })
+	first := jobs[0].Submit
+	for i := range jobs {
+		jobs[i].Submit -= first
+	}
+	return jobs, nil
+}
+
+func parseTraceJob(record []string) (traceJob, error) {
+	job := traceJob{Account: record[1]}
+	var err error
+	if job.ID, err = strconv.Atoi(record[0]); err != nil || job.ID <= 0 {
+		return job, fmt.Errorf("job_id %q must be a positive integer", record[0])
+	}
+	if job.Submit, err = strconv.ParseFloat(record[2], 64); err != nil || !(job.Submit >= 0) || math.IsInf(job.Submit, 0) {
+		return job, fmt.Errorf("submit_time %q must be a number of seconds, zero or more", record[2])
+	}
+	if job.Runtime, err = strconv.ParseFloat(record[3], 64); err != nil || !(job.Runtime > 0) || math.IsInf(job.Runtime, 0) {
+		return job, fmt.Errorf("duration %q must be a positive number of seconds", record[3])
+	}
+	// -results only records pods that request GPUs, so it would wait out its timeout for a job without them.
+	if job.GPUs, err = strconv.Atoi(record[4]); err != nil || job.GPUs <= 0 {
+		return job, fmt.Errorf("gpus %q must be a positive integer", record[4])
+	}
+	if job.GangSize, err = strconv.Atoi(record[5]); err != nil || job.GangSize <= 0 {
+		return job, fmt.Errorf("gang_size %q must be a positive integer", record[5])
+	}
+	if job.Priority, err = strconv.Atoi(record[6]); err != nil {
+		return job, fmt.Errorf("priority %q must be an integer", record[6])
+	}
+	return job, nil
+}
+
 func pickWeighted(rng *rand.Rand, values []weightedValue) string {
 	var total float64
 	for _, v := range values {
@@ -213,7 +324,10 @@ func pickWeighted(rng *rand.Rand, values []weightedValue) string {
 
 // Exec implements Runnable interface
 func (task *SubmitTraceTask) Exec(ctx context.Context) error {
-	jobs := generateTrace(task.Classes, task.Seed)
+	jobs := task.trace
+	if jobs == nil {
+		jobs = generateTrace(task.Classes, task.Seed)
+	}
 	log.Infof("%s: submitting %d jobs at %gx speed", task.ID(), len(jobs), task.Speedup)
 
 	subCtx, cancel := context.WithCancel(ctx)
