@@ -109,6 +109,7 @@ type Summary struct {
 	// Stalled is set when the run stopped because nothing was placed or finished for -results.stall.
 	Stalled bool `json:"stalled"`
 	Sizes
+	Fragmentation
 }
 
 // PriorityEvictions counts the evicted pods of one priority.
@@ -223,6 +224,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 		if gpuCapacity > 0 {
 			s.GPUUtilization = s.GPUHours / (gpuCapacity * s.MakespanSec / 3600)
 		}
+		s.Fragmentation = fragmentation(pods, opt.NodeGPUs, first, last)
 	}
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
@@ -243,6 +245,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.IdleWaitingGPUHours *= speedup
 	s.BindingGapGPUHours *= speedup
 	s.WastedGPUHours *= speedup
+	s.FragmentedGPUHours *= speedup
 	for i := range s.EvictionsByPriority {
 		s.EvictionsByPriority[i].GPUHours *= speedup
 	}

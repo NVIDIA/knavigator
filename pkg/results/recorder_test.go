@@ -68,6 +68,43 @@ func TestFinishStopsWhenStalled(t *testing.T) {
 	require.Equal(t, 1, s.PodsUnscheduled)
 }
 
+func TestFinishReportsFragmentation(t *testing.T) {
+	old := pollInterval
+	pollInterval = 20 * time.Millisecond
+	defer func() { pollInterval = old }()
+
+	gpuNode := func(name string) *corev1.Node {
+		return &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name},
+			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{gpuResource: resource.MustParse("8")}}}
+	}
+	client := fake.NewSimpleClientset(gpuNode("n0"), gpuNode("n1"), &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "cpu"}})
+	rec, err := Start(context.Background(), client)
+	require.NoError(t, err)
+	// A pod holds half of n0 until the run ends; n1 stays empty.
+	now := metav1.Now()
+	pod := gpuPod("p-0")
+	pod.CreationTimestamp = now
+	pod.Spec.Containers[0].Resources.Requests[gpuResource] = resource.MustParse("4")
+	pod.Spec.NodeName = "n0"
+	pod.Status = corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{
+		{Type: corev1.PodScheduled, Status: corev1.ConditionTrue, LastTransitionTime: now}}}
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), pod, metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/p", Namespace: "default", Submitted: now.Time, Pods: 1, PodRegexp: "p-[0-9]+"}}
+
+	dir := t.TempDir()
+	require.EqualError(t, rec.Finish(context.Background(), dir, 200*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor),
+		"run did not drain: 1/1 jobs started")
+	data, err := os.ReadFile(filepath.Join(dir, "results.json"))
+	require.NoError(t, err)
+	var s Summary
+	require.NoError(t, json.Unmarshal(data, &s))
+	require.Equal(t, 16.0, s.GPUCapacity, "the node without GPUs adds nothing")
+	require.NotNil(t, s.GPUFragmentation)
+	require.InDelta(t, 1.0/3, *s.GPUFragmentation, 1e-9, "4 of the 12 free GPUs sit on a partly used node")
+	require.InDelta(t, 1.0, s.FreeNodesMean, 1e-9)
+}
+
 func TestProgress(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	require.Equal(t, 0, progress([]Pod{{Created: t0}}))
