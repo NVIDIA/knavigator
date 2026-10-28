@@ -82,6 +82,14 @@ function deploy_kwok() {
   kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-init-container-running-failed.yaml
   kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/chaos/pod-container-running-failed.yaml
   #kubectl apply -f https://github.com/${KWOK_REPO}/raw/main/kustomize/stage/pod/general/pod-complete.yaml
+
+  # kind's DaemonSets tolerate every taint. On virtual nodes, the pod-complete stage would finish
+  # their pods and the DaemonSet controller would recreate them for the whole run.
+  for ds in kindnet kube-proxy; do
+    if kubectl -n kube-system get ds $ds &> /dev/null; then
+      kubectl -n kube-system patch ds $ds --type merge -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}}}}}'
+    fi
+  done
 }
 
 # Prometheus

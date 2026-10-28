@@ -1,0 +1,27 @@
+renders CPU target when enabled:
+  1: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      labels:
+        app.kubernetes.io/instance: nre
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: node-resource-exporter
+        app.kubernetes.io/version: 0.0.0-dev
+        helm.sh/chart: node-resource-exporter-0.0.0-dev
+      name: nre-node-resource-exporter
+      namespace: monitoring
+    spec:
+      maxReplicas: 100
+      metrics:
+        - resource:
+            name: cpu
+            target:
+              averageUtilization: 80
+              type: Utilization
+          type: Resource
+      minReplicas: 1
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: nre-node-resource-exporter

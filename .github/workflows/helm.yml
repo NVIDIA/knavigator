@@ -1,0 +1,99 @@
+# Lints, schema-validates, and unit-tests the Helm charts under charts/ in a
+# single job.
+#
+# chart-testing (ct lint) runs helm lint, yamllint, and the Chart.yaml schema
+# check on the charts changed against main; its settings live in
+# .github/ct.yaml. kubeconform validates the rendered manifests against the
+# Kubernetes schemas in strict mode, and helm unittest runs the suites in each
+# chart's tests/ directory.
+#
+# kubeconform is a release binary pinned by version and by the SHA-256 of the
+# downloaded archive. Bump the version and its checksum together by hand;
+# Dependabot does not track them.
+
+name: Helm
+
+on:
+  push:
+    branches:
+      - main
+      - "pull-request/[0-9]+"
+    paths:
+      - 'charts/**'
+      - '.github/ct.yaml'
+      - '.github/workflows/helm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm:
+    name: helm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # ct lint compares against the target branch to find changed charts.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.0
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
+
+      - name: Install kubeconform
+        env:
+          # Bumped by hand together with KUBECONFORM_SHA256 (linux amd64 archive).
+          KUBECONFORM_VERSION: '0.8.0'
+          KUBECONFORM_SHA256: '9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883'
+        run: |
+          set -euo pipefail
+          archive="kubeconform-linux-amd64.tar.gz"
+          curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/${archive}"
+          echo "${KUBECONFORM_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check -
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" kubeconform
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.2.1
+
+      - name: Run ct lint
+        run: ct lint --config .github/ct.yaml
+
+      - name: Validate rendered charts with kubeconform
+        # Resources whose CRD schema is not in the default catalog, such as
+        # ServiceMonitor, are skipped. ingress and autoscaling are off by
+        # default, so enable them to validate those templates too. A chart that
+        # renders nothing with its defaults, such as virtual-nodes, supplies
+        # values-example.yaml. The step fails if a chart renders no resources,
+        # so an empty render cannot pass validation unnoticed.
+        run: |
+          set -euo pipefail
+          for chart in charts/*/; do
+            [ -f "${chart}Chart.yaml" ] || continue
+            values=()
+            if [ -f "${chart}values-example.yaml" ]; then
+              values=(-f "${chart}values-example.yaml")
+            fi
+            echo "::group::${chart}"
+            summary=$(helm template "${chart}" "${values[@]}" \
+              --set ingress.enabled=true --set autoscaling.enabled=true \
+              | "${RUNNER_TEMP}/kubeconform" -strict -summary -ignore-missing-schemas)
+            echo "${summary}"
+            echo "::endgroup::"
+            if echo "${summary}" | grep -q '^Summary: 0 resource'; then
+              echo "::error::${chart} rendered no resources to validate"
+              exit 1
+            fi
+          done
+
+      - name: Run helm unittest
+        run: helm unittest charts/node-resource-exporter

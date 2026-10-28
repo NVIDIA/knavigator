@@ -19,4 +19,4 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: {{ include "node-resource-exporter.serviceAccountName" . }}
-  apiGroup: ""
+  apiGroup: rbac.authorization.k8s.io
