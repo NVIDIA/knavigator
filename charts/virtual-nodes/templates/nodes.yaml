@@ -1,7 +1,7 @@
 {{/*
 # Iterate over node types
 */}}
-{{- range $node := .Values.nodes }}
+{{- range $position, $node := .Values.nodes }}
 
 {{/*
 # Default params that can be overridden by each node type as appropriate
@@ -85,8 +85,12 @@
 
 {{- $count := ($node.count | int) }}
 {{- $racks := ($node.racks | default 1 | int) }}
-{{- range $index := until $count }}
-{{- $suffix := ( randAlphaNum 6 | lower ) }}
+{{/*
+# upTo renders only the first nodes, so knavigator can grow a large fleet in steps. Names are stable,
+# so each step adds nodes instead of replacing them.
+*/}}
+{{- range $index := until (min $count ($node.upTo | default $count) | int) }}
+{{- $suffix := (printf "%d-%s-%d" $position $node.type $index | sha256sum | trunc 6) }}
 {{/*
 # Racks are numbered from 1 and hold contiguous nodes; label and annotation values can use {{ .rack }}.
 */}}

@@ -17,6 +17,10 @@
 package engine
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -347,6 +351,59 @@ func TestNodes2JSON(t *testing.T) {
 			out, err := nodes2json(tc.nodes)
 			require.NoError(t, err)
 			require.Equal(t, tc.expr, out)
+		})
+	}
+}
+
+func TestUpdateVirtualNodesInSteps(t *testing.T) {
+	testCases := []struct {
+		name    string
+		release string
+		calls   []string
+	}{
+		{
+			name: "new release",
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":128},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+		{
+			// Growing an existing release keeps its nodes; a changed type at a position does not.
+			name:    "existing release",
+			release: `{"nodes":[{"type":"a","count":300,"upTo":256},{"type":"c","count":100}]}`,
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A fake helm prints the release's values, or fails without one, and records the
+			// --set-json value of each upgrade.
+			dir := t.TempDir()
+			calls := filepath.Join(dir, "calls")
+			values := filepath.Join(dir, "values")
+			if tc.release != "" {
+				require.NoError(t, os.WriteFile(values, []byte(tc.release), 0o600))
+			}
+			script := "#!/bin/sh\nif [ \"$1\" = get ]; then exec cat " + values + "; fi\n" +
+				"for last; do :; done\necho \"$last\" >> " + calls + "\n"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "helm"), []byte(script), 0o755))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("KNAVIGATOR_VIRTUAL_NODES_CHART", "chart")
+
+			task := &ConfigureTask{configureTaskParams: configureTaskParams{
+				Nodes: []virtualNode{{Type: "a", Count: 300}, {Type: "b", Count: 100}},
+			}}
+			require.NoError(t, task.updateVirtualNodes(context.Background()))
+
+			out, err := os.ReadFile(calls)
+			require.NoError(t, err)
+			require.Equal(t, tc.calls, strings.Split(strings.TrimSpace(string(out)), "\n"))
+			require.Zero(t, task.Nodes[0].UpTo, "steps must not change the task's nodes")
 		})
 	}
 }
