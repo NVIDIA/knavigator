@@ -28,6 +28,9 @@ type Fragmentation struct {
 	FragmentedGPUHours float64 `json:"fragmented_gpu_hours"`
 	// GPUFragmentation is FragmentedGPUHours over all free GPU time; null when no GPU was free.
 	GPUFragmentation *float64 `json:"gpu_fragmentation"`
+	// GPUFragmentationLargestPod is the share of free GPU time on nodes with fewer free GPUs than the
+	// largest pod requests, so that pod could not run there; null when no GPU was free.
+	GPUFragmentationLargestPod *float64 `json:"gpu_fragmentation_largest_pod"`
 	// FreeNodesMean is the time-weighted mean number of nodes with every GPU free.
 	FreeNodesMean float64 `json:"free_nodes_mean"`
 	// StrandedGPUHours is free GPU time, while pods waited, on nodes with fewer free GPUs than the
@@ -48,7 +51,9 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 		gpus float64
 	}
 	var changes []change
+	var largest float64
 	for _, p := range pods {
+		largest = math.Max(largest, p.GPUs)
 		if p.Scheduled.IsZero() || p.Node == "" {
 			continue
 		}
@@ -65,10 +70,10 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 	}
 	sort.Slice(changes, func(a, b int) bool { return changes[a].t.Before(changes[b].t) })
 
-	// Running totals over all nodes: free GPUs, free GPUs on partly used nodes, and nodes with
-	// every GPU free. A node adds its share again after each change.
+	// Running totals over all nodes: free GPUs, free GPUs on partly used nodes, free GPUs too few for
+	// the largest pod, and nodes with every GPU free. A node adds its share again after each change.
 	used := map[string]float64{}
-	var free, fragmented float64
+	var free, fragmented, small float64
 	freeNodes := 0
 	share := func(node string, sign float64) {
 		if nodes[node] <= 0 {
@@ -76,6 +81,9 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 		}
 		f := math.Max(nodes[node]-used[node], 0)
 		free += sign * f
+		if f < largest {
+			small += sign * f
+		}
 		switch {
 		case f >= nodes[node]:
 			freeNodes += int(sign)
@@ -87,12 +95,13 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 		share(node, 1)
 	}
 
-	var freeSec, fragmentedSec, freeNodeSec float64
+	var freeSec, fragmentedSec, smallSec, freeNodeSec float64
 	prev := first
 	hold := func(until time.Time) {
 		if dt := until.Sub(prev).Seconds(); dt > 0 {
 			freeSec += free * dt
 			fragmentedSec += fragmented * dt
+			smallSec += small * dt
 			freeNodeSec += float64(freeNodes) * dt
 			prev = until
 		}
@@ -109,6 +118,8 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 	if freeSec > 0 {
 		f := fragmentedSec / freeSec
 		out.GPUFragmentation = &f
+		g := smallSec / freeSec
+		out.GPUFragmentationLargestPod = &g
 	}
 	out.FreeNodesMean = freeNodeSec / last.Sub(first).Seconds()
 	out.StrandedGPUHours = strandedGPUHours(pods, nodes, first, last)
