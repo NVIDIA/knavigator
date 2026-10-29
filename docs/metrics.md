@@ -78,6 +78,7 @@ When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each
 - `fragmented_gpu_hours`: free GPU-hours on nodes that were partly in use, in simulated time under `-speedup`.
 - `gpu_fragmentation`: `fragmented_gpu_hours` over all free GPU time across the makespan. 0 means every free GPU sat on an empty node, and null means no GPU was free.
 - `free_nodes_mean`: time-weighted mean number of nodes with every GPU free.
+- `stranded_gpu_hours`: free GPU-hours, while pods waited, on nodes with fewer free GPUs than the smallest waiting pod requests, in simulated time under `-speedup`. `idle_waiting_gpu_hours` caps idle time at what the waiting pods request and this field does not, so it can be larger when many small gaps face few waiting pods.
 
 Node capacity is read at the end of the run, so a node that joined during it counts as there the whole time, and one that left is not counted at all.
 

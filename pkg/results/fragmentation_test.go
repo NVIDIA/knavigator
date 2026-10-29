@@ -107,3 +107,24 @@ func TestFragmentationOverMakespan(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &tree))
 	require.NotContains(t, values(samples(tree)), "knavigator_gpu_fragmentation", "null is not pushed")
 }
+
+func TestStrandedGPUHours(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	nodes := map[string]float64{"n0": 8, "n1": 4}
+	// The 8-GPU pod strands 2+4 free GPUs until 50s, when a 4-GPU pod that fits n1 starts waiting.
+	pods := []Pod{
+		{Node: "n0", GPUs: 6, Created: at(0), Scheduled: at(0), Finished: at(100)},
+		{GPUs: 8, Created: at(0), Finished: at(100), Phase: phaseDeleted},
+		{Node: "n1", GPUs: 4, Created: at(50), Scheduled: at(60)},
+	}
+	f := fragmentation(pods, nodes, at(0), at(100))
+	require.InDelta(t, (6*50.0+2*10+2*40)/3600, f.StrandedGPUHours, 1e-12)
+
+	idle := fragmentation(pods[:1], nodes, at(0), at(100))
+	require.Zero(t, idle.StrandedGPUHours, "nothing waits")
+
+	s := Summarize(pods, nil, 12, at(100), Options{NodeGPUs: nodes})
+	s.ScaleTime(10)
+	require.InDelta(t, 10*400.0/3600, s.StrandedGPUHours, 1e-12)
+}
