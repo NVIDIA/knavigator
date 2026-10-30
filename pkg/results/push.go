@@ -49,6 +49,7 @@ type Pusher struct {
 	inUse    prometheus.Gauge
 	pending  prometheus.Gauge
 	speedup  prometheus.Gauge
+	state    *prometheus.GaugeVec
 	stop     chan struct{}
 	done     chan struct{}
 	once     sync.Once
@@ -70,10 +71,30 @@ func NewPusher(url, run string) *Pusher {
 			Help: "GPUs requested by pods not yet placed."}),
 		speedup: prometheus.NewGauge(prometheus.GaugeOpts{Name: metricsRoot + "speedup",
 			Help: "Factor by which the run compresses time; summary values already report simulated time."}),
+		state: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: metricsRoot + "run_state",
+			Help: "1 for the run's state: running, complete or aborted."}, []string{"state"}),
 	}
 	p.speedup.Set(1)
-	p.reg.MustRegister(p.podState, p.inUse, p.pending, p.speedup)
+	p.setState(stateRunning)
+	p.reg.MustRegister(p.podState, p.inUse, p.pending, p.speedup, p.state)
 	return p
+}
+
+const (
+	stateRunning  = "running"
+	stateComplete = "complete"
+	stateAborted  = "aborted"
+)
+
+// setState marks one state, so a run that stopped early never reads as live.
+func (p *Pusher) setState(state string) {
+	for _, s := range []string{stateRunning, stateComplete, stateAborted} {
+		v := 0.0
+		if s == state {
+			v = 1
+		}
+		p.state.WithLabelValues(s).Set(v)
+	}
 }
 
 // SetSpeedup records the run's time compression, so dashboards can scale totals they compute from
@@ -123,6 +144,14 @@ func (p *Pusher) Push(ctx context.Context, pods []Pod) error {
 func (p *Pusher) Final(ctx context.Context, s Summary, pods []Pod) error {
 	p.observe(pods)
 	p.setSummary(s)
+	p.setState(stateComplete)
+	return p.send(ctx)
+}
+
+// Abort pushes the pods as they are and marks the run aborted.
+func (p *Pusher) Abort(ctx context.Context, pods []Pod) error {
+	p.observe(pods)
+	p.setState(stateAborted)
 	return p.send(ctx)
 }
 

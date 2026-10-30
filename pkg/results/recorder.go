@@ -125,6 +125,20 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	}, interval)
 }
 
+// Abort marks a run that ended early as aborted, so dashboards do not show its last numbers as live.
+// The run's context may already be canceled, so the push gets its own.
+func (r *Recorder) Abort() {
+	if r.pusher == nil {
+		return
+	}
+	r.pusher.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := r.pusher.Abort(ctx, r.snapshot()); err != nil {
+		log.Warningf("Results: push of the aborted run failed: %v", err)
+	}
+}
+
 func (r *Recorder) observeEvent(obj interface{}) {
 	e, ok := obj.(*corev1.Event)
 	if !ok || !keepEvent(e) {

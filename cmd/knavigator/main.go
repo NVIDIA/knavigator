@@ -22,7 +22,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
@@ -121,7 +123,13 @@ func mainInternal() error {
 		return err
 	}
 
-	ctx := context.Background()
+	// Stop on the first signal so the run is marked aborted; a second signal kills as before.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	var rec *results.Recorder
 	if len(args.results) != 0 {
@@ -153,6 +161,9 @@ func mainInternal() error {
 	}
 	if runErr == nil {
 		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
+	}
+	if runErr != nil {
+		rec.Abort()
 	}
 	// Cleanup waits for the results so running pods are recorded before they are deleted.
 	if err := eng.Reset(ctx); runErr == nil {

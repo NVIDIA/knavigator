@@ -31,6 +31,117 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Whether the run is still going, finished, or stopped before its results were recorded. A stopped run keeps its last numbers.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "No state (older run)"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "running"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Running"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "complete"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Complete"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aborted"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Stopped early"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "name"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "knavigator_run_state{run=\"$run\"} == 1",
+          "legendFormat": "{{state}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Run state",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -55,7 +166,7 @@
         "h": 4,
         "w": 3,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 1,
       "options": {
@@ -117,7 +228,7 @@
         "h": 4,
         "w": 3,
         "x": 3,
-        "y": 0
+        "y": 3
       },
       "id": 2,
       "options": {
@@ -179,7 +290,7 @@
         "h": 4,
         "w": 3,
         "x": 6,
-        "y": 0
+        "y": 3
       },
       "id": 3,
       "options": {
@@ -240,7 +351,7 @@
         "h": 4,
         "w": 3,
         "x": 9,
-        "y": 0
+        "y": 3
       },
       "id": 4,
       "options": {
@@ -301,7 +412,7 @@
         "h": 4,
         "w": 3,
         "x": 12,
-        "y": 0
+        "y": 3
       },
       "id": 5,
       "options": {
@@ -362,7 +473,7 @@
         "h": 4,
         "w": 3,
         "x": 15,
-        "y": 0
+        "y": 3
       },
       "id": 6,
       "options": {
@@ -424,7 +535,7 @@
         "h": 4,
         "w": 3,
         "x": 18,
-        "y": 0
+        "y": 3
       },
       "id": 7,
       "options": {
@@ -485,7 +596,7 @@
         "h": 4,
         "w": 3,
         "x": 21,
-        "y": 0
+        "y": 3
       },
       "id": 8,
       "options": {
@@ -543,7 +654,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 7
       },
       "id": 9,
       "options": {
@@ -613,7 +724,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 7
       },
       "id": 10,
       "options": {
@@ -691,7 +802,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 16
       },
       "id": 11,
       "options": {
@@ -889,7 +1000,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 21
+        "y": 24
       },
       "id": 12,
       "options": {
@@ -955,7 +1066,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 21
+        "y": 24
       },
       "id": 13,
       "options": {
@@ -1022,7 +1133,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 21
+        "y": 24
       },
       "id": 14,
       "options": {
@@ -1088,7 +1199,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 21
+        "y": 24
       },
       "id": 15,
       "options": {
@@ -1149,7 +1260,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 25
+        "y": 28
       },
       "id": 16,
       "options": {
@@ -1212,7 +1323,7 @@
         "h": 8,
         "w": 9,
         "x": 6,
-        "y": 25
+        "y": 28
       },
       "id": 18,
       "options": {
@@ -1319,7 +1430,7 @@
         "h": 8,
         "w": 9,
         "x": 15,
-        "y": 25
+        "y": 28
       },
       "id": 23,
       "options": {
@@ -1409,7 +1520,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 33
+        "y": 36
       },
       "id": 20,
       "options": {
@@ -1476,7 +1587,7 @@
         "h": 6,
         "w": 6,
         "x": 6,
-        "y": 33
+        "y": 36
       },
       "id": 21,
       "options": {
@@ -1541,7 +1652,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 36
       },
       "id": 22,
       "options": {
@@ -1693,7 +1804,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 42
       },
       "id": 17,
       "options": {
@@ -1768,7 +1879,7 @@
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 39
+        "y": 42
       },
       "id": 19,
       "options": {

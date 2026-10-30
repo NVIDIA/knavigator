@@ -151,6 +151,7 @@ func TestPusher(t *testing.T) {
 	require.NoError(t, p.Push(context.Background(), pods))
 	srv.mu.Lock()
 	require.Equal(t, "/metrics/job/knavigator/run/r1", srv.path)
+	requireState(t, srv, stateRunning)
 	require.Equal(t, 8.0, srv.value("knavigator_gpus_in_use", nil))
 	require.Equal(t, 8.0, srv.value("knavigator_gpus_pending", nil))
 	for state, n := range map[string]float64{"running": 1, "pending": 1, "succeeded": 1, "evicted": 1, "deleted": 1, "failed": 0} {
@@ -170,6 +171,33 @@ func TestPusher(t *testing.T) {
 	require.Equal(t, 0.75, srv.value("knavigator_gpu_utilization", nil))
 	require.Equal(t, 3.0, srv.value("knavigator_job_wait_sec", map[string]string{"stat": "p95"}))
 	require.Equal(t, 8.0, srv.value("knavigator_gpus_in_use", nil), "the final push keeps the live gauges")
+	requireState(t, srv, stateComplete)
+}
+
+func TestPusherAbort(t *testing.T) {
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	p := NewPusher(ts.URL, "r3")
+
+	require.NoError(t, p.Push(context.Background(), nil))
+	require.NoError(t, p.Abort(context.Background(), []Pod{{GPUs: 8, Scheduled: time.Now()}}))
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	requireState(t, srv, stateAborted)
+	require.Equal(t, 8.0, srv.value("knavigator_gpus_in_use", nil), "the aborted push keeps the last pods")
+}
+
+// requireState checks that exactly one run state is set; srv.mu must be held.
+func requireState(t *testing.T, srv *pushed, want string) {
+	t.Helper()
+	for _, s := range []string{stateRunning, stateComplete, stateAborted} {
+		v := 0.0
+		if s == want {
+			v = 1
+		}
+		require.Equal(t, v, srv.value("knavigator_run_state", map[string]string{"state": s}), s)
+	}
 }
 
 func TestPusherStartStop(t *testing.T) {
