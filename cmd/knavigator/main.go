@@ -61,7 +61,7 @@ func mainInternal() error {
 	flag.BoolVar(&args.cleanupInfo.Enabled, "cleanup", false, "delete objects")
 	flag.DurationVar(&args.cleanupInfo.Timeout, "cleanup.timeout", engine.DefaultCleanupTimeout, "time limit for cleanup")
 	flag.StringVar(&args.workflow, "workflow", "", "comma-separated list of workflow config files and dirs (mutually exclusive with the 'port' flag)")
-	flag.Var(args.vars, "var", "name=value for ${name} or ${name:-default} in workflow files; repeatable")
+	flag.Var(args.vars, "var", "name=value for ${name} or ${name:-default} in workflow files; repeatable (requires 'workflow')")
 	flag.IntVar(&args.port, "port", 0, "listening port (mutually exclusive with the 'workflow' flag)")
 	flag.StringVar(&args.results, "results", "", "directory for run results; waits for submitted pods to finish (requires 'workflow')")
 	flag.DurationVar(&args.resultsWait, "results.timeout", time.Hour, "time limit for pods to finish before writing results")
@@ -263,6 +263,10 @@ func validate(args *Args) error {
 
 	if len(args.workflow) != 0 && args.port > 0 {
 		return fmt.Errorf("'workflow' and 'port' are mutually exclusive")
+	}
+
+	if len(args.vars) != 0 && len(args.workflow) == 0 {
+		return fmt.Errorf("'var' requires 'workflow'")
 	}
 
 	if args.speedup < 1 {

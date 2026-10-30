@@ -63,11 +63,12 @@ func New(data []byte) (*Workflow, error) {
 }
 
 // Vars holds -var values for ${name} and ${name:-default} references in workflow files.
+// $${name} stays a literal ${name}, and a default cannot contain '}'.
 type Vars map[string]string
 
 var (
 	varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	varRef  = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}`)
+	varRef  = regexp.MustCompile(`\$?\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}`)
 )
 
 // Set implements flag.Value, so -var name=value can repeat.
@@ -94,6 +95,9 @@ func (v Vars) String() string {
 func (v Vars) expand(data []byte, used map[string]bool) ([]byte, error) {
 	var missing []string
 	out := varRef.ReplaceAllFunc(data, func(ref []byte) []byte {
+		if ref[1] == '$' {
+			return ref[1:]
+		}
 		m := varRef.FindSubmatch(ref)
 		name := string(m[1])
 		if value, ok := v[name]; ok {
@@ -107,6 +111,8 @@ func (v Vars) expand(data []byte, used map[string]bool) ([]byte, error) {
 		return ref
 	})
 	if len(missing) != 0 {
+		slices.Sort(missing)
+		missing = slices.Compact(missing)
 		return nil, fmt.Errorf("no value for %s; pass -var name=value", strings.Join(missing, ", "))
 	}
 	return out, nil
