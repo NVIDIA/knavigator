@@ -118,6 +118,13 @@ Nodes can also carry `taints`, and `resourceSlices` publishes DRA devices for ot
     devices: 4
 ```
 
+`address` sets the node's `InternalIP`. Every node of the type gets the same address, so point it at a host that components such as an external Slurm controller can reach:
+```yaml
+  address: 10.0.0.1
+```
+
+Knavigator adds nodes 128 per type at a time, so a large fleet does not overload the API server. Node names come from each entry's position and type in `nodes`, so reordering or retyping entries renames and replaces their nodes. A release installed by an older knavigator has random node names, and its first upgrade replaces those nodes once, also in steps.
+
 There are two ways to set up virtual nodes in the cluster, both of which require [Helm v3](https://helm.sh/docs/intro/install/) to be installed on your machine.
 
 - Using the `helm` command:

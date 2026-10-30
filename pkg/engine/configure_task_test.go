@@ -101,6 +101,15 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: gpus for node type dgx8 must have a positive count",
 		},
 		{
+			name:       "Case 4e: Invalid address",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes":   []interface{}{map[string]interface{}{"type": "dgx8", "count": 2, "address": "10.0.0"}},
+			},
+			err: "Configure/configure: address for node type dgx8 must be an IP address",
+		},
+		{
 			name:       "Case 5a: Invalid namespace op",
 			simClients: true,
 			params: map[string]interface{}{
@@ -207,7 +216,7 @@ func TestNewConfigureTask(t *testing.T) {
 				"timeout": "1m",
 				"nodes": []interface{}{
 					map[string]interface{}{"type": "dgxa100.40g", "count": 2},
-					map[string]interface{}{"type": "cpu-tiny", "count": 4},
+					map[string]interface{}{"type": "cpu-tiny", "count": 4, "address": "10.0.0.1"},
 				},
 				"namespaces": []interface{}{
 					map[string]interface{}{"name": "ns1", "op": "create"},
@@ -243,8 +252,9 @@ func TestNewConfigureTask(t *testing.T) {
 							Count: 2,
 						},
 						{
-							Type:  "cpu-tiny",
-							Count: 4,
+							Type:    "cpu-tiny",
+							Count:   4,
+							Address: "10.0.0.1",
 						},
 					},
 					Namespaces: []namespace{
@@ -345,6 +355,11 @@ func TestNodes2JSON(t *testing.T) {
 			nodes: []virtualNode{{Type: "h100", Count: 64, Racks: 8, GPUs: &nodeGPUs{Count: 8, Product: "H100"}}},
 			expr:  `nodes=[{"type":"h100","count":64,"racks":8,"gpus":{"count":8,"product":"H100"}}]`,
 		},
+		{
+			name:  "Case 5: address",
+			nodes: []virtualNode{{Type: "dgx8", Count: 2, Address: "10.0.0.1"}},
+			expr:  `nodes=[{"type":"dgx8","count":2,"address":"10.0.0.1"}]`,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -374,6 +389,16 @@ func TestUpdateVirtualNodesInSteps(t *testing.T) {
 			name:    "existing release",
 			release: `{"nodes":[{"type":"a","count":300,"upTo":256},{"type":"c","count":100}]}`,
 			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+		{
+			// A release without upTo has random node names, so it is rebuilt in steps too.
+			name:    "release without upTo",
+			release: `{"nodes":[{"type":"a","count":300},{"type":"b","count":100}]}`,
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":128},{"type":"b","count":100,"upTo":100}]`,
 				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
 				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
 			},

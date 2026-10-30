@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"os/exec"
 	"slices"
@@ -182,6 +183,11 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 		}
 		if node.GPUs != nil && node.GPUs.Count <= 0 {
 			return fmt.Errorf("%s: gpus for node type %s must have a positive count", task.ID(), node.Type)
+		}
+		if len(node.Address) != 0 {
+			if _, err := netip.ParseAddr(node.Address); err != nil {
+				return fmt.Errorf("%s: address for node type %s must be an IP address", task.ID(), node.Type)
+			}
 		}
 		for _, slice := range node.ResourceSlices {
 			if len(slice.Driver) == 0 || slice.Devices <= 0 {
@@ -500,7 +506,7 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 
 // renderedVirtualNodes returns how many nodes the installed release already has for each entry, so
 // growing an existing fleet never removes nodes first. Entries are matched by position and type,
-// as node names are.
+// as node names are. A release without upTo predates stable names, so its nodes are rebuilt in steps.
 func renderedVirtualNodes(ctx context.Context, nodes []virtualNode) []int {
 	floor := make([]int, len(nodes))
 	out, err := exec.CommandContext(ctx, "helm", "get", "values", "virtual-nodes", "--output", "json").Output()
@@ -516,10 +522,7 @@ func renderedVirtualNodes(ctx context.Context, nodes []virtualNode) []int {
 	}
 	for i := range min(len(nodes), len(values.Nodes)) {
 		if prev := values.Nodes[i]; prev.Type == nodes[i].Type {
-			floor[i] = prev.Count
-			if prev.UpTo > 0 {
-				floor[i] = min(prev.UpTo, prev.Count)
-			}
+			floor[i] = min(prev.UpTo, prev.Count)
 		}
 	}
 	return floor
