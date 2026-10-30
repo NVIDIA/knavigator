@@ -159,6 +159,15 @@ For example,
 
 In this mode, Knavigator requires the `KUBECONFIG` environment variable or the presence of the `-kubeconfig` or `-kubectx` command-line arguments.
 
+### Workflow variables
+
+Workflow files can reference `${name}` or `${name:-default}`, and `-var name=value` (repeatable) sets them. Knavigator substitutes values into the file text before parsing the YAML, so `count: ${nodes:-64}` stays a number. A reference with no value and no default fails the run, and so does a `-var` that no workflow uses. For example,
+```bash
+./bin/knavigator -workflow my-workflow.yaml -var nodes=2048 -var gangSize=2048
+```
+
+Substitution covers the whole file, comments included. Write `$${name}` for a literal `${name}`, such as a shell variable in a container command. A default cannot contain `}`. Quote a reference when its value may hold YAML syntax such as `: ` or `#`.
+
 ### Running Knavigator inside the cluster
 
 To deploy Knavigator inside the cluster, follow these steps:

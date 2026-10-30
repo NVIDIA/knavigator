@@ -17,6 +17,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -81,7 +83,7 @@ tasks:
 }
 
 func TestWorkflowFile(t *testing.T) {
-	c, err := NewFromFile("../../resources/workflows/test-custom-resource.yml")
+	c, err := NewFromFile("../../resources/workflows/test-custom-resource.yml", nil)
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
@@ -110,7 +112,7 @@ func TestWorkflowPaths(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := NewFromPaths(tc.paths)
+			c, err := NewFromPaths(tc.paths, nil)
 			if len(tc.err) != 0 {
 				require.EqualError(t, err, tc.err)
 				require.Nil(t, c)
@@ -183,4 +185,88 @@ func TestParsePaths(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWorkflowVars(t *testing.T) {
+	workflow := `name: vars
+tasks:
+  - id: fleet
+    type: Configure
+    params:
+      count: ${nodes:-64}
+      sizes: [${size}]
+      empty: '${blank:-}'
+      shell: echo $${HOME}
+      label: "${label:-x}"
+`
+	testCases := []struct {
+		name   string
+		vars   Vars
+		params map[string]interface{}
+		err    string
+	}{
+		{
+			name:   "Case 1: defaults and a set value keep YAML types",
+			vars:   Vars{"size": "48"},
+			params: map[string]interface{}{"count": 64, "sizes": []interface{}{48}, "empty": "", "shell": "echo ${HOME}", "label": "x"},
+		},
+		{
+			name:   "Case 2: a value overrides the default",
+			vars:   Vars{"nodes": "2048", "size": "2048"},
+			params: map[string]interface{}{"count": 2048, "sizes": []interface{}{2048}, "empty": "", "shell": "echo ${HOME}", "label": "x"},
+		},
+		{
+			name:   "Case 2b: empty values and a value with YAML syntax",
+			vars:   Vars{"size": "", "label": "a: b #c"},
+			params: map[string]interface{}{"count": 64, "sizes": []interface{}{}, "empty": "", "shell": "echo ${HOME}", "label": "a: b #c"},
+		},
+		{
+			name: "Case 3: no value and no default",
+			err:  "no value for size; pass -var name=value",
+		},
+		{
+			name: "Case 4: a var no workflow uses",
+			vars: Vars{"size": "1", "gangsize": "2"},
+			err:  "no workflow uses -var gangsize",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "workflow.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(workflow), 0o600))
+
+			c, err := NewFromPaths(path, tc.vars)
+			if len(tc.err) != 0 {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.params, c[0].Tasks[0].Params)
+		})
+	}
+}
+
+func TestWorkflowVarsDir(t *testing.T) {
+	dir := t.TempDir()
+	for name, ref := range map[string]string{"a.yaml": "${a}", "b.yaml": "${b} ${b}"} {
+		data := "name: " + name + "\ntasks:\n  - id: t\n    type: Sleep\n    params:\n      v: " + ref + "\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600))
+	}
+
+	// Each var is used by only one file; the unused check must span the whole directory.
+	c, err := NewFromPaths(dir, Vars{"a": "1", "b": "2"})
+	require.NoError(t, err)
+	require.Len(t, c, 2)
+
+	_, err = NewFromPaths(dir, Vars{"a": "1"})
+	require.ErrorContains(t, err, "no value for b;")
+}
+
+func TestVarsSet(t *testing.T) {
+	vars := Vars{}
+	require.NoError(t, vars.Set("racks=a=b"))
+	require.Equal(t, "racks=a=b", vars.String())
+	require.Error(t, vars.Set("racks"))
+	require.Error(t, vars.Set("1racks=8"))
 }
