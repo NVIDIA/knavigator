@@ -17,6 +17,10 @@
 package engine
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +99,15 @@ func TestNewConfigureTask(t *testing.T) {
 					"gpus": map[string]interface{}{"product": "H100"}}},
 			},
 			err: "Configure/configure: gpus for node type dgx8 must have a positive count",
+		},
+		{
+			name:       "Case 4e: Invalid address",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes":   []interface{}{map[string]interface{}{"type": "dgx8", "count": 2, "address": "10.0.0"}},
+			},
+			err: "Configure/configure: address for node type dgx8 must be an IP address",
 		},
 		{
 			name:       "Case 5a: Invalid namespace op",
@@ -203,7 +216,7 @@ func TestNewConfigureTask(t *testing.T) {
 				"timeout": "1m",
 				"nodes": []interface{}{
 					map[string]interface{}{"type": "dgxa100.40g", "count": 2},
-					map[string]interface{}{"type": "cpu-tiny", "count": 4},
+					map[string]interface{}{"type": "cpu-tiny", "count": 4, "address": "10.0.0.1"},
 				},
 				"namespaces": []interface{}{
 					map[string]interface{}{"name": "ns1", "op": "create"},
@@ -239,8 +252,9 @@ func TestNewConfigureTask(t *testing.T) {
 							Count: 2,
 						},
 						{
-							Type:  "cpu-tiny",
-							Count: 4,
+							Type:    "cpu-tiny",
+							Count:   4,
+							Address: "10.0.0.1",
 						},
 					},
 					Namespaces: []namespace{
@@ -341,12 +355,80 @@ func TestNodes2JSON(t *testing.T) {
 			nodes: []virtualNode{{Type: "h100", Count: 64, Racks: 8, GPUs: &nodeGPUs{Count: 8, Product: "H100"}}},
 			expr:  `nodes=[{"type":"h100","count":64,"racks":8,"gpus":{"count":8,"product":"H100"}}]`,
 		},
+		{
+			name:  "Case 5: address",
+			nodes: []virtualNode{{Type: "dgx8", Count: 2, Address: "10.0.0.1"}},
+			expr:  `nodes=[{"type":"dgx8","count":2,"address":"10.0.0.1"}]`,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := nodes2json(tc.nodes)
 			require.NoError(t, err)
 			require.Equal(t, tc.expr, out)
+		})
+	}
+}
+
+func TestUpdateVirtualNodesInSteps(t *testing.T) {
+	testCases := []struct {
+		name    string
+		release string
+		calls   []string
+	}{
+		{
+			name: "new release",
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":128},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+		{
+			// Growing an existing release keeps its nodes; a changed type at a position does not.
+			name:    "existing release",
+			release: `{"nodes":[{"type":"a","count":300,"upTo":256},{"type":"c","count":100}]}`,
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+		{
+			// A release without upTo has random node names, so it is rebuilt in steps too.
+			name:    "release without upTo",
+			release: `{"nodes":[{"type":"a","count":300},{"type":"b","count":100}]}`,
+			calls: []string{
+				`nodes=[{"type":"a","count":300,"upTo":128},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":256},{"type":"b","count":100,"upTo":100}]`,
+				`nodes=[{"type":"a","count":300,"upTo":300},{"type":"b","count":100,"upTo":100}]`,
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A fake helm prints the release's values, or fails without one, and records the
+			// --set-json value of each upgrade.
+			dir := t.TempDir()
+			calls := filepath.Join(dir, "calls")
+			values := filepath.Join(dir, "values")
+			if tc.release != "" {
+				require.NoError(t, os.WriteFile(values, []byte(tc.release), 0o600))
+			}
+			script := "#!/bin/sh\nif [ \"$1\" = get ]; then exec cat " + values + "; fi\n" +
+				"for last; do :; done\necho \"$last\" >> " + calls + "\n"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "helm"), []byte(script), 0o755))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("KNAVIGATOR_VIRTUAL_NODES_CHART", "chart")
+
+			task := &ConfigureTask{configureTaskParams: configureTaskParams{
+				Nodes: []virtualNode{{Type: "a", Count: 300}, {Type: "b", Count: 100}},
+			}}
+			require.NoError(t, task.updateVirtualNodes(context.Background()))
+
+			out, err := os.ReadFile(calls)
+			require.NoError(t, err)
+			require.Equal(t, tc.calls, strings.Split(strings.TrimSpace(string(out)), "\n"))
+			require.Zero(t, task.Nodes[0].UpTo, "steps must not change the task's nodes")
 		})
 	}
 }

@@ -21,8 +21,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,7 +71,14 @@ type virtualNode struct {
 	Racks int `yaml:"racks,omitempty" json:"racks,omitempty"`
 	// GPUs sets the GPU resource and product labels, and publishes the GPUs through DRA.
 	GPUs *nodeGPUs `yaml:"gpus,omitempty" json:"gpus,omitempty"`
+	// Address sets the nodes' InternalIP. The chart marks nodes Ready, so KWOK never assigns one.
+	Address string `yaml:"address,omitempty" json:"address,omitempty"`
+	// UpTo limits the chart to the first nodes while the fleet grows in steps.
+	UpTo int `yaml:"-" json:"upTo,omitempty"`
 }
+
+// virtualNodeStep is how many nodes of each type one helm upgrade adds.
+const virtualNodeStep = 128
 
 type nodeGPUs struct {
 	Count   int    `yaml:"count" json:"count"`
@@ -174,6 +183,11 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 		}
 		if node.GPUs != nil && node.GPUs.Count <= 0 {
 			return fmt.Errorf("%s: gpus for node type %s must have a positive count", task.ID(), node.Type)
+		}
+		if len(node.Address) != 0 {
+			if _, err := netip.ParseAddr(node.Address); err != nil {
+				return fmt.Errorf("%s: address for node type %s must be an IP address", task.ID(), node.Type)
+			}
 		}
 		for _, slice := range node.ResourceSlices {
 			if len(slice.Driver) == 0 || slice.Devices <= 0 {
@@ -443,11 +457,6 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 		return nil
 	}
 
-	nodeExpr, err := nodes2json(task.Nodes)
-	if err != nil {
-		return err
-	}
-
 	// A local chart lets a run use chart changes that are not released yet.
 	chart := os.Getenv("KNAVIGATOR_VIRTUAL_NODES_CHART")
 	if len(chart) == 0 {
@@ -458,18 +467,65 @@ func (task *ConfigureTask) updateVirtualNodes(ctx context.Context) error {
 
 		log.V(4).Infof("Updating helm repo")
 
-		if err = runCommand(ctx, "helm", args); err != nil {
+		if err := runCommand(ctx, "helm", args); err != nil {
 			return err
 		}
 	}
 
-	// upgrade helm chart
-	args := []string{"upgrade", "--install", "virtual-nodes", chart,
-		"--wait", "--set-json", nodeExpr}
+	// Helm creates every object of a kind at once, each with its own client, so --qps cannot pace
+	// it. Adding nodes in steps keeps a large fleet from overloading the API server.
+	nodes := slices.Clone(task.Nodes)
+	floor := renderedVirtualNodes(ctx, nodes)
+	var previous string
+	for upTo := virtualNodeStep; ; upTo += virtualNodeStep {
+		done := true
+		for i := range nodes {
+			nodes[i].UpTo = min(max(upTo, floor[i]), nodes[i].Count)
+			done = done && nodes[i].UpTo == nodes[i].Count
+		}
 
-	log.V(4).Infof("Updating nodes with %v", append([]string{"helm"}, args...))
+		nodeExpr, err := nodes2json(nodes)
+		if err != nil {
+			return err
+		}
+		if nodeExpr == previous {
+			continue
+		}
+		previous = nodeExpr
 
-	return runCommand(ctx, "helm", args)
+		args := []string{"upgrade", "--install", "virtual-nodes", chart,
+			"--wait", "--set-json", nodeExpr}
+
+		log.V(4).Infof("Updating nodes with %v", append([]string{"helm"}, args...))
+
+		if err = runCommand(ctx, "helm", args); err != nil || done {
+			return err
+		}
+	}
+}
+
+// renderedVirtualNodes returns how many nodes the installed release already has for each entry, so
+// growing an existing fleet never removes nodes first. Entries are matched by position and type,
+// as node names are. A release without upTo predates stable names, so its nodes are rebuilt in steps.
+func renderedVirtualNodes(ctx context.Context, nodes []virtualNode) []int {
+	floor := make([]int, len(nodes))
+	out, err := exec.CommandContext(ctx, "helm", "get", "values", "virtual-nodes", "--output", "json").Output()
+	if err != nil {
+		// No release yet.
+		return floor
+	}
+	var values struct {
+		Nodes []virtualNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(out, &values); err != nil {
+		return floor
+	}
+	for i := range min(len(nodes), len(values.Nodes)) {
+		if prev := values.Nodes[i]; prev.Type == nodes[i].Type {
+			floor[i] = min(prev.UpTo, prev.Count)
+		}
+	}
+	return floor
 }
 
 func nodes2json(nodes []virtualNode) (string, error) {
