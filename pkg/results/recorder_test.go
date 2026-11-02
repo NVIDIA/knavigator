@@ -108,6 +108,30 @@ func TestFinishReportsFragmentation(t *testing.T) {
 	require.InDelta(t, 1.0, *s.GPUFragmentationRack, 1e-9, "n0 and n1 share a rack that is in use")
 }
 
+func TestGPUCapacityRacks(t *testing.T) {
+	node := func(name, rack, gpus string) *corev1.Node {
+		n := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
+		if rack != "" {
+			n.Labels = map[string]string{"example.com/rack": rack}
+		}
+		if gpus != "" {
+			n.Status.Allocatable = corev1.ResourceList{gpuResource: resource.MustParse(gpus)}
+		}
+		return n
+	}
+	client := fake.NewSimpleClientset(node("n0", "a", "8"), node("n1", "", "8"), node("cpu", "a", ""))
+
+	r := &Recorder{client: client, rackLabel: "example.com/rack", harness: &harnessStart{}}
+	_, racks, _, _, err := r.gpuCapacity(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"n0": "a"}, racks, "n1 has no label and cpu has no GPUs")
+
+	r = &Recorder{client: client, harness: &harnessStart{}}
+	_, racks, _, _, err = r.gpuCapacity(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, racks)
+}
+
 func TestProgress(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	require.Equal(t, 0, progress([]Pod{{Created: t0}}))

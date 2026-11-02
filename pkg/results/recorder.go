@@ -121,15 +121,11 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
-		nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
+		nodes, racks, capacity, maxNode, err := r.gpuCapacity(ctx)
 		if err != nil {
 			return Summary{}, err
 		}
 		held, _ := r.heldGPUs(nodes)
-		racks, err := r.nodeRacks(ctx, nodes)
-		if err != nil {
-			return Summary{}, err
-		}
 		floor := DefaultBSLDFloor
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
@@ -358,17 +354,13 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err != nil {
 		return err
 	}
-	nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
+	nodes, racks, capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
 	}
 	held, heldTotal := r.heldGPUs(nodes)
 	if r.harness.leftoverGPUs != nil && capacity <= 0 {
 		log.Warningf("Results: GPU capacity is %g after subtracting the %g GPUs that pods from before the run hold; gpu_utilization and idle_waiting_gpu_hours read 0", capacity, heldTotal)
-	}
-	racks, err := r.nodeRacks(ctx, nodes)
-	if err != nil {
-		return err
 	}
 	if r.rackLabel != "" && len(racks) == 0 {
 		log.Warningf("Results: no GPU node has the label %q", r.rackLabel)
@@ -434,43 +426,30 @@ func (r *Recorder) SetRackLabel(label string) {
 	r.rackLabel = label
 }
 
-// nodeRacks reads the rack of each GPU node from the rack label; nil without one.
-func (r *Recorder) nodeRacks(ctx context.Context, nodes map[string]float64) (map[string]string, error) {
-	if r.rackLabel == "" {
-		return nil, nil
-	}
-	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{LabelSelector: r.rackLabel})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %v", err)
-	}
-	racks := map[string]string{}
-	for _, node := range list.Items {
-		if _, ok := nodes[node.Name]; ok {
-			racks[node.Name] = node.Labels[r.rackLabel]
-		}
-	}
-	return racks, nil
-}
-
 // gpuCapacity reads allocatable GPUs per node at the end of the run, their sum less the GPUs that
-// pods from before the run hold on those nodes under AllowLeftovers, and the biggest node's size.
-func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
+// pods from before the run hold on those nodes under AllowLeftovers, the biggest node's size, and
+// the rack of each GPU node that has the rack label.
+func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, racks map[string]string, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to list nodes: %v", err)
+		return nil, nil, 0, 0, fmt.Errorf("failed to list nodes: %v", err)
 	}
 	nodes = map[string]float64{}
+	racks = map[string]string{}
 	for _, node := range list.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
 			g := q.AsApproximateFloat64()
 			nodes[node.Name] = g
 			total += g
 			maxNode = math.Max(maxNode, g)
+			if rack, ok := node.Labels[r.rackLabel]; ok {
+				racks[node.Name] = rack
+			}
 		}
 	}
 	// The final summary and every interim push use this, so they agree.
 	_, held := r.heldGPUs(nodes)
-	return nodes, total - held, maxNode, nil
+	return nodes, racks, total - held, maxNode, nil
 }
 
 // heldGPUs maps each of nodes to the GPUs that pods from before the run, let stay by AllowLeftovers,

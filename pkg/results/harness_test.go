@@ -226,7 +226,7 @@ func TestAllowLeftoversSubtractsTheirGPUs(t *testing.T) {
 	rec, err := Start(context.Background(), leftoverCluster(), HarnessOptions{AllowLeftovers: true})
 	require.NoError(t, err)
 	// The biggest node is a node size for the size-bias metrics, not free capacity.
-	_, _, maxNode, err := rec.gpuCapacity(context.Background())
+	_, _, _, maxNode, err := rec.gpuCapacity(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 8.0, maxNode)
 
@@ -412,7 +412,7 @@ func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
 			}
 			rec, err := Start(context.Background(), twoNodeCluster(pods...), tc.opts)
 			require.NoError(t, err)
-			nodes, capacity, maxNode, err := rec.gpuCapacity(context.Background())
+			nodes, _, capacity, maxNode, err := rec.gpuCapacity(context.Background())
 			require.NoError(t, err)
 			require.Equal(t, tc.nodes, nodes)
 			require.Equal(t, tc.capacity, capacity)
