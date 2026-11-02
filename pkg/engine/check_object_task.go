@@ -19,6 +19,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -66,6 +67,9 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if task.Index < 0 || task.Index >= len(info.GVR) {
+		return fmt.Errorf("%s: index %d is out of range, the referenced task registered %d object type(s)", task.ID(), task.Index, len(info.GVR))
+	}
 
 	nameMap := utils.NewSyncMap()
 	for _, name := range info.Names {
@@ -85,19 +89,23 @@ func (task *CheckObjTask) Exec(ctx context.Context) error {
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(task.client, 0, info.Namespace, nil)
 	informer := factory.ForResource(info.GVR[task.Index]).Informer()
 
+	// done is closed once every object has passed validation. Handlers may
+	// race to signal it, and Exec neither sends on nor closes it, so a signal
+	// cannot race with a close.
 	done := make(chan struct{})
-	defer close(done)
+	var signalDone sync.Once
+	signal := func() { signalDone.Do(func() { close(done) }) }
 
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			log.V(4).Infof("Informer added %s %s", info.GVR[task.Index].Resource, resource.GetName())
-			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
+			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, signal)
 		},
 		UpdateFunc: func(_, obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			log.V(4).Infof("Informer updated %s %s", info.GVR[task.Index].Resource, resource.GetName())
-			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, done)
+			task.checkStateAsync(ctx, resource.GetName(), info, nameMap, signal)
 		},
 	})
 	if err != nil {
@@ -139,14 +147,14 @@ func (task *CheckObjTask) checkStates(ctx context.Context, info *ObjInfo, nameMa
 	return nil
 }
 
-func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap, done chan struct{}) {
+func (task *CheckObjTask) checkStateAsync(ctx context.Context, name string, info *ObjInfo, nameMap *utils.SyncMap, signal func()) {
 	if err := task.checkState(ctx, name, info, nameMap); err != nil {
 		log.V(4).Info(err.Error())
 		return
 	}
 
 	if nameMap.Size() == 0 {
-		done <- struct{}{}
+		signal()
 	}
 }
 

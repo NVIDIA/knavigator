@@ -17,10 +17,12 @@
 package engine
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -108,4 +110,26 @@ func TestNewCheckObjTask(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An index outside the registered object types must fail with an error instead
+// of panicking on info.GVR[index].
+func TestCheckObjTaskIndexOutOfRange(t *testing.T) {
+	eng, err := New(nil, nil, true)
+	require.NoError(t, err)
+	eng.objInfoMap["submit"] = NewObjInfo([]string{"obj0"}, "default",
+		[]schema.GroupVersionResource{{Group: "g", Version: "v", Resource: "jobs"}}, 0)
+
+	runnable, err := eng.GetTask(&config.Task{
+		ID:   "check",
+		Type: TaskCheckObj,
+		Params: map[string]interface{}{
+			"refTaskId": "submit",
+			"index":     3,
+			"state":     map[string]interface{}{"status": map[string]interface{}{"active": 3}},
+		},
+	})
+	require.NoError(t, err)
+	require.EqualError(t, runnable.Exec(context.Background()),
+		"CheckObj/check: index 3 is out of range, the referenced task registered 1 object type(s)")
 }

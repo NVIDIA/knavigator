@@ -62,6 +62,9 @@ func (task *UpdateObjTask) Exec(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if task.Index < 0 || task.Index >= len(info.GVR) {
+		return fmt.Errorf("%s: index %d is out of range, the referenced task registered %d object type(s)", task.ID(), task.Index, len(info.GVR))
+	}
 
 	patch, err := utils.NewPatchData(task.State)
 	if err != nil {
