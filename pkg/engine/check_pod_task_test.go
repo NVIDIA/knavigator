@@ -63,6 +63,17 @@ func TestCheckPodParams(t *testing.T) {
 			err: "CheckPod/check: missing parameters 'status' and/or 'nodeLabels'",
 		},
 		{
+			name:       "Case 3b: count with timeout",
+			simClients: true,
+			params: map[string]interface{}{
+				"refTaskId": "step1",
+				"status":    "Running",
+				"count":     0,
+				"timeout":   "1m",
+			},
+			err: "CheckPod/check: 'count' must not be negative, and needs 'status' and no 'timeout'",
+		},
+		{
 			name:       "Case 4: missing task reference",
 			simClients: true,
 			params: map[string]interface{}{
