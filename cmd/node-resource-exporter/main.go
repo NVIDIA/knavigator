@@ -69,7 +69,7 @@ func mainInternal(args *args) error {
 		return err
 	}
 
-	nodeLabels := strings.Split(args.nodeLabels, ",")
+	nodeLabels := splitNonEmpty(args.nodeLabels)
 	metrics.New(nodeLabels)
 
 	mux := http.NewServeMux()
@@ -103,7 +103,7 @@ func mainInternal(args *args) error {
 	g.Add(
 		func() error {
 			log.Infof("Starting sampling loop")
-			return startResourceSamplingLoop(ctx, kubeClient, args.namespace, strings.Split(args.resources, ","), nodeLabels)
+			return startResourceSamplingLoop(ctx, kubeClient, args.namespace, splitNonEmpty(args.resources), nodeLabels)
 		},
 		func(err error) {
 			log.Infof("Stopping sampling loop: %v", err)
@@ -112,6 +112,20 @@ func mainInternal(args *args) error {
 		})
 
 	return g.Run()
+}
+
+// splitNonEmpty splits s on commas and drops empty entries, so a flag left at
+// its default yields no entries instead of one empty string: an empty label
+// name makes metric registration panic, and an empty resource name reports a
+// permanent zero series.
+func splitNonEmpty(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func startResourceSamplingLoop(ctx context.Context, kubeClient *kubernetes.Clientset, namespace string, resources, nodeLabels []string) error {
