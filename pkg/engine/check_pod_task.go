@@ -51,6 +51,9 @@ type checkPodTaskParams struct {
 	Status     string            `yaml:"status"`
 	NodeLabels map[string]string `yaml:"nodeLabels"`
 	Timeout    time.Duration     `yaml:"timeout"`
+	// Count expects exactly this many pods in Status and ignores the rest, so a check can show
+	// that no pod of a gang runs yet. It checks once, so it cannot take a timeout.
+	Count *int `yaml:"count"`
 }
 
 // newCheckPodTask initializes and returns CheckPodTask
@@ -93,6 +96,10 @@ func (task *CheckPodTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: missing parameters 'status' and/or 'nodeLabels'", task.ID())
 	}
 
+	if task.Count != nil && (*task.Count < 0 || len(task.Status) == 0 || task.Timeout != 0) {
+		return fmt.Errorf("%s: 'count' must not be negative, and needs 'status' and no 'timeout'", task.ID())
+	}
+
 	return nil
 }
 
@@ -130,9 +137,12 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 		for _, r := range re {
 			if r.MatchString(pod.Name) {
 				log.V(4).Infof("Matched pod %s", pod.Name)
+				status := string(pod.Status.Phase)
+				if task.Count != nil && status != task.Status {
+					continue
+				}
 				count++
 
-				status := string(pod.Status.Phase)
 				if status != task.Status {
 					return fmt.Errorf("%s: pod %s, status %s, expected %s", task.ID(), pod.Name, status, task.Status)
 				}
@@ -144,8 +154,12 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 		}
 	}
 
-	if count != info.PodCount {
-		return fmt.Errorf("%s: verified %d pods, expected %d", task.ID(), count, info.PodCount)
+	expected := info.PodCount
+	if task.Count != nil {
+		expected = *task.Count
+	}
+	if count != expected {
+		return fmt.Errorf("%s: verified %d pods, expected %d", task.ID(), count, expected)
 	}
 
 	return nil
