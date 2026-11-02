@@ -1,0 +1,86 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: conformance-job-gang-volcano
+description: a 3-pod gang with room for 2 pods places none with Volcano
+tasks:
+- id: register
+  type: RegisterObj
+  params:
+    template: "../../templates/volcano/job.yml"
+    nameFormat: "gang{{._ENUM_}}"
+    podNameFormat: "{{._NAME_}}-test-[0-9]+"
+    podCount: "{{.replicas}}"
+- id: configure
+  type: Configure
+  params:
+    namespaces:
+    - name: conformance
+      op: create
+    nodes:
+    - type: dgxa100.80g
+      count: 2
+      labels:
+        nvidia.com/gpu.count: "8"
+    - type: dgxa100.80g
+      count: 1
+      labels:
+        nvidia.com/gpu.count: "8"
+        conformance/spare: "true"
+    timeout: 1m
+- id: cordon
+  type: UpdateNodes
+  params:
+    selectors:
+    - conformance/spare: "true"
+    state:
+      spec:
+        unschedulable: true
+- id: job
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      namespace: conformance
+      replicas: 3
+      priorityClassName: ""
+      image: ubuntu
+      cpu: 100m
+      memory: 250M
+      gpu: 8
+- id: settle
+  type: Sleep
+  params:
+    timeout: 15s
+- id: none-running
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Running
+    count: 0
+- id: uncordon
+  type: UpdateNodes
+  params:
+    selectors:
+    - conformance/spare: "true"
+    state:
+      spec:
+        unschedulable: false
+- id: all-running
+  type: CheckPod
+  params:
+    refTaskId: job
+    status: Running
+    timeout: 1m
