@@ -67,9 +67,9 @@ type Sizes struct {
 	BSLDMacro *float64 `json:"bsld_macro"`
 	// JobsNeverAdmitted counts jobs with a pod that was never placed.
 	JobsNeverAdmitted int `json:"jobs_never_admitted"`
-	// JobsAbandoned counts jobs fully placed but still running when the run ended.
-	JobsAbandoned     int     `json:"jobs_abandoned"`
-	AbandonedGPUHours float64 `json:"abandoned_gpu_hours"`
+	// JobsUnfinished counts jobs fully placed but still running when results were taken.
+	JobsUnfinished     int     `json:"jobs_unfinished"`
+	UnfinishedGPUHours float64 `json:"unfinished_gpu_hours"`
 }
 
 // sizeMetrics assumes Pod.Job is set. start maps job name to the earliest placement per pod name.
@@ -126,8 +126,8 @@ func sizeMetrics(pods []Pod, jobs []Job, start map[string]map[string]time.Time, 
 
 		fin, ok := finished(jp, j.Pods)
 		if !ok {
-			sz.JobsAbandoned++
-			sz.AbandonedGPUHours += heldGPUHours(jp, end)
+			sz.JobsUnfinished++
+			sz.UnfinishedGPUHours += heldGPUHours(jp, end)
 			continue
 		}
 		if bi >= 0 {
@@ -146,7 +146,7 @@ func sizeMetrics(pods []Pod, jobs []Job, start map[string]map[string]time.Time, 
 		}
 	}
 	sz.WaitByFootprint = counts
-	if sz.JobsNeverAdmitted == 0 && sz.JobsAbandoned == 0 && len(means) > 0 {
+	if sz.JobsNeverAdmitted == 0 && sz.JobsUnfinished == 0 && len(means) > 0 {
 		m := mean(means)
 		sz.BSLDMacro = &m
 	}

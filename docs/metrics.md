@@ -67,7 +67,7 @@ A job is one object submitted by a `SubmitObj` task whose `RegisterObj` declares
 - `footprint_wait_spearman`: rank correlation of footprint and job wait. Positive means bigger jobs wait longer.
 - `large_job_starvation_ratio`: mean wait of jobs of at least one node over mean wait of 1-GPU jobs.
 - `bsld_macro`: mean of the per-bucket mean slowdown, equal weight per bucket. Slowdown is max(1, (wait + runtime) / max(runtime, floor)), with the floor set by `-results.bsld-floor` (default 10m, in simulated time under `-speedup`). The value is null unless every job finished.
-- `jobs_never_admitted`: jobs with a pod that never got placed. `jobs_abandoned`, `abandoned_gpu_hours`: jobs fully placed but still running when the run ended, and the GPU-hours they used.
+- `jobs_never_admitted`: jobs with a pod that never got placed. `jobs_unfinished`, `unfinished_gpu_hours`: jobs fully placed but still running when results were taken, and the GPU-hours they used. On a live or stopped run these are the jobs still running, not failures.
 
 Metrics that cannot be computed, such as a correlation over one job, are null.
 
