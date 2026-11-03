@@ -188,3 +188,29 @@ func TestPusherStartStop(t *testing.T) {
 	p.Stop()
 	p.Stop() // safe to call twice
 }
+
+// A gateway that never answers must not stall a push, otherwise Recorder.Finish
+// would block forever and the run's results would never be written.
+func TestPusherTimesOutOnHungGateway(t *testing.T) {
+	unblock := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done(): // hang until the client connection goes away
+		case <-unblock:
+		}
+	}))
+	t.Cleanup(func() {
+		close(unblock)
+		srv.Close()
+	})
+
+	prev := pushTimeout
+	pushTimeout = 100 * time.Millisecond
+	defer func() { pushTimeout = prev }()
+
+	p := NewPusher(srv.URL, "r3")
+	start := time.Now()
+	err := p.Push(context.Background(), []Pod{{GPUs: 2, Scheduled: time.Now()}})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 10*time.Second, "push to a hung gateway returns instead of blocking")
+}

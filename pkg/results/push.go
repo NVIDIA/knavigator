@@ -19,6 +19,7 @@ package results
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sort"
 	"strconv"
 	"sync"
@@ -35,6 +36,10 @@ const (
 	metricsRoot = "knavigator_"
 )
 
+// pushTimeout bounds a single Pushgateway request, so a hung gateway cannot
+// stall the periodic pushes or the final push that ends a run.
+var pushTimeout = 30 * time.Second
+
 // Pusher sends run metrics to a Prometheus Pushgateway: live gauges while the run goes, then the
 // summary. Every push replaces the group for this run, so repeated pushes never accumulate.
 type Pusher struct {
@@ -48,6 +53,7 @@ type Pusher struct {
 	done     chan struct{}
 	once     sync.Once
 	mutex    sync.Mutex
+	client   *http.Client
 	vecs     map[string]*prometheus.GaugeVec
 }
 
@@ -55,6 +61,7 @@ type Pusher struct {
 func NewPusher(url, run string) *Pusher {
 	p := &Pusher{
 		url: url, run: run, reg: prometheus.NewRegistry(), vecs: map[string]*prometheus.GaugeVec{},
+		client: &http.Client{Timeout: pushTimeout},
 		podState: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: metricsRoot + "pods_by_state",
 			Help: "GPU pods in each state: pending, running, succeeded, failed, evicted or deleted."}, []string{"state"}),
 		inUse: prometheus.NewGauge(prometheus.GaugeOpts{Name: metricsRoot + "gpus_in_use",
@@ -153,7 +160,7 @@ func (p *Pusher) setSummary(s Summary) {
 }
 
 func (p *Pusher) send(ctx context.Context) error {
-	return push.New(p.url, pushJob).Grouping("run", p.run).Gatherer(p.reg).PushContext(ctx)
+	return push.New(p.url, pushJob).Client(p.client).Grouping("run", p.run).Gatherer(p.reg).PushContext(ctx)
 }
 
 // Start pushes every interval until Stop. The gauges come from the pod snapshot; when summarize is
