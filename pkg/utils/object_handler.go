@@ -26,32 +26,37 @@ func IsSubset(obj, subset map[string]interface{}) bool {
 			return false
 		}
 
-		switch val.(type) {
+		switch val := val.(type) {
 		case map[interface{}]interface{}, map[string]interface{}:
-			var o, s map[string]interface{}
-			if objVal, ok := obj[key].(map[interface{}]interface{}); ok {
+			var o map[string]interface{}
+			switch objVal := objVal.(type) {
+			case map[interface{}]interface{}:
 				o = convert(objVal)
-			}
-			if objVal, ok := obj[key].(map[string]interface{}); ok {
+			case map[string]interface{}:
 				o = objVal
+			default:
+				return false // subset expects a map but the object holds another value
 			}
-			if subsetVal, ok := val.(map[interface{}]interface{}); ok {
-				s = convert(subsetVal)
-			}
-			if subsetVal, ok := val.(map[string]interface{}); ok {
-				s = subsetVal
+			var s map[string]interface{}
+			switch val := val.(type) {
+			case map[interface{}]interface{}:
+				s = convert(val)
+			case map[string]interface{}:
+				s = val
 			}
 			if !IsSubset(o, s) {
 				return false
 			}
 
 		case []interface{}:
-			if _, ok := obj[key].([]interface{}); !ok {
+			if _, ok := objVal.([]interface{}); !ok {
 				return false
 			}
 
 		case int, int32, int64:
-			if toInt64(objVal) != toInt64(val) {
+			objInt, ok := toInt64(objVal)
+			subInt, _ := toInt64(val)
+			if !ok || objInt != subInt {
 				return false
 			}
 
@@ -72,13 +77,17 @@ func convert(in map[interface{}]interface{}) map[string]interface{} {
 	return out
 }
 
-func toInt64(val interface{}) int64 {
+// toInt64 converts the integer types found in unmarshalled YAML. It reports
+// false for anything else, e.g. a null or fractional value in the live
+// object, which is a mismatch rather than a panic.
+func toInt64(val interface{}) (int64, bool) {
 	switch v := val.(type) {
 	case int:
-		return int64(v)
+		return int64(v), true
 	case int32:
-		return int64(v)
-	default:
-		return val.(int64)
+		return int64(v), true
+	case int64:
+		return v, true
 	}
+	return 0, false
 }
