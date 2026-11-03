@@ -130,7 +130,8 @@
           "editorMode": "code",
           "expr": "knavigator_run_state{run=\"$run\"} == 1",
           "legendFormat": "{{state}}",
-          "range": true,
+          "instant": true,
+          "range": false,
           "refId": "A"
         }
       ],

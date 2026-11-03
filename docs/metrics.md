@@ -25,7 +25,7 @@ Knavigator exits with an error after writing the files if the run did not drain,
 
 ### Prometheus and Grafana
 
-`-results.pushgateway <url>` also sends the run to a [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), so the run shows up next to the node metrics. Knavigator pushes the pod gauges and the summary of the run so far every `-results.push-interval` (default 10s), and the final summary when the run ends. Every series carries a `run` label, set with `-results.run` and defaulting to the start time, so separate runs stay apart. A failed push logs a warning and never fails the run.
+`-results.pushgateway <url>` also sends the run to a [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), so the run shows up next to the node metrics. Knavigator pushes the pod gauges and the summary of the run so far every `-results.push-interval` (default 10s), and the final summary when the run ends. If the run stops early, the last push marks it aborted. Every series carries a `run` label, set with `-results.run` and defaulting to the start time, so separate runs stay apart. A failed push logs a warning and never fails the run.
 
 `scripts/env.sh` installs a Pushgateway with a ServiceMonitor next to the Prometheus stack. From outside the cluster, reach it with a port-forward:
 
@@ -39,6 +39,7 @@ Pod gauges:
 
 - `knavigator_pods_by_state{state}`: GPU pods that are pending, running, succeeded, failed, evicted (deleted after placement) or deleted before placement.
 - `knavigator_gpus_in_use` and `knavigator_gpus_pending`: GPUs requested by running pods and by pods not yet placed.
+- `knavigator_run_state{state}`: 1 for the run's current state, `running`, `complete` or `aborted`. The dashboard shows it as the Run state banner. A run that ends on an error or a signal before its results are recorded is `aborted`; a run that recorded its results stays `complete` even if a check such as `-results.stall` then fails.
 - `knavigator_speedup`: the factor `-speedup` compresses time by (1 without it). The summary gauges already report simulated time, while these pod gauges and the time axis are real time, so multiply any total you compute from them by this factor.
 
 Every push also carries the summary of the run so far, as one gauge per `results.json` field, named `knavigator_<field>`. The final push replaces it with the values for the whole run. Booleans become 0 or 1, and `null` and text fields are skipped. A field with `count`, `mean`, `p95` and `max` gets the label `stat`. A list whose rows have a `bucket`, `gang_size`, `priority` or `class` field gets that field as a label. For example, `job_wait_sec.p95` is `knavigator_job_wait_sec{stat="p95"}`. New `results.json` fields appear with no further change.

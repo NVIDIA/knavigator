@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -38,13 +39,25 @@ func newPauseTask(cfg *config.Task) *PauseTask {
 	}
 }
 
+// pauseInput is stdin; tests replace it.
+var pauseInput io.Reader = os.Stdin
+
 // Exec implements Runnable interface
 func (task *PauseTask) Exec(ctx context.Context) error {
 	fmt.Printf("-> Press 'Return' key to continue.")
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		break
+	// The read cannot be interrupted, so it runs aside and a canceled context wins.
+	res := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(pauseInput)
+		scanner.Scan()
+		res <- scanner.Err()
+	}()
+	select {
+	case err := <-res:
+		fmt.Println()
+		return err
+	case <-ctx.Done():
+		fmt.Println()
+		return ctx.Err()
 	}
-	fmt.Println()
-	return scanner.Err()
 }

@@ -56,6 +56,8 @@ type Pusher struct {
 	mutex    sync.Mutex
 	client   *http.Client
 	vecs     map[string]*prometheus.GaugeVec
+	// finalized is set once Final has pushed, so a later Abort cannot relabel a finished run.
+	finalized bool
 }
 
 // NewPusher creates a pusher; run labels every series so separate runs stay apart.
@@ -145,11 +147,20 @@ func (p *Pusher) Final(ctx context.Context, s Summary, pods []Pod) error {
 	p.observe(pods)
 	p.setSummary(s)
 	p.setState(stateComplete)
+	p.mutex.Lock()
+	p.finalized = true
+	p.mutex.Unlock()
 	return p.send(ctx)
 }
 
-// Abort pushes the pods as they are and marks the run aborted.
+// Abort pushes the pods as they are and marks the run aborted. It does nothing after Final.
 func (p *Pusher) Abort(ctx context.Context, pods []Pod) error {
+	p.mutex.Lock()
+	finalized := p.finalized
+	p.mutex.Unlock()
+	if finalized {
+		return nil
+	}
 	p.observe(pods)
 	p.setState(stateAborted)
 	return p.send(ctx)

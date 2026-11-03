@@ -166,7 +166,7 @@ func mainInternal() error {
 		rec.Abort()
 	}
 	// Cleanup waits for the results so running pods are recorded before they are deleted.
-	if err := eng.Reset(ctx); runErr == nil {
+	if err := eng.Reset(context.WithoutCancel(ctx)); runErr == nil {
 		runErr = err
 	}
 	return runErr

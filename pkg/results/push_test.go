@@ -30,6 +30,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // values flattens samples into "name{labels}" -> value.
@@ -241,4 +242,30 @@ func TestPusherTimesOutOnHungGateway(t *testing.T) {
 	err := p.Push(context.Background(), []Pod{{GPUs: 2, Scheduled: time.Now()}})
 	require.Error(t, err)
 	require.Less(t, time.Since(start), 10*time.Second, "push to a hung gateway returns instead of blocking")
+}
+
+func TestRecorderAbort(t *testing.T) {
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	newRec := func(run string) *Recorder {
+		r := &Recorder{pods: map[types.UID]*Pod{}}
+		r.pusher = NewPusher(ts.URL, run)
+		return r
+	}
+
+	(&Recorder{}).Abort() // no pusher: nothing to do
+
+	r := newRec("abort")
+	r.Abort()
+	srv.mu.Lock()
+	requireState(t, srv, stateAborted)
+	srv.mu.Unlock()
+
+	r = newRec("final")
+	require.NoError(t, r.pusher.Final(context.Background(), Summary{}, nil))
+	r.Abort()
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	requireState(t, srv, stateComplete)
 }
