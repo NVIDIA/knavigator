@@ -18,6 +18,8 @@ package engine
 
 import (
 	"context"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -52,5 +54,24 @@ func TestPauseExec(t *testing.T) {
 	case <-ctx.Done():
 		// we should always get user input before timeout
 		require.NoError(t, ctx.Err())
+	}
+}
+
+func TestPauseCanceled(t *testing.T) {
+	r, w := io.Pipe()
+	defer w.Close()
+	pauseInput = r
+	defer func() { pauseInput = os.Stdin }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- newPauseTask(&config.Task{ID: "pause"}).Exec(ctx) }()
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Pause stayed blocked on stdin after cancellation")
 	}
 }
