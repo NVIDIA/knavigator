@@ -20,6 +20,7 @@ Release membership follows Git tag ancestry. Release dates are GitHub publicatio
 - Wait statistics and SLO attainment by job class, with class labels in Pushgateway metrics. Jobs that never start count as SLO misses. ([#169](https://github.com/NVIDIA/knavigator/pull/169))
 - `-aggregate '<glob>'` to summarize repeated runs with mean, sample standard deviation, range, coefficient of variation, bootstrap confidence intervals, and a stability indicator. ([#170](https://github.com/NVIDIA/knavigator/pull/170))
 - `pkg/eventlog` with a validated JSON Lines event format, schema version 1, and strict reading of sequences, timestamps, fields, and transitions. This adds the package; run-time `events.jsonl` output is not yet integrated. ([#157](https://github.com/NVIDIA/knavigator/pull/157))
+- `run-comparison.json` Grafana dashboard that compares runs side by side in one table. ([#191](https://github.com/NVIDIA/knavigator/pull/191))
 
 ### Changed
 
