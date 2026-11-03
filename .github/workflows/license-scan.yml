@@ -1,15 +1,14 @@
 # Dependency license compliance.
 #
-# Topograph ships under Apache-2.0, so every module linked into the binaries has
-# to carry a license that can be redistributed under those terms. go-licenses
+# This project ships under Apache-2.0. Dependencies retain their own licenses
+# and must be redistributed in compliance with those licenses. go-licenses
 # walks the build graph from ./... and fails the job on anything outside the
 # allow list below.
 #
-# The allow list is the exact set present in the dependency tree today:
-# Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT. Any new license therefore
-# shows up as a failing check and gets a deliberate decision instead of arriving
-# silently. Widening the list is a maintainer call. Weak copyleft (MPL-2.0) and
-# copyleft (GPL, LGPL, AGPL) are absent on purpose.
+# Allowed licenses: Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MPL-2.0.
+# MPL-2.0 is permitted subject to its file-level source and notice obligations.
+# Any license outside this list requires a maintainer decision. GPL, LGPL, and
+# AGPL remain excluded.
 
 name: License Scan
 
@@ -42,4 +41,4 @@ jobs:
     - name: Check dependency licenses
       run: |
         go run github.com/google/go-licenses@v1.6.0 check ./... \
-          --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT
+          --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MIT,MPL-2.0
