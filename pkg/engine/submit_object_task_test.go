@@ -17,10 +17,20 @@
 package engine
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path"
+	"strconv"
+	"sync"
 	"testing"
 	"text/template"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 	"github.com/NVIDIA/knavigator/pkg/utils"
@@ -359,4 +369,64 @@ func TestNewSubmitObjTask(t *testing.T) {
 			}
 		})
 	}
+}
+
+// With canExist, an object that already exists must be skipped while the
+// remaining objects are still created and the task info is registered.
+func TestSubmitObjTaskExecCanExistContinues(t *testing.T) {
+	const jobJSON = `{"apiVersion":"g/v","kind":"Job","metadata":{"name":"placeholder","namespace":"default"}}`
+	var mu sync.Mutex
+	var created []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			// Objects with an even numeric suffix already exist.
+			name := path.Base(r.URL.Path)
+			if n, err := strconv.Atoi(name[len("job"):]); err == nil && n%2 == 0 {
+				fmt.Fprint(w, jobJSON)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)
+			return
+		}
+		if r.Method == http.MethodPost {
+			mu.Lock()
+			created = append(created, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+		}
+		fmt.Fprint(w, jobJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &rest.Config{Host: ts.URL, ContentConfig: rest.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "g", Version: "v"}}}
+	client, err := dynamic.NewForConfig(cfg)
+	require.NoError(t, err)
+
+	eng, err := New(nil, nil, true)
+	require.NoError(t, err)
+	tpl := template.Must(template.New("job").Parse("apiVersion: g/v\nkind: Job\nmetadata:\n  name: {{._NAME_}}\n  namespace: default\nspec: {}\n"))
+	eng.objTypeMap["reg"] = &RegisterObjParams{
+		gvr:        []schema.GroupVersionResource{{Group: "g", Version: "v", Resource: "jobs"}},
+		objTpl:     []*template.Template{tpl},
+		NameFormat: "job{{._ENUM_}}",
+	}
+
+	// Names come from a global counter, so one of the two consecutive names is
+	// even and pre-existing regardless of the starting value.
+	task := &SubmitObjTask{
+		BaseTask:            BaseTask{taskType: TaskSubmitObj, taskID: "submit"},
+		submitObjTaskParams: submitObjTaskParams{RefTaskID: "reg", Count: 2, CanExist: true, Params: map[string]interface{}{}},
+		client:              client,
+		accessor:            eng,
+	}
+	require.NoError(t, task.Exec(context.Background()))
+
+	mu.Lock()
+	require.Len(t, created, 1, "exactly the missing object is created, the existing one is skipped")
+	mu.Unlock()
+	info, err := eng.GetObjInfo("submit")
+	require.NoError(t, err, "task info is registered even when objects already exist")
+	require.Len(t, info.Names, 2)
 }

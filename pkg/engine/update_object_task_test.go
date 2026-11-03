@@ -17,10 +17,19 @@
 package engine
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
@@ -108,4 +117,69 @@ func TestNewUpdateObjTask(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A fake API server that records patched paths and bodies.
+type patchRecorder struct {
+	mu      sync.Mutex
+	patches map[string][]byte // path -> body
+}
+
+func (r *patchRecorder) handler(w http.ResponseWriter, req *http.Request) {
+	if req.Method == http.MethodPatch {
+		body, _ := io.ReadAll(req.Body)
+		r.mu.Lock()
+		r.patches[req.URL.Path] = body
+		r.mu.Unlock()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"apiVersion":"g/v","kind":"Job","metadata":{"name":"job0","namespace":"default"}}`)
+}
+
+func (r *patchRecorder) bodyFor(t *testing.T, suffix string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	base := "/apis/g/v/namespaces/default/jobs/job0"
+	body, ok := r.patches[base+suffix]
+	require.True(t, ok, "no patch to %s", base+suffix)
+	return string(body)
+}
+
+// UpdateObj must send the status part of the state to the /status subresource,
+// not the root patch: a status-only state has no root patch at all.
+func TestUpdateObjTaskExecPatchesStatusSubresource(t *testing.T) {
+	rec := &patchRecorder{patches: map[string][]byte{}}
+	ts := httptest.NewServer(http.HandlerFunc(rec.handler))
+	defer ts.Close()
+
+	cfg := &rest.Config{Host: ts.URL, ContentConfig: rest.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "g", Version: "v"}}}
+	client, err := dynamic.NewForConfig(cfg)
+	require.NoError(t, err)
+
+	eng, err := New(nil, nil, true)
+	require.NoError(t, err)
+	eng.objInfoMap["submit"] = NewObjInfo([]string{"job0"}, "default",
+		[]schema.GroupVersionResource{{Group: "g", Version: "v", Resource: "jobs"}}, 0)
+
+	// A state with spec and status patches both subresources.
+	task := &UpdateObjTask{ObjStateTask: ObjStateTask{
+		BaseTask: BaseTask{taskType: TaskUpdateObj, taskID: "update"},
+		StateParams: StateParams{RefTaskID: "submit", State: map[string]interface{}{
+			"spec":   map[string]interface{}{"suspend": true},
+			"status": map[string]interface{}{"active": 3},
+		}},
+		client:   client,
+		accessor: eng,
+	}}
+	require.NoError(t, task.Exec(context.Background()))
+	require.JSONEq(t, `{"spec":{"suspend":true}}`, rec.bodyFor(t, ""))
+	require.JSONEq(t, `{"status":{"active":3}}`, rec.bodyFor(t, "/status"))
+
+	// A state with only status reaches the subresource with a well-formed patch.
+	rec.mu.Lock()
+	rec.patches = map[string][]byte{}
+	rec.mu.Unlock()
+	task.State = map[string]interface{}{"status": map[string]interface{}{"active": 2}}
+	require.NoError(t, task.Exec(context.Background()))
+	require.JSONEq(t, `{"status":{"active":2}}`, rec.bodyFor(t, "/status"))
 }
