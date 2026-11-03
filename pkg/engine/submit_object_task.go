@@ -141,7 +141,7 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 				_, err := task.client.Resource(regObjParams.gvr[i]).Namespace(obj.Metadata.Namespace).Get(ctx, obj.Metadata.Name, metav1.GetOptions{})
 				if err == nil {
 					log.V(4).Infof("Object %s/%s already exist", obj.Kind, obj.Metadata.Name)
-					return nil
+					continue
 				}
 			}
 

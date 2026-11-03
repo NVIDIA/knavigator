@@ -77,7 +77,7 @@ func (task *UpdateObjTask) Exec(ctx context.Context) error {
 			}
 		}
 		if patch.Status != nil {
-			_, err = task.client.Resource(gvr).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Root, metav1.PatchOptions{}, "status")
+			_, err = task.client.Resource(gvr).Namespace(info.Namespace).Patch(ctx, name, types.MergePatchType, patch.Status, metav1.PatchOptions{}, "status")
 			if err != nil {
 				return fmt.Errorf("%s: failed to patch status %s %s: %v", task.ID(), gvr.Resource, name, err)
 			}
