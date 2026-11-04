@@ -95,6 +95,8 @@ type traceClass struct {
 	Accounts   []weightedValue `yaml:"accounts"`
 	// AccountSet: generated accounts that share the jobs by a distribution; replaces Accounts
 	AccountSet accountSet `yaml:"accountSet"`
+	// Arrival: spreads the jobs over Duration seconds from Start instead of ArrivalInterval
+	Arrival arrival `yaml:"arrival"`
 }
 
 // accountSet names Count accounts Prefix1..PrefixN, zero-padded, and splits a class's jobs over them.
@@ -112,6 +114,16 @@ type accountSet struct {
 		Mean   float64 `yaml:"mean"`
 		Stddev float64 `yaml:"stddev"`
 	} `yaml:"distribution"`
+}
+
+// arrival places a class's jobs at random times over a window, all in seconds.
+type arrival struct {
+	// Shape: uniform (constant rate) or gaussian (ramps up, peaks, ramps down)
+	Shape    string  `yaml:"shape"`
+	Duration float64 `yaml:"duration"`
+	// Mean, Stddev: gaussian only; default the middle of Duration and a sixth of it
+	Mean   float64 `yaml:"mean"`
+	Stddev float64 `yaml:"stddev"`
 }
 
 type weightedValue struct {
@@ -210,7 +222,7 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 func (c traceClass) continuous() bool { return c.Jobs < 0 }
 
 func (c traceClass) validateLoad() error {
-	set := c.AccountSet
+	set, arr := c.AccountSet, c.Arrival
 	if set.Count < 0 || set.MinJobs < 0 {
 		return fmt.Errorf("accountSet count and minJobs must not be negative")
 	}
@@ -233,6 +245,18 @@ func (c traceClass) validateLoad() error {
 		default:
 			return fmt.Errorf("unknown distribution %q", t)
 		}
+	}
+	if arr.Shape == "" {
+		return nil
+	}
+	if c.continuous() || c.Regular || c.ArrivalInterval != 0 {
+		return fmt.Errorf("arrival needs a fixed number of jobs and no arrivalInterval or regular")
+	}
+	if arr.Shape != "uniform" && arr.Shape != "gaussian" {
+		return fmt.Errorf("unknown arrival shape %q", arr.Shape)
+	}
+	if arr.Duration <= 0 || arr.Stddev < 0 {
+		return fmt.Errorf("arrival needs a positive duration")
 	}
 	return nil
 }
@@ -293,19 +317,49 @@ func (s accountSet) split(jobs int) []int {
 	return counts
 }
 
+// times draws n sorted arrival offsets over the window; gaussian draws outside it are redrawn.
+func (a arrival) times(rng *rand.Rand, n int) []float64 {
+	t := make([]float64, n)
+	mean, std := a.Mean, a.Stddev
+	if mean == 0 {
+		mean = a.Duration / 2
+	}
+	if std == 0 {
+		std = a.Duration / 6
+	}
+	for i := range t {
+		if a.Shape == "uniform" {
+			t[i] = rng.Float64() * a.Duration
+			continue
+		}
+		// A narrow gaussian far from the window could redraw forever, so clamp after 100 tries.
+		x := mean + std*rng.NormFloat64()
+		for try := 0; (x < 0 || x > a.Duration) && try < 100; try++ {
+			x = mean + std*rng.NormFloat64()
+		}
+		t[i] = math.Min(math.Max(x, 0), a.Duration)
+	}
+	sort.Float64s(t)
+	return t
+}
+
 // classGen yields one class's jobs in arrival order, from its own random stream.
 type classGen struct {
 	c        traceClass
 	rng      *rand.Rand
 	k        int
 	now      float64
-	accounts []string // exact per-job accounts for a fixed-size accountSet, in shuffled order
+	times    []float64 // set when Arrival is shaped
+	accounts []string  // exact per-job accounts for a fixed-size accountSet, in shuffled order
 	pool     []weightedValue
 	head     *traceJob
 }
 
 func newClassGen(c traceClass, seed uint64, stream int) *classGen {
 	g := &classGen{c: c, rng: rand.New(rand.NewPCG(seed, uint64(stream))), now: c.Start}
+	if c.Arrival.Shape != "" {
+		g.times = c.Arrival.times(g.rng, c.Jobs)
+	}
 	if set := c.AccountSet; set.Count > 0 {
 		names := set.names()
 		if c.continuous() {
@@ -336,6 +390,8 @@ func (g *classGen) advance() {
 	}
 	g.k++
 	switch {
+	case g.times != nil:
+		g.now = c.Start + g.times[k]
 	case c.Regular:
 		g.now = c.Start + float64(k)*c.ArrivalInterval
 	default:
