@@ -32,6 +32,9 @@ type Options struct {
 	Speedup float64
 	// NodeGPUs maps each node to its allocatable GPUs, for fragmentation.
 	NodeGPUs map[string]float64
+	// NodeHeldGPUs maps nodes to GPUs held there for the whole run by pods outside it, for
+	// fragmentation.
+	NodeHeldGPUs map[string]float64
 }
 
 // DefaultBSLDFloor is the runtime below which slowdown reports queueing noise rather than service.

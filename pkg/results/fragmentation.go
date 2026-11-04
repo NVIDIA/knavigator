@@ -41,6 +41,12 @@ type Fragmentation struct {
 // fragmentation sweeps the window from first to last. nodes maps each node to its allocatable GPUs;
 // pods on a node missing from it are left out.
 func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) Fragmentation {
+	return fragmentationHeld(pods, nodes, nil, first, last)
+}
+
+// fragmentationHeld is fragmentation with held GPUs per node in use for the whole window, such as
+// those of pods from before the run.
+func fragmentationHeld(pods []Pod, nodes, held map[string]float64, first, last time.Time) Fragmentation {
 	var out Fragmentation
 	if !last.After(first) || len(nodes) == 0 {
 		return out
@@ -73,6 +79,9 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 	// Running totals over all nodes: free GPUs, free GPUs on partly used nodes, free GPUs too few for
 	// the largest pod, and nodes with every GPU free. A node adds its share again after each change.
 	used := map[string]float64{}
+	for node, g := range held {
+		used[node] = g
+	}
 	var free, fragmented, small float64
 	freeNodes := 0
 	share := func(node string, sign float64) {
@@ -122,13 +131,13 @@ func fragmentation(pods []Pod, nodes map[string]float64, first, last time.Time) 
 		out.GPUFragmentationLargestPod = &g
 	}
 	out.FreeNodesMean = freeNodeSec / last.Sub(first).Seconds()
-	out.StrandedGPUHours = strandedGPUHours(pods, nodes, first, last)
+	out.StrandedGPUHours = strandedGPUHours(pods, nodes, held, first, last)
 	return out
 }
 
 // strandedGPUHours sweeps placements and waiting pods together. A pod waits from its creation until
-// it is placed, or until it ends if it never was.
-func strandedGPUHours(pods []Pod, nodes map[string]float64, first, last time.Time) float64 {
+// it is placed, or until it ends if it never was. held GPUs are in use for the whole window.
+func strandedGPUHours(pods []Pod, nodes, held map[string]float64, first, last time.Time) float64 {
 	type change struct {
 		t    time.Time
 		node string  // empty for a waiting pod
@@ -162,6 +171,9 @@ func strandedGPUHours(pods []Pod, nodes map[string]float64, first, last time.Tim
 	sort.Slice(changes, func(a, b int) bool { return changes[a].t.Before(changes[b].t) })
 
 	used := map[string]float64{}
+	for node, g := range held {
+		used[node] = g
+	}
 	waiting := map[float64]int{}
 	stranded := func() float64 {
 		smallest := math.Inf(1)

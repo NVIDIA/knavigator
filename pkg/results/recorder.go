@@ -122,11 +122,12 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if err != nil {
 			return Summary{}, err
 		}
+		held, _ := r.heldGPUs(nodes)
 		floor := DefaultBSLDFloor
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -354,8 +355,9 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err != nil {
 		return err
 	}
-	if g := r.harness.leftoverGPUs; g != nil && capacity <= 0 {
-		log.Warningf("Results: GPU capacity is %g after subtracting the %g GPUs that pods from before the run hold; gpu_utilization and idle_waiting_gpu_hours read 0", capacity, *g)
+	held, heldTotal := r.heldGPUs(nodes)
+	if r.harness.leftoverGPUs != nil && capacity <= 0 {
+		log.Warningf("Results: GPU capacity is %g after subtracting the %g GPUs that pods from before the run hold; gpu_utilization and idle_waiting_gpu_hours read 0", capacity, heldTotal)
 	}
 	pods := r.snapshot()
 	events := r.eventList()
@@ -363,7 +365,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: bsldFloor, Speedup: speedup})
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	summary.Harness = harness
@@ -413,8 +415,8 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity reads allocatable GPUs per node at the end of the run and their sum, both less the GPUs
-// that pods from before the run hold under AllowLeftovers, and the biggest node's size.
+// gpuCapacity reads allocatable GPUs per node at the end of the run, their sum less the GPUs that
+// pods from before the run hold on those nodes under AllowLeftovers, and the biggest node's size.
 func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -424,17 +426,31 @@ func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, t
 	for _, node := range list.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
 			g := q.AsApproximateFloat64()
-			// The fragmentation metrics see a node's GPUs that leftover pods hold as in use.
-			nodes[node.Name] = g - r.harness.leftoverByNode[node.Name]
+			nodes[node.Name] = g
 			total += g
 			maxNode = math.Max(maxNode, g)
 		}
 	}
 	// The final summary and every interim push use this, so they agree.
-	if g := r.harness.leftoverGPUs; g != nil {
-		total -= *g
+	_, held := r.heldGPUs(nodes)
+	return nodes, total - held, maxNode, nil
+}
+
+// heldGPUs maps each of nodes to the GPUs that pods from before the run, let stay by AllowLeftovers,
+// hold on it, and sums them; nil without the flag. A node gone by the end of the run is not counted,
+// and neither are the pods on it.
+func (r *Recorder) heldGPUs(nodes map[string]float64) (held map[string]float64, total float64) {
+	if r.harness.leftoverByNode == nil {
+		return nil, 0
 	}
-	return nodes, total, maxNode, nil
+	held = map[string]float64{}
+	for node, g := range r.harness.leftoverByNode {
+		if _, ok := nodes[node]; ok {
+			held[node] = g
+			total += g
+		}
+	}
+	return held, total
 }
 
 func writeTimeline(path string, pods []Pod) error {
