@@ -88,3 +88,8 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 ```
 
 [resources/workflows/k8s/test-trace.yml](../resources/workflows/k8s/test-trace.yml) replays a six-job trace on two virtual nodes. It has no check task, so run it with `-results`, which waits for the jobs to finish.
+
+### Open-ended runs
+
+Set `jobs: -1` on a class with `arrivalInterval` to keep submitting until you stop the run. Ctrl+C then stops submission, waits for the submitted jobs to finish, and writes the results as usual; a second Ctrl+C exits at once. Add `-results.report-interval 2m` to write `partial-<n>.json` into the results directory every two minutes. Each file summarizes the whole run up to that point, so a run you stop early still leaves numbers behind.
+
