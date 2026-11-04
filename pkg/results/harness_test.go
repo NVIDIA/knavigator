@@ -399,10 +399,11 @@ func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
 			map[string]float64{"n1": 8, "n2": 4}, 12, []float64{5, 5.0 / 7, 0, 0.5, 0}, 5.0 / 12},
 		// 2 GPUs held on n1 leave it 3 free, fewer than b-0's 4 and than the largest pod's 4: free
 		// 3*60+4*30 = 300 GPU-minutes, fragmented 180 and too small 180, so 0.6 and 0.6. While b-0
-		// waits, those 3 are stranded: 3 GPUs for half an hour. GPU-hours 5 out of 10.
+		// waits, those 3 are stranded: 3 GPUs for half an hour. GPU-hours 5 out of 10. The node map
+		// stays allocatable: the held GPUs count as in use, not as a smaller node.
 		{"leftover on n1", HarnessOptions{AllowLeftovers: true},
 			leftoverPod("team", "train-0", corev1.PodRunning, "2", "n1"),
-			map[string]float64{"n1": 6, "n2": 4}, 10, []float64{3, 0.6, 0.6, 0.5, 1.5}, 0.5},
+			map[string]float64{"n1": 8, "n2": 4}, 10, []float64{3, 0.6, 0.6, 0.5, 1.5}, 0.5},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var pods []*corev1.Pod
@@ -429,8 +430,10 @@ func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
 
 func TestAllowLeftoversFillingANodeLeaveNoFreeNode(t *testing.T) {
 	fastPoll(t)
-	// Another user's pod holds all 8 GPUs of n2 for the whole run; the run's 3-GPU pod sits on n1.
-	client := runCluster(leftoverPod("team", "train-0", corev1.PodRunning, "8", "n2"))
+	// Two pods of another user hold 4 GPUs each, all 8 of n2, for the whole run; the run's 3-GPU pod
+	// sits on n1.
+	client := runCluster(leftoverPod("team", "train-0", corev1.PodRunning, "4", "n2"),
+		leftoverPod("team", "train-1", corev1.PodRunning, "4", "n2"))
 	_, err := client.CoreV1().Nodes().Create(context.Background(), gpuNode("n2", "8"), metav1.CreateOptions{})
 	require.NoError(t, err)
 	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
@@ -442,6 +445,70 @@ func TestAllowLeftoversFillingANodeLeaveNoFreeNode(t *testing.T) {
 	require.Equal(t, 8.0, s.GPUCapacity)
 	// The only free GPUs are n1's 5, on a partly used node, for the hour; n2 is never free.
 	require.Equal(t, []float64{5, 1, 0, 0, 0}, fragmentationOf(s))
+}
+
+func TestAllowLeftoversPartlyHoldAnIdleNode(t *testing.T) {
+	fastPoll(t)
+	// A 2-GPU pod of another user on n1 for the whole run, and no pod of the run there; the run's
+	// 3-GPU pod holds n2 for the hour. n1 has 6 free and n2 has 5, both on partly used nodes, so all
+	// 11 free GPUs are fragmented and no node is ever free. Largest pod 3: no node has fewer free.
+	t0 := time.Now().Add(time.Hour).Truncate(time.Second)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"), gpuNode("n2", "8"),
+		runPod("a-0", "3", "n2", t0, t0, t0.Add(time.Hour)),
+		leftoverPod("team", "train-0", corev1.PodRunning, "2", "n1"))
+	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+	s := readSummary(t, dir)
+	require.Equal(t, 14.0, s.GPUCapacity)
+	require.InDelta(t, 3.0/14, s.GPUUtilization, 1e-12)
+	require.Equal(t, []float64{11, 1, 0, 0, 0}, fragmentationOf(s))
+}
+
+func TestAllowLeftoversOnAVanishedNode(t *testing.T) {
+	fastPoll(t)
+	for _, gpus := range []string{"8", "2"} {
+		t.Run(gpus+" GPUs", func(t *testing.T) {
+			// The leftover pod is bound to n2, which is gone at the end of the run. Capacity counts
+			// only the nodes there at the end, so neither n2 nor its leftover pod is counted: 8 GPUs
+			// of n1, of which the run's pod used 3 for the hour.
+			client := runCluster(leftoverPod("team", "train-0", corev1.PodRunning, gpus, "n2"))
+			_, err := client.CoreV1().Nodes().Create(context.Background(), gpuNode("n2", "8"), metav1.CreateOptions{})
+			require.NoError(t, err)
+			rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+			require.NoError(t, err)
+			require.NoError(t, client.CoreV1().Nodes().Delete(context.Background(), "n2", metav1.DeleteOptions{}))
+
+			dir := t.TempDir()
+			require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+			require.Equal(t, gpus, string(readHarness(t, dir)["leftover_gpus"]), "recorded as found at the start")
+			s := readSummary(t, dir)
+			require.Equal(t, 8.0, s.GPUCapacity)
+			require.Equal(t, 0.375, s.GPUUtilization)
+			require.Equal(t, []float64{5, 1, 0, 0, 0}, fragmentationOf(s))
+		})
+	}
+}
+
+func TestAllowLeftoversWarnsWithTheGPUsSubtracted(t *testing.T) {
+	fastPoll(t)
+	logs := captureLog(t)
+	// 8 GPUs held on n1, the only node left at the end, and 2 on n2, which is gone by then: only
+	// the 8 are subtracted.
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"), gpuNode("n2", "8"),
+		leftoverPod("team", "train-0", corev1.PodRunning, "8", "n1"),
+		leftoverPod("team", "train-1", corev1.PodRunning, "2", "n2"))
+	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+	require.NoError(t, err)
+	require.NoError(t, client.CoreV1().Nodes().Delete(context.Background(), "n2", metav1.DeleteOptions{}))
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+	require.Equal(t, 0.0, readSummary(t, dir).GPUCapacity)
+	require.Contains(t, logs.String(), "Results: GPU capacity is 0 after subtracting the 8 GPUs that pods from before the run hold; "+
+		"gpu_utilization and idle_waiting_gpu_hours read 0\n")
 }
 
 func TestAllowLeftoversPushesPerNodeFragmentation(t *testing.T) {
