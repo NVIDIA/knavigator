@@ -315,6 +315,43 @@ func TestSubmitTraceFile(t *testing.T) {
 	require.Equal(t, "60.000s", got[2]["runtime"])
 }
 
+func shapedClass(jobs int) traceClass {
+	c := traceClass{Name: "t", Jobs: jobs, GPUs: []int{1}}
+	c.Runtime.Mu, c.Runtime.Max = 1, 100
+	return c
+}
+
+func TestGenerateTraceAccountSet(t *testing.T) {
+	c := shapedClass(1000)
+	c.AccountSet.Prefix, c.AccountSet.Count, c.AccountSet.MinJobs = "tenant-", 20, 5
+	c.AccountSet.Distribution.Type, c.AccountSet.Distribution.Mu, c.AccountSet.Distribution.Sigma = "lognormal", 1.5, 0.8
+	require.NoError(t, c.validateLoad())
+
+	counts := map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Len(t, counts, 20)
+	total := 0
+	for name, n := range counts {
+		require.GreaterOrEqual(t, n, 5, name)
+		total += n
+	}
+	require.Equal(t, 1000, total)
+	require.Greater(t, counts["tenant-04"], counts["tenant-20"], "the mode is near account 4, the tail is thin")
+
+	c.AccountSet.Distribution.Type = "uniform"
+	counts = map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Equal(t, 50, counts["tenant-01"])
+	require.Equal(t, 50, counts["tenant-20"])
+
+	c.Jobs = 99
+	require.Error(t, c.validateLoad(), "99 jobs cannot give 20 accounts 5 each")
+}
+
 func TestSubmitTraceContinuous(t *testing.T) {
 	task := &SubmitTraceTask{BaseTask: BaseTask{taskType: TaskSubmitTrace, taskID: "trace"}}
 	require.NoError(t, task.validate(map[string]interface{}{
@@ -322,6 +359,7 @@ func TestSubmitTraceContinuous(t *testing.T) {
 		"speedup":   100,
 		"classes": []interface{}{map[string]interface{}{
 			"name": "steady", "jobs": -1, "arrivalInterval": 1, "gpus": []int{1}, "runtime": map[string]interface{}{"max": 10},
+			"accountSet": map[string]interface{}{"prefix": "a-", "count": 3},
 		}},
 	}))
 	var n atomic.Int32

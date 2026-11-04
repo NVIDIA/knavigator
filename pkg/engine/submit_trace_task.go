@@ -93,6 +93,25 @@ type traceClass struct {
 	GangGPUs   int             `yaml:"gangGpus"`
 	Priorities []int           `yaml:"priorities"`
 	Accounts   []weightedValue `yaml:"accounts"`
+	// AccountSet: generated accounts that share the jobs by a distribution; replaces Accounts
+	AccountSet accountSet `yaml:"accountSet"`
+}
+
+// accountSet names Count accounts Prefix1..PrefixN, zero-padded, and splits a class's jobs over them.
+type accountSet struct {
+	Prefix string `yaml:"prefix"`
+	Count  int    `yaml:"count"`
+	// MinJobs: every account gets at least this many jobs before the rest are spread
+	MinJobs      int `yaml:"minJobs"`
+	Distribution struct {
+		// Type: uniform (default), lognormal (mu, sigma over the account number) or gaussian
+		// (mean, stddev as account numbers; default the middle account and a sixth of the count)
+		Type   string  `yaml:"type"`
+		Mu     float64 `yaml:"mu"`
+		Sigma  float64 `yaml:"sigma"`
+		Mean   float64 `yaml:"mean"`
+		Stddev float64 `yaml:"stddev"`
+	} `yaml:"distribution"`
 }
 
 type weightedValue struct {
@@ -172,6 +191,9 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 		if c.ArrivalInterval < 0 || c.Start < 0 {
 			return fmt.Errorf("%s: class %q has a negative arrivalInterval or start", task.ID(), c.Name)
 		}
+		if err := c.validateLoad(); err != nil {
+			return fmt.Errorf("%s: class %q: %v", task.ID(), c.Name, err)
+		}
 		if c.GangFraction > 0 && len(c.GangSizes) == 0 {
 			return fmt.Errorf("%s: class %q has gangFraction but no gangSizes", task.ID(), c.Name)
 		}
@@ -187,18 +209,120 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 
 func (c traceClass) continuous() bool { return c.Jobs < 0 }
 
+func (c traceClass) validateLoad() error {
+	set := c.AccountSet
+	if set.Count < 0 || set.MinJobs < 0 {
+		return fmt.Errorf("accountSet count and minJobs must not be negative")
+	}
+	if set.Count > 0 {
+		if len(c.Accounts) != 0 {
+			return fmt.Errorf("use accounts or accountSet, not both")
+		}
+		if !c.continuous() && c.Jobs < set.Count*set.MinJobs {
+			return fmt.Errorf("%d jobs cannot give %d accounts %d jobs each", c.Jobs, set.Count, set.MinJobs)
+		}
+		if c.continuous() && set.MinJobs > 0 {
+			return fmt.Errorf("accountSet minJobs needs a fixed number of jobs")
+		}
+		switch t := set.Distribution.Type; t {
+		case "", "uniform", "gaussian":
+		case "lognormal":
+			if set.Distribution.Sigma <= 0 {
+				return fmt.Errorf("lognormal distribution needs a positive sigma")
+			}
+		default:
+			return fmt.Errorf("unknown distribution %q", t)
+		}
+	}
+	return nil
+}
+
+// accountWeights gives each account's share, by account number 1..Count.
+func (s accountSet) weights() []float64 {
+	w := make([]float64, s.Count)
+	d := s.Distribution
+	mean, std := d.Mean, d.Stddev
+	if mean == 0 {
+		mean = float64(s.Count+1) / 2
+	}
+	if std == 0 {
+		std = float64(s.Count) / 6
+	}
+	for i := range w {
+		k := float64(i + 1)
+		switch d.Type {
+		case "lognormal":
+			z := (math.Log(k) - d.Mu) / d.Sigma
+			w[i] = math.Exp(-z*z/2) / k
+		case "gaussian":
+			z := (k - mean) / std
+			w[i] = math.Exp(-z * z / 2)
+		default:
+			w[i] = 1
+		}
+	}
+	return w
+}
+
+func (s accountSet) names() []string {
+	width := len(strconv.Itoa(s.Count))
+	names := make([]string, s.Count)
+	for i := range names {
+		names[i] = fmt.Sprintf("%s%0*d", s.Prefix, width, i+1)
+	}
+	return names
+}
+
+// split shares jobs over the accounts: MinJobs each, the rest by weight. Rounding the running
+// total keeps the counts summing to jobs.
+func (s accountSet) split(jobs int) []int {
+	w := s.weights()
+	var total float64
+	for _, v := range w {
+		total += v
+	}
+	rest := float64(jobs - s.Count*s.MinJobs)
+	counts := make([]int, s.Count)
+	var cum float64
+	prev := 0
+	for i := range counts {
+		cum += w[i]
+		cur := int(math.Round(rest * cum / total))
+		counts[i], prev = s.MinJobs+cur-prev, cur
+	}
+	return counts
+}
+
 // classGen yields one class's jobs in arrival order, from its own random stream.
 type classGen struct {
-	c    traceClass
-	rng  *rand.Rand
-	k    int
-	now  float64
-	pool []weightedValue
-	head *traceJob
+	c        traceClass
+	rng      *rand.Rand
+	k        int
+	now      float64
+	accounts []string // exact per-job accounts for a fixed-size accountSet, in shuffled order
+	pool     []weightedValue
+	head     *traceJob
 }
 
 func newClassGen(c traceClass, seed uint64, stream int) *classGen {
-	g := &classGen{c: c, rng: rand.New(rand.NewPCG(seed, uint64(stream))), now: c.Start, pool: c.Accounts}
+	g := &classGen{c: c, rng: rand.New(rand.NewPCG(seed, uint64(stream))), now: c.Start}
+	if set := c.AccountSet; set.Count > 0 {
+		names := set.names()
+		if c.continuous() {
+			for i, w := range set.weights() {
+				g.pool = append(g.pool, weightedValue{Name: names[i], Weight: w})
+			}
+		} else {
+			for i, n := range set.split(c.Jobs) {
+				for range n {
+					g.accounts = append(g.accounts, names[i])
+				}
+			}
+			g.rng.Shuffle(len(g.accounts), func(a, b int) { g.accounts[a], g.accounts[b] = g.accounts[b], g.accounts[a] })
+		}
+	} else {
+		g.pool = c.Accounts
+	}
 	g.advance()
 	return g
 }
@@ -233,7 +357,11 @@ func (g *classGen) advance() {
 	if len(c.Priorities) != 0 {
 		job.Priority = c.Priorities[g.rng.IntN(len(c.Priorities))]
 	}
-	job.Account = pickWeighted(g.rng, g.pool)
+	if g.accounts != nil {
+		job.Account = g.accounts[k]
+	} else {
+		job.Account = pickWeighted(g.rng, g.pool)
+	}
 	g.head = &job
 }
 
