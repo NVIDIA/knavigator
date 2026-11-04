@@ -168,8 +168,8 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: must specify classes or file", task.ID())
 	}
 	for _, c := range task.Classes {
-		if c.Jobs <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
-			return fmt.Errorf("%s: class %q needs positive jobs and runtime.max, and gpus", task.ID(), c.Name)
+		if c.Jobs == 0 || c.Jobs < -1 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
+			return fmt.Errorf("%s: class %q needs jobs (-1 runs until stopped), positive runtime.max, and gpus", task.ID(), c.Name)
 		}
 		if c.ArrivalInterval < 0 || c.Start < 0 {
 			return fmt.Errorf("%s: class %q has a negative arrivalInterval or start", task.ID(), c.Name)
@@ -187,44 +187,99 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 	return nil
 }
 
-// generateTrace draws each class from its own random stream and merges them by arrival time.
-func generateTrace(classes []traceClass, seed uint64) []traceJob {
-	var jobs []traceJob
+func (c traceClass) continuous() bool { return c.Jobs < 0 }
+
+// classGen yields one class's jobs in arrival order, from its own random stream.
+type classGen struct {
+	c    traceClass
+	rng  *rand.Rand
+	k    int
+	now  float64
+	pool []weightedValue
+	head *traceJob
+}
+
+func newClassGen(c traceClass, seed uint64, stream int) *classGen {
+	g := &classGen{c: c, rng: rand.New(rand.NewPCG(seed, uint64(stream))), now: c.Start, pool: c.Accounts}
+	g.advance()
+	return g
+}
+
+// advance draws the next job into head, or leaves it nil once the class is done.
+func (g *classGen) advance() {
+	c, k := g.c, g.k
+	if !c.continuous() && k >= c.Jobs {
+		g.head = nil
+		return
+	}
+	g.k++
+	switch {
+	case c.Regular:
+		g.now = c.Start + float64(k)*c.ArrivalInterval
+	default:
+		g.now += g.rng.ExpFloat64() * c.ArrivalInterval
+	}
+	job := traceJob{
+		Class:    c.Name,
+		Submit:   g.now,
+		Runtime:  math.Min(math.Exp(c.Runtime.Mu+c.Runtime.Sigma*g.rng.NormFloat64()), c.Runtime.Max),
+		GPUs:     c.GPUs[g.rng.IntN(len(c.GPUs))],
+		GangSize: 1,
+	}
+	if g.rng.Float64() < c.GangFraction {
+		job.GangSize = c.GangSizes[g.rng.IntN(len(c.GangSizes))]
+	}
+	if job.GangSize > 1 && c.GangGPUs > 0 {
+		job.GPUs = c.GangGPUs
+	}
+	if len(c.Priorities) != 0 {
+		job.Priority = c.Priorities[g.rng.IntN(len(c.Priorities))]
+	}
+	job.Account = pickWeighted(g.rng, g.pool)
+	g.head = &job
+}
+
+// traceStream merges the classes by arrival time; ties go to the earlier class.
+type traceStream struct {
+	gens []*classGen
+	id   int
+}
+
+func newTraceStream(classes []traceClass, seed uint64) *traceStream {
+	s := &traceStream{}
 	for i, c := range classes {
-		rng := rand.New(rand.NewPCG(seed, uint64(i)))
-		now := c.Start
-		for k := range c.Jobs {
-			if c.Regular {
-				now = c.Start + float64(k)*c.ArrivalInterval
-			} else {
-				now += rng.ExpFloat64() * c.ArrivalInterval
-			}
-			job := traceJob{
-				Class:    c.Name,
-				Submit:   now,
-				Runtime:  math.Min(math.Exp(c.Runtime.Mu+c.Runtime.Sigma*rng.NormFloat64()), c.Runtime.Max),
-				GPUs:     c.GPUs[rng.IntN(len(c.GPUs))],
-				GangSize: 1,
-			}
-			if rng.Float64() < c.GangFraction {
-				job.GangSize = c.GangSizes[rng.IntN(len(c.GangSizes))]
-			}
-			if job.GangSize > 1 && c.GangGPUs > 0 {
-				job.GPUs = c.GangGPUs
-			}
-			if len(c.Priorities) != 0 {
-				job.Priority = c.Priorities[rng.IntN(len(c.Priorities))]
-			}
-			job.Account = pickWeighted(rng, c.Accounts)
-			jobs = append(jobs, job)
+		s.gens = append(s.gens, newClassGen(c, seed, i))
+	}
+	return s
+}
+
+func (s *traceStream) next() (traceJob, bool) {
+	var best *classGen
+	for _, g := range s.gens {
+		if g.head != nil && (best == nil || g.head.Submit < best.head.Submit) {
+			best = g
 		}
 	}
-
-	sort.SliceStable(jobs, func(a, b int) bool { return jobs[a].Submit < jobs[b].Submit })
-	for i := range jobs {
-		jobs[i].ID = i + 1
+	if best == nil {
+		return traceJob{}, false
 	}
-	return jobs
+	job := *best.head
+	best.advance()
+	s.id++
+	job.ID = s.id
+	return job, true
+}
+
+// generateTrace draws every job of fixed-size classes up front.
+func generateTrace(classes []traceClass, seed uint64) []traceJob {
+	var jobs []traceJob
+	for s := newTraceStream(classes, seed); ; {
+		job, ok := s.next()
+		if !ok {
+			return jobs
+		}
+		jobs = append(jobs, job)
+	}
 }
 
 // traceDigest is a short fingerprint of a trace's jobs, so results can show whether two runs
@@ -337,12 +392,16 @@ func pickWeighted(rng *rand.Rand, values []weightedValue) string {
 
 // Exec implements Runnable interface
 func (task *SubmitTraceTask) Exec(ctx context.Context) error {
-	jobs := task.trace
-	if jobs == nil {
-		jobs = generateTrace(task.Classes, task.Seed)
+	next, jobs := task.source()
+	continuous := jobs == nil
+	// An open-ended trace has no fixed job list to fingerprint.
+	digest := ""
+	if continuous {
+		log.Infof("%s: submitting jobs at %gx speed until stopped", task.ID(), task.Speedup)
+	} else {
+		digest = traceDigest(jobs)
+		log.Infof("%s: submitting %d jobs of trace %s at %gx speed", task.ID(), len(jobs), digest, task.Speedup)
 	}
-	digest := traceDigest(jobs)
-	log.Infof("%s: submitting %d jobs of trace %s at %gx speed", task.ID(), len(jobs), digest, task.Speedup)
 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -354,7 +413,11 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 
 	// Submissions run in their own goroutines so API latency cannot delay later arrivals.
 	start := time.Now()
-	for i, job := range jobs {
+	for i := 0; ; i++ {
+		job, ok := next()
+		if !ok {
+			break
+		}
 		at := start.Add(time.Duration(job.Submit / task.Speedup * float64(time.Second)))
 		select {
 		case <-subCtx.Done():
@@ -374,7 +437,7 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 			}
 		}(job.ID, params)
 		if (i+1)%100 == 0 {
-			log.Infof("%s: dispatched %d/%d jobs", task.ID(), i+1, len(jobs))
+			log.Infof("%s: dispatched %d jobs", task.ID(), i+1)
 		}
 	}
 	wg.Wait()
@@ -382,7 +445,32 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 	if firstErr != nil {
 		return firstErr
 	}
+	// Stopping an open-ended run is how it ends, so the caller can still write results.
+	if continuous {
+		return nil
+	}
 	return ctx.Err()
+}
+
+// source returns the jobs in arrival order, and the whole trace unless a class never runs out.
+func (task *SubmitTraceTask) source() (next func() (traceJob, bool), jobs []traceJob) {
+	jobs = task.trace
+	if jobs == nil {
+		for _, c := range task.Classes {
+			if c.continuous() {
+				return newTraceStream(task.Classes, task.Seed).next, nil
+			}
+		}
+		jobs = generateTrace(task.Classes, task.Seed)
+	}
+	i := 0
+	return func() (traceJob, bool) {
+		if i == len(jobs) {
+			return traceJob{}, false
+		}
+		i++
+		return jobs[i-1], true
+	}, jobs
 }
 
 func (task *SubmitTraceTask) jobParams(job traceJob) map[string]interface{} {

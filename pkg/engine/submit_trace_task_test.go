@@ -139,7 +139,7 @@ func TestNewSubmitTraceTask(t *testing.T) {
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes":   []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "arrivalInterval": 1, "gpus": []int{1}}},
-	}), `SubmitTrace/trace: class "a" needs positive jobs and runtime.max, and gpus`)
+	}), `SubmitTrace/trace: class "a" needs jobs (-1 runs until stopped), positive runtime.max, and gpus`)
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes": []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "start": -1,
@@ -353,4 +353,22 @@ func TestSubmitTraceFile(t *testing.T) {
 	later, err := readTrace(writeTrace(t, traceHeader+"2,research,1700000000.200,120,8,2,100\n1,trading,1700000000,60,1,1,0\n"))
 	require.NoError(t, err)
 	require.Equal(t, got[1]["traceDigest"], traceDigest(later))
+}
+
+func TestSubmitTraceContinuous(t *testing.T) {
+	task := &SubmitTraceTask{BaseTask: BaseTask{taskType: TaskSubmitTrace, taskID: "trace"}}
+	require.NoError(t, task.validate(map[string]interface{}{
+		"refTaskId": "job",
+		"speedup":   100,
+		"classes": []interface{}{map[string]interface{}{
+			"name": "steady", "jobs": -1, "arrivalInterval": 1, "gpus": []int{1}, "runtime": map[string]interface{}{"max": 10},
+		}},
+	}))
+	var n atomic.Int32
+	task.submitJob = func(context.Context, int, map[string]interface{}) error { n.Add(1); return nil }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	require.NoError(t, task.Exec(ctx), "stopping an open-ended run is not an error")
+	require.Greater(t, n.Load(), int32(5))
 }
