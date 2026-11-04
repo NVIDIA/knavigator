@@ -93,6 +93,37 @@ type traceClass struct {
 	GangGPUs   int             `yaml:"gangGpus"`
 	Priorities []int           `yaml:"priorities"`
 	Accounts   []weightedValue `yaml:"accounts"`
+	// AccountSet: generated accounts that share the jobs by a distribution; replaces Accounts
+	AccountSet accountSet `yaml:"accountSet"`
+	// Arrival: spreads the jobs over Duration seconds from Start instead of ArrivalInterval
+	Arrival arrival `yaml:"arrival"`
+}
+
+// accountSet names Count accounts Prefix1..PrefixN, zero-padded, and splits a class's jobs over them.
+type accountSet struct {
+	Prefix string `yaml:"prefix"`
+	Count  int    `yaml:"count"`
+	// MinJobs: every account gets at least this many jobs before the rest are spread
+	MinJobs      int `yaml:"minJobs"`
+	Distribution struct {
+		// Type: uniform (default), lognormal (mu, sigma over the account number) or gaussian
+		// (mean, stddev as account numbers; default the middle account and a sixth of the count)
+		Type   string  `yaml:"type"`
+		Mu     float64 `yaml:"mu"`
+		Sigma  float64 `yaml:"sigma"`
+		Mean   float64 `yaml:"mean"`
+		Stddev float64 `yaml:"stddev"`
+	} `yaml:"distribution"`
+}
+
+// arrival places a class's jobs at random times over a window, all in seconds.
+type arrival struct {
+	// Shape: uniform (constant rate) or gaussian (ramps up, peaks, ramps down)
+	Shape    string  `yaml:"shape"`
+	Duration float64 `yaml:"duration"`
+	// Mean, Stddev: gaussian only; default the middle of Duration and a sixth of it
+	Mean   float64 `yaml:"mean"`
+	Stddev float64 `yaml:"stddev"`
 }
 
 type weightedValue struct {
@@ -166,11 +197,14 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: must specify classes or file", task.ID())
 	}
 	for _, c := range task.Classes {
-		if c.Jobs <= 0 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
-			return fmt.Errorf("%s: class %q needs positive jobs and runtime.max, and gpus", task.ID(), c.Name)
+		if c.Jobs == 0 || c.Jobs < -1 || c.Runtime.Max <= 0 || c.Runtime.Sigma < 0 || len(c.GPUs) == 0 {
+			return fmt.Errorf("%s: class %q needs jobs (-1 runs until stopped), positive runtime.max, and gpus", task.ID(), c.Name)
 		}
 		if c.ArrivalInterval < 0 || c.Start < 0 {
 			return fmt.Errorf("%s: class %q has a negative arrivalInterval or start", task.ID(), c.Name)
+		}
+		if err := c.validateLoad(); err != nil {
+			return fmt.Errorf("%s: class %q: %v", task.ID(), c.Name, err)
 		}
 		if c.GangFraction > 0 && len(c.GangSizes) == 0 {
 			return fmt.Errorf("%s: class %q has gangFraction but no gangSizes", task.ID(), c.Name)
@@ -185,44 +219,249 @@ func (task *SubmitTraceTask) validate(params map[string]interface{}) error {
 	return nil
 }
 
-// generateTrace draws each class from its own random stream and merges them by arrival time.
-func generateTrace(classes []traceClass, seed uint64) []traceJob {
-	var jobs []traceJob
-	for i, c := range classes {
-		rng := rand.New(rand.NewPCG(seed, uint64(i)))
-		now := c.Start
-		for k := range c.Jobs {
-			if c.Regular {
-				now = c.Start + float64(k)*c.ArrivalInterval
-			} else {
-				now += rng.ExpFloat64() * c.ArrivalInterval
+func (c traceClass) continuous() bool { return c.Jobs < 0 }
+
+func (c traceClass) validateLoad() error {
+	set, arr := c.AccountSet, c.Arrival
+	if set.Count < 0 || set.MinJobs < 0 {
+		return fmt.Errorf("accountSet count and minJobs must not be negative")
+	}
+	if set.Count > 0 {
+		if len(c.Accounts) != 0 {
+			return fmt.Errorf("use accounts or accountSet, not both")
+		}
+		if !c.continuous() && c.Jobs < set.Count*set.MinJobs {
+			return fmt.Errorf("%d jobs cannot give %d accounts %d jobs each", c.Jobs, set.Count, set.MinJobs)
+		}
+		if c.continuous() && set.MinJobs > 0 {
+			return fmt.Errorf("accountSet minJobs needs a fixed number of jobs")
+		}
+		switch t := set.Distribution.Type; t {
+		case "", "uniform", "gaussian":
+		case "lognormal":
+			if set.Distribution.Sigma <= 0 {
+				return fmt.Errorf("lognormal distribution needs a positive sigma")
 			}
-			job := traceJob{
-				Class:    c.Name,
-				Submit:   now,
-				Runtime:  math.Min(math.Exp(c.Runtime.Mu+c.Runtime.Sigma*rng.NormFloat64()), c.Runtime.Max),
-				GPUs:     c.GPUs[rng.IntN(len(c.GPUs))],
-				GangSize: 1,
-			}
-			if rng.Float64() < c.GangFraction {
-				job.GangSize = c.GangSizes[rng.IntN(len(c.GangSizes))]
-			}
-			if job.GangSize > 1 && c.GangGPUs > 0 {
-				job.GPUs = c.GangGPUs
-			}
-			if len(c.Priorities) != 0 {
-				job.Priority = c.Priorities[rng.IntN(len(c.Priorities))]
-			}
-			job.Account = pickWeighted(rng, c.Accounts)
-			jobs = append(jobs, job)
+		default:
+			return fmt.Errorf("unknown distribution %q", t)
 		}
 	}
-
-	sort.SliceStable(jobs, func(a, b int) bool { return jobs[a].Submit < jobs[b].Submit })
-	for i := range jobs {
-		jobs[i].ID = i + 1
+	if arr.Shape == "" {
+		return nil
 	}
-	return jobs
+	if c.continuous() || c.Regular || c.ArrivalInterval != 0 {
+		return fmt.Errorf("arrival needs a fixed number of jobs and no arrivalInterval or regular")
+	}
+	if arr.Shape != "uniform" && arr.Shape != "gaussian" {
+		return fmt.Errorf("unknown arrival shape %q", arr.Shape)
+	}
+	if arr.Duration <= 0 || arr.Stddev < 0 {
+		return fmt.Errorf("arrival needs a positive duration")
+	}
+	return nil
+}
+
+// accountWeights gives each account's share, by account number 1..Count.
+func (s accountSet) weights() []float64 {
+	w := make([]float64, s.Count)
+	d := s.Distribution
+	mean, std := d.Mean, d.Stddev
+	if mean == 0 {
+		mean = float64(s.Count+1) / 2
+	}
+	if std == 0 {
+		std = float64(s.Count) / 6
+	}
+	for i := range w {
+		k := float64(i + 1)
+		switch d.Type {
+		case "lognormal":
+			z := (math.Log(k) - d.Mu) / d.Sigma
+			w[i] = math.Exp(-z*z/2) / k
+		case "gaussian":
+			z := (k - mean) / std
+			w[i] = math.Exp(-z * z / 2)
+		default:
+			w[i] = 1
+		}
+	}
+	return w
+}
+
+func (s accountSet) names() []string {
+	width := len(strconv.Itoa(s.Count))
+	names := make([]string, s.Count)
+	for i := range names {
+		names[i] = fmt.Sprintf("%s%0*d", s.Prefix, width, i+1)
+	}
+	return names
+}
+
+// split shares jobs over the accounts: MinJobs each, the rest by weight. Rounding the running
+// total keeps the counts summing to jobs.
+func (s accountSet) split(jobs int) []int {
+	w := s.weights()
+	var total float64
+	for _, v := range w {
+		total += v
+	}
+	rest := float64(jobs - s.Count*s.MinJobs)
+	counts := make([]int, s.Count)
+	var cum float64
+	prev := 0
+	for i := range counts {
+		cum += w[i]
+		cur := int(math.Round(rest * cum / total))
+		counts[i], prev = s.MinJobs+cur-prev, cur
+	}
+	return counts
+}
+
+// times draws n sorted arrival offsets over the window; gaussian draws outside it are redrawn.
+func (a arrival) times(rng *rand.Rand, n int) []float64 {
+	t := make([]float64, n)
+	mean, std := a.Mean, a.Stddev
+	if mean == 0 {
+		mean = a.Duration / 2
+	}
+	if std == 0 {
+		std = a.Duration / 6
+	}
+	for i := range t {
+		if a.Shape == "uniform" {
+			t[i] = rng.Float64() * a.Duration
+			continue
+		}
+		// A narrow gaussian far from the window could redraw forever, so clamp after 100 tries.
+		x := mean + std*rng.NormFloat64()
+		for try := 0; (x < 0 || x > a.Duration) && try < 100; try++ {
+			x = mean + std*rng.NormFloat64()
+		}
+		t[i] = math.Min(math.Max(x, 0), a.Duration)
+	}
+	sort.Float64s(t)
+	return t
+}
+
+// classGen yields one class's jobs in arrival order, from its own random stream.
+type classGen struct {
+	c        traceClass
+	rng      *rand.Rand
+	k        int
+	now      float64
+	times    []float64 // set when Arrival is shaped
+	accounts []string  // exact per-job accounts for a fixed-size accountSet, in shuffled order
+	pool     []weightedValue
+	head     *traceJob
+}
+
+func newClassGen(c traceClass, seed uint64, stream int) *classGen {
+	g := &classGen{c: c, rng: rand.New(rand.NewPCG(seed, uint64(stream))), now: c.Start}
+	if c.Arrival.Shape != "" {
+		g.times = c.Arrival.times(g.rng, c.Jobs)
+	}
+	if set := c.AccountSet; set.Count > 0 {
+		names := set.names()
+		if c.continuous() {
+			for i, w := range set.weights() {
+				g.pool = append(g.pool, weightedValue{Name: names[i], Weight: w})
+			}
+		} else {
+			for i, n := range set.split(c.Jobs) {
+				for range n {
+					g.accounts = append(g.accounts, names[i])
+				}
+			}
+			g.rng.Shuffle(len(g.accounts), func(a, b int) { g.accounts[a], g.accounts[b] = g.accounts[b], g.accounts[a] })
+		}
+	} else {
+		g.pool = c.Accounts
+	}
+	g.advance()
+	return g
+}
+
+// advance draws the next job into head, or leaves it nil once the class is done.
+func (g *classGen) advance() {
+	c, k := g.c, g.k
+	if !c.continuous() && k >= c.Jobs {
+		g.head = nil
+		return
+	}
+	g.k++
+	switch {
+	case g.times != nil:
+		g.now = c.Start + g.times[k]
+	case c.Regular:
+		g.now = c.Start + float64(k)*c.ArrivalInterval
+	default:
+		g.now += g.rng.ExpFloat64() * c.ArrivalInterval
+	}
+	job := traceJob{
+		Class:    c.Name,
+		Submit:   g.now,
+		Runtime:  math.Min(math.Exp(c.Runtime.Mu+c.Runtime.Sigma*g.rng.NormFloat64()), c.Runtime.Max),
+		GPUs:     c.GPUs[g.rng.IntN(len(c.GPUs))],
+		GangSize: 1,
+	}
+	if g.rng.Float64() < c.GangFraction {
+		job.GangSize = c.GangSizes[g.rng.IntN(len(c.GangSizes))]
+	}
+	if job.GangSize > 1 && c.GangGPUs > 0 {
+		job.GPUs = c.GangGPUs
+	}
+	if len(c.Priorities) != 0 {
+		job.Priority = c.Priorities[g.rng.IntN(len(c.Priorities))]
+	}
+	if g.accounts != nil {
+		job.Account = g.accounts[k]
+	} else {
+		job.Account = pickWeighted(g.rng, g.pool)
+	}
+	g.head = &job
+}
+
+// traceStream merges the classes by arrival time; ties go to the earlier class.
+type traceStream struct {
+	gens []*classGen
+	id   int
+}
+
+func newTraceStream(classes []traceClass, seed uint64) *traceStream {
+	s := &traceStream{}
+	for i, c := range classes {
+		s.gens = append(s.gens, newClassGen(c, seed, i))
+	}
+	return s
+}
+
+func (s *traceStream) next() (traceJob, bool) {
+	var best *classGen
+	for _, g := range s.gens {
+		if g.head != nil && (best == nil || g.head.Submit < best.head.Submit) {
+			best = g
+		}
+	}
+	if best == nil {
+		return traceJob{}, false
+	}
+	job := *best.head
+	best.advance()
+	s.id++
+	job.ID = s.id
+	return job, true
+}
+
+// generateTrace draws every job of fixed-size classes up front.
+func generateTrace(classes []traceClass, seed uint64) []traceJob {
+	var jobs []traceJob
+	for s := newTraceStream(classes, seed); ; {
+		job, ok := s.next()
+		if !ok {
+			return jobs
+		}
+		jobs = append(jobs, job)
+	}
 }
 
 // traceColumns is the header of a CSV trace.
@@ -324,11 +563,12 @@ func pickWeighted(rng *rand.Rand, values []weightedValue) string {
 
 // Exec implements Runnable interface
 func (task *SubmitTraceTask) Exec(ctx context.Context) error {
-	jobs := task.trace
-	if jobs == nil {
-		jobs = generateTrace(task.Classes, task.Seed)
+	next, total, continuous := task.source()
+	if continuous {
+		log.Infof("%s: submitting jobs at %gx speed until stopped", task.ID(), task.Speedup)
+	} else {
+		log.Infof("%s: submitting %d jobs at %gx speed", task.ID(), total, task.Speedup)
 	}
-	log.Infof("%s: submitting %d jobs at %gx speed", task.ID(), len(jobs), task.Speedup)
 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -340,7 +580,11 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 
 	// Submissions run in their own goroutines so API latency cannot delay later arrivals.
 	start := time.Now()
-	for i, job := range jobs {
+	for i := 0; ; i++ {
+		job, ok := next()
+		if !ok {
+			break
+		}
 		at := start.Add(time.Duration(job.Submit / task.Speedup * float64(time.Second)))
 		select {
 		case <-subCtx.Done():
@@ -358,7 +602,7 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 			}
 		}(job.ID, task.jobParams(job))
 		if (i+1)%100 == 0 {
-			log.Infof("%s: dispatched %d/%d jobs", task.ID(), i+1, len(jobs))
+			log.Infof("%s: dispatched %d jobs", task.ID(), i+1)
 		}
 	}
 	wg.Wait()
@@ -366,7 +610,30 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 	if firstErr != nil {
 		return firstErr
 	}
+	// Stopping an open-ended run is how it ends, so the caller can still write results.
+	if continuous {
+		return nil
+	}
 	return ctx.Err()
+}
+
+// source returns the jobs in arrival order; continuous is true when a class never runs out.
+func (task *SubmitTraceTask) source() (next func() (traceJob, bool), total int, continuous bool) {
+	if task.trace != nil {
+		i := 0
+		return func() (traceJob, bool) {
+			if i == len(task.trace) {
+				return traceJob{}, false
+			}
+			i++
+			return task.trace[i-1], true
+		}, len(task.trace), false
+	}
+	for _, c := range task.Classes {
+		continuous = continuous || c.continuous()
+		total += c.Jobs
+	}
+	return newTraceStream(task.Classes, task.Seed).next, total, continuous
 }
 
 func (task *SubmitTraceTask) jobParams(job traceJob) map[string]interface{} {

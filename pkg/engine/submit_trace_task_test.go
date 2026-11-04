@@ -106,7 +106,7 @@ func TestNewSubmitTraceTask(t *testing.T) {
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes":   []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "arrivalInterval": 1, "gpus": []int{1}}},
-	}), `SubmitTrace/trace: class "a" needs positive jobs and runtime.max, and gpus`)
+	}), `SubmitTrace/trace: class "a" needs jobs (-1 runs until stopped), positive runtime.max, and gpus`)
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes": []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "start": -1,
@@ -313,4 +313,90 @@ func TestSubmitTraceFile(t *testing.T) {
 	require.Equal(t, 2, got[2]["gangSize"])
 	require.Equal(t, 100, got[2]["priority"])
 	require.Equal(t, "60.000s", got[2]["runtime"])
+}
+
+func shapedClass(jobs int) traceClass {
+	c := traceClass{Name: "t", Jobs: jobs, GPUs: []int{1}}
+	c.Runtime.Mu, c.Runtime.Max = 1, 100
+	return c
+}
+
+func TestGenerateTraceAccountSet(t *testing.T) {
+	c := shapedClass(1000)
+	c.AccountSet.Prefix, c.AccountSet.Count, c.AccountSet.MinJobs = "tenant-", 20, 5
+	c.AccountSet.Distribution.Type, c.AccountSet.Distribution.Mu, c.AccountSet.Distribution.Sigma = "lognormal", 1.5, 0.8
+	require.NoError(t, c.validateLoad())
+
+	counts := map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Len(t, counts, 20)
+	total := 0
+	for name, n := range counts {
+		require.GreaterOrEqual(t, n, 5, name)
+		total += n
+	}
+	require.Equal(t, 1000, total)
+	require.Greater(t, counts["tenant-04"], counts["tenant-20"], "the mode is near account 4, the tail is thin")
+
+	c.AccountSet.Distribution.Type = "uniform"
+	counts = map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Equal(t, 50, counts["tenant-01"])
+	require.Equal(t, 50, counts["tenant-20"])
+
+	c.Jobs = 99
+	require.Error(t, c.validateLoad(), "99 jobs cannot give 20 accounts 5 each")
+}
+
+func TestGenerateTraceArrivalShape(t *testing.T) {
+	c := shapedClass(2000)
+	c.Start = 100
+	c.Arrival.Shape, c.Arrival.Duration = "gaussian", 600
+	require.NoError(t, c.validateLoad())
+
+	middle := 0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		require.GreaterOrEqual(t, j.Submit, 100.0)
+		require.LessOrEqual(t, j.Submit, 700.0)
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+	}
+	// A third of the window around the mean holds about 68% of a gaussian, 33% of a uniform.
+	require.Greater(t, middle, 1100)
+
+	c.Arrival.Shape = "uniform"
+	middle = 0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+	}
+	require.InDelta(t, 667, middle, 100)
+
+	c.ArrivalInterval = 5
+	require.Error(t, c.validateLoad(), "arrival and arrivalInterval conflict")
+}
+
+func TestSubmitTraceContinuous(t *testing.T) {
+	task := &SubmitTraceTask{BaseTask: BaseTask{taskType: TaskSubmitTrace, taskID: "trace"}}
+	require.NoError(t, task.validate(map[string]interface{}{
+		"refTaskId": "job",
+		"speedup":   100,
+		"classes": []interface{}{map[string]interface{}{
+			"name": "steady", "jobs": -1, "arrivalInterval": 1, "gpus": []int{1}, "runtime": map[string]interface{}{"max": 10},
+			"accountSet": map[string]interface{}{"prefix": "a-", "count": 3},
+		}},
+	}))
+	var n atomic.Int32
+	task.submitJob = func(context.Context, int, map[string]interface{}) error { n.Add(1); return nil }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	require.NoError(t, task.Exec(ctx), "stopping an open-ended run is not an error")
+	require.Greater(t, n.Load(), int32(5))
 }

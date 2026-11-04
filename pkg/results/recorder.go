@@ -109,20 +109,59 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
-		nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
-		if err != nil {
-			return Summary{}, err
-		}
-		floor := DefaultBSLDFloor
-		if speedup > 1 {
-			floor = time.Duration(float64(floor) / speedup)
-		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
-		if speedup > 1 {
-			s.ScaleTime(speedup)
-		}
-		return s, nil
+		return r.partial(ctx, pods, jobs(), speedup)
 	}, interval)
+}
+
+// partial summarizes the run so far, in simulated time.
+func (r *Recorder) partial(ctx context.Context, pods []Pod, jobs []Job, speedup float64) (Summary, error) {
+	nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
+	if err != nil {
+		return Summary{}, err
+	}
+	floor := DefaultBSLDFloor
+	if speedup > 1 {
+		floor = time.Duration(float64(floor) / speedup)
+	}
+	s := Summarize(pods, jobs, capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
+	if speedup > 1 {
+		s.ScaleTime(speedup)
+	}
+	return s, nil
+}
+
+// ReportEvery writes the summary of the run so far to dir/partial-<n>.json every interval, so a
+// run that never drains still leaves numbers behind. Each file covers the whole run to that point.
+func (r *Recorder) ReportEvery(ctx context.Context, dir string, interval time.Duration, jobs func() []Job, speedup float64) {
+	go func() {
+		for n := 1; ; n++ {
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.stop:
+				return
+			case <-time.After(interval):
+			}
+			s, err := r.partial(ctx, r.snapshot(), jobs(), speedup)
+			if err == nil {
+				err = writeJSON(filepath.Join(dir, fmt.Sprintf("partial-%03d.json", n)), s)
+			}
+			if err != nil {
+				log.Warningf("Results: partial report %d failed: %v", n, err)
+			}
+		}
+	}()
+}
+
+func writeJSON(path string, v interface{}) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 // Abort marks a run that ended early as aborted, so dashboards do not show its last numbers as live.
@@ -366,11 +405,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "results.json"), append(data, '\n'), 0o644); err != nil {
+	if err := writeJSON(filepath.Join(dir, "results.json"), summary); err != nil {
 		return err
 	}
 	if err := writeTimeline(filepath.Join(dir, "timeline.csv"), pods); err != nil {
