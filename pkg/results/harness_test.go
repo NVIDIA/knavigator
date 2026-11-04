@@ -334,6 +334,143 @@ func TestAllowLeftoversPushesReducedCapacity(t *testing.T) {
 	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
 }
 
+// runPod is a pod of the run that requests gpus, created at created, placed on node at placed and
+// finished at finished.
+func runPod(name, gpus, node string, created, placed, finished time.Time) *corev1.Pod {
+	p := gpuPod(name)
+	p.CreationTimestamp = metav1.NewTime(created)
+	p.Spec.Containers[0].Resources.Requests[gpuResource] = resource.MustParse(gpus)
+	p.Spec.NodeName = node
+	p.Status = corev1.PodStatus{
+		Phase:      corev1.PodSucceeded,
+		Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(placed)}},
+		ContainerStatuses: []corev1.ContainerStatus{{Name: "c", State: corev1.ContainerState{
+			Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(finished)}}}},
+	}
+	return p
+}
+
+// twoNodeCluster is n1 with 8 GPUs and n2 with 4, plus pods. Of the run: a-0 holds 3 GPUs on n1 for
+// the whole hour; b-0 asks for 4 at the start, waits 30 minutes and then holds n2 for the rest.
+func twoNodeCluster(pods ...*corev1.Pod) *fake.Clientset {
+	t0 := time.Now().Add(time.Hour).Truncate(time.Second)
+	objects := []runtime.Object{gpuNode("n1", "8"), gpuNode("n2", "4"),
+		runPod("a-0", "3", "n1", t0, t0, t0.Add(time.Hour)),
+		runPod("b-0", "4", "n2", t0, t0.Add(30*time.Minute), t0.Add(time.Hour))}
+	for _, p := range pods {
+		objects = append(objects, p)
+	}
+	return fake.NewSimpleClientset(objects...)
+}
+
+// fragmentationOf is the fragmentation part of a summary with its pointers read; -1 for null.
+func fragmentationOf(s Summary) []float64 {
+	deref := func(f *float64) float64 {
+		if f == nil {
+			return -1
+		}
+		return *f
+	}
+	return []float64{s.FragmentedGPUHours, deref(s.GPUFragmentation), deref(s.GPUFragmentationLargestPod),
+		s.FreeNodesMean, s.StrandedGPUHours}
+}
+
+func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
+	fastPoll(t)
+	for _, tc := range []struct {
+		name     string
+		opts     HarnessOptions
+		leftover *corev1.Pod
+		nodes    map[string]float64
+		capacity float64
+		// fragmented_gpu_hours, gpu_fragmentation, gpu_fragmentation_largest_pod, free_nodes_mean,
+		// stranded_gpu_hours
+		fragmentation []float64
+		utilization   float64
+	}{
+		// Free GPUs: n1 has 5 (partly used) all hour; n2 has 4 (empty) for the first 30 minutes.
+		// Free 5*60+4*30 = 420 GPU-minutes, fragmented 300, so 5/7. b-0 waits for 4 GPUs, and no
+		// node has 1 to 3 free, so nothing is stranded. GPU-hours 3+2 = 5 out of 12.
+		{"flag off", HarnessOptions{}, nil,
+			map[string]float64{"n1": 8, "n2": 4}, 12, []float64{5, 5.0 / 7, 0, 0.5, 0}, 5.0 / 12},
+		// A pod not bound to a node holds nothing: the same numbers as without it.
+		{"unbound pending leftover", HarnessOptions{AllowLeftovers: true},
+			leftoverPod("team", "queued-0", corev1.PodPending, "2", ""),
+			map[string]float64{"n1": 8, "n2": 4}, 12, []float64{5, 5.0 / 7, 0, 0.5, 0}, 5.0 / 12},
+		// 2 GPUs held on n1 leave it 3 free, fewer than b-0's 4 and than the largest pod's 4: free
+		// 3*60+4*30 = 300 GPU-minutes, fragmented 180 and too small 180, so 0.6 and 0.6. While b-0
+		// waits, those 3 are stranded: 3 GPUs for half an hour. GPU-hours 5 out of 10.
+		{"leftover on n1", HarnessOptions{AllowLeftovers: true},
+			leftoverPod("team", "train-0", corev1.PodRunning, "2", "n1"),
+			map[string]float64{"n1": 6, "n2": 4}, 10, []float64{3, 0.6, 0.6, 0.5, 1.5}, 0.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pods []*corev1.Pod
+			if tc.leftover != nil {
+				pods = append(pods, tc.leftover)
+			}
+			rec, err := Start(context.Background(), twoNodeCluster(pods...), tc.opts)
+			require.NoError(t, err)
+			nodes, capacity, maxNode, err := rec.gpuCapacity(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.nodes, nodes)
+			require.Equal(t, tc.capacity, capacity)
+			require.Equal(t, 8.0, maxNode, "the biggest node's size, whatever pods hold on it")
+
+			dir := t.TempDir()
+			require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+			s := readSummary(t, dir)
+			require.Equal(t, tc.capacity, s.GPUCapacity)
+			require.InDeltaSlice(t, tc.fragmentation, fragmentationOf(s), 1e-12)
+			require.InDelta(t, tc.utilization, s.GPUUtilization, 1e-12)
+		})
+	}
+}
+
+func TestAllowLeftoversFillingANodeLeaveNoFreeNode(t *testing.T) {
+	fastPoll(t)
+	// Another user's pod holds all 8 GPUs of n2 for the whole run; the run's 3-GPU pod sits on n1.
+	client := runCluster(leftoverPod("team", "train-0", corev1.PodRunning, "8", "n2"))
+	_, err := client.CoreV1().Nodes().Create(context.Background(), gpuNode("n2", "8"), metav1.CreateOptions{})
+	require.NoError(t, err)
+	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+	s := readSummary(t, dir)
+	require.Equal(t, 8.0, s.GPUCapacity)
+	// The only free GPUs are n1's 5, on a partly used node, for the hour; n2 is never free.
+	require.Equal(t, []float64{5, 1, 0, 0, 0}, fragmentationOf(s))
+}
+
+func TestAllowLeftoversPushesPerNodeFragmentation(t *testing.T) {
+	fastPoll(t)
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	client := twoNodeCluster(leftoverPod("team", "train-0", corev1.PodRunning, "2", "n1"))
+	rec, err := Start(context.Background(), client, HarnessOptions{AllowLeftovers: true})
+	require.NoError(t, err)
+	rec.PushTo(context.Background(), ts.URL, "r1", 10*time.Millisecond, func() []Job { return nil }, 1)
+
+	// The first interim push, before Finish sends the final one: the same values as the final
+	// summary in TestAllowLeftoversHoldGPUsOnTheirNode's "leftover on n1".
+	require.Eventually(t, func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return srv.value("knavigator_stranded_gpu_hours", nil) != -1
+	}, 5*time.Second, 10*time.Millisecond)
+	srv.mu.Lock()
+	pushed := []float64{srv.value("knavigator_fragmented_gpu_hours", nil), srv.value("knavigator_gpu_fragmentation", nil),
+		srv.value("knavigator_gpu_fragmentation_largest_pod", nil), srv.value("knavigator_free_nodes_mean", nil),
+		srv.value("knavigator_stranded_gpu_hours", nil)}
+	srv.mu.Unlock()
+	require.InDeltaSlice(t, []float64{3, 0.6, 0.6, 0.5, 1.5}, pushed, 1e-12)
+
+	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
+}
+
 func TestFinishFailsOnRestart(t *testing.T) {
 	fastPoll(t)
 	client := fake.NewSimpleClientset(
