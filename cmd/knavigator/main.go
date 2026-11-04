@@ -50,6 +50,7 @@ type Args struct {
 	pushRun      string
 	pushEvery    time.Duration
 	resultsStall time.Duration
+	reportEvery  time.Duration
 	bsldFloor    time.Duration
 	aggregate    string
 }
@@ -74,6 +75,7 @@ func mainInternal() error {
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
+	flag.DurationVar(&args.reportEvery, "results.report-interval", 0, "write the run so far to partial-<n>.json in the results directory at this interval; 0 disables")
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 
 	log.InitFlags(nil)
@@ -148,6 +150,10 @@ func mainInternal() error {
 		}
 	}
 
+	if rec != nil && args.reportEvery > 0 {
+		rec.ReportEvery(ctx, args.results, args.reportEvery, func() []results.Job { return submittedJobs(eng) }, args.speedup)
+	}
+
 	var runErr error
 	for _, workflow := range workflows {
 		log.Infof("Starting workflow %s", workflow.Name)
@@ -160,7 +166,12 @@ func mainInternal() error {
 		return runErr
 	}
 	if runErr == nil {
-		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
+		// Stopping an open-ended SubmitTrace cancels ctx but still owes results, so drain on a fresh one.
+		fctx := ctx
+		if ctx.Err() != nil {
+			fctx = context.WithoutCancel(ctx)
+		}
+		runErr = rec.Finish(fctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
 	}
 	if runErr != nil {
 		rec.Abort()
@@ -288,6 +299,9 @@ func validate(args *Args) error {
 		return fmt.Errorf("'speedup' requires 'workflow'")
 	}
 
+	if args.reportEvery > 0 && len(args.results) == 0 {
+		return fmt.Errorf("'results.report-interval' requires 'results'")
+	}
 	if len(args.pushURL) != 0 && len(args.results) == 0 {
 		return fmt.Errorf("'results.pushgateway' requires 'results'")
 	}

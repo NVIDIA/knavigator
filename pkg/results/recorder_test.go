@@ -159,3 +159,17 @@ func TestObserveFailedVictimIsEvicted(t *testing.T) {
 	r.observe(crashed, false)
 	require.Equal(t, 1, Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour), Options{}).PodsFailed)
 }
+
+func TestReportEveryWritesPartialFiles(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	rec, err := Start(context.Background(), client)
+	require.NoError(t, err)
+	defer close(rec.stop)
+
+	dir := t.TempDir()
+	rec.ReportEvery(context.Background(), dir, 50*time.Millisecond, func() []Job { return nil }, 1)
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(dir, "partial-002.json"))
+		return err == nil
+	}, 5*time.Second, 20*time.Millisecond)
+}
