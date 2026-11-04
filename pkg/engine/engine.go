@@ -83,7 +83,8 @@ func Run(ctx context.Context, eng Engine, workflow *config.Workflow) error {
 		}
 	}
 
-	errReset := eng.Reset(ctx)
+	// An interrupted run still owes its cleanup; Reset applies its own timeout.
+	errReset := eng.Reset(context.WithoutCancel(ctx))
 
 	if errExec != nil {
 		return errExec
