@@ -112,3 +112,23 @@ A class can split its jobs over many generated accounts instead of a fixed `acco
 
 Set `jobs: -1` on a class with `arrivalInterval` to keep submitting until you stop the run. Ctrl+C then stops submission, waits for the submitted jobs to finish, and writes the results as usual; a second Ctrl+C exits at once. An `accountSet` on such a class draws each job's account by its distribution (`minJobs` does not apply). Add `-results.report-interval 2m` to write `partial-<n>.json` into the results directory every two minutes. Each file summarizes the whole run up to that point, so a run you stop early still leaves numbers behind.
 
+### Waiting for the scheduler to see virtual nodes
+
+Virtual nodes exist as soon as `ConfigureNodes` returns, but a scheduler may not have cached them yet. Submit one small job and wait for its pod to run before the real load, so the first jobs are not judged against a scheduler that cannot place them. Register the job's template as for any other workflow:
+
+```yaml
+- id: canary
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 1
+      ttl: 30s
+- id: canary-running
+  type: CheckPod
+  params:
+    refTaskId: canary
+    status: Running
+    timeout: 5m
+```
