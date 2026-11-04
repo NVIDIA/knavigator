@@ -413,8 +413,8 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity reads allocatable GPUs per node at the end of the run, their sum less the GPUs of pods
-// from before the run that AllowLeftovers let stay, and their maximum.
+// gpuCapacity reads allocatable GPUs per node at the end of the run and their sum, both less the GPUs
+// that pods from before the run hold under AllowLeftovers, and the biggest node's size.
 func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -424,7 +424,8 @@ func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, t
 	for _, node := range list.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
 			g := q.AsApproximateFloat64()
-			nodes[node.Name] = g
+			// The fragmentation metrics see a node's GPUs that leftover pods hold as in use.
+			nodes[node.Name] = g - r.harness.leftoverByNode[node.Name]
 			total += g
 			maxNode = math.Max(maxNode, g)
 		}

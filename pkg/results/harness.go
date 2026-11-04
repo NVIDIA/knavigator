@@ -69,12 +69,14 @@ type harnessStart struct {
 	restarts     map[string]int32
 	clock        *float64
 	leftoverGPUs *float64
+	// leftoverByNode is leftoverGPUs split by the node the pods are bound to.
+	leftoverByNode map[string]float64
 }
 
 // startHarness refuses a run that GPU pods from before it would distort, unless opts allows them,
 // then records restart counts and the clock offset.
 func startHarness(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*harnessStart, error) {
-	gpus, err := checkLeftovers(ctx, client, opts.AllowLeftovers)
+	gpus, byNode, err := checkLeftovers(ctx, client, opts.AllowLeftovers)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +87,7 @@ func startHarness(ctx context.Context, client kubernetes.Interface, opts Harness
 	h := &harnessStart{namespaces: opts.RestartNamespaces, restarts: restarts, clock: clockOffset(ctx, client)}
 	if opts.AllowLeftovers {
 		h.leftoverGPUs = &gpus
+		h.leftoverByNode = byNode
 	}
 	return h, nil
 }
@@ -122,14 +125,15 @@ func (h Harness) check() error {
 
 // checkLeftovers fails when GPU pods that have not finished already exist: they hold GPUs the run
 // would count as free. With allow it logs them instead and returns the GPUs requested by those bound
-// to a node.
-func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool) (float64, error) {
+// to a node, in total and per node.
+func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool) (float64, map[string]float64, error) {
 	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("failed to list pods: %w", err)
+		return 0, nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 	var active []string
 	var gpus float64
+	byNode := map[string]float64{}
 	for _, p := range pods.Items {
 		n := podGPUs(&p)
 		if n == 0 || p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
@@ -139,18 +143,19 @@ func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool
 		// A pod not yet bound to a node holds no GPUs.
 		if p.Spec.NodeName != "" {
 			gpus += n
+			byNode[p.Spec.NodeName] += n
 		}
 	}
 	if len(active) == 0 {
-		return 0, nil
+		return 0, byNode, nil
 	}
 	sort.Strings(active)
 	msg := fmt.Sprintf("%d GPU pods are still active from before the run: %s", len(active), strings.Join(active, ", "))
 	if !allow {
-		return 0, errors.New(msg)
+		return 0, nil, errors.New(msg)
 	}
 	log.Warningf("Results: %s; counting the %g GPUs of those bound to a node as busy for the whole run", msg, gpus)
-	return gpus, nil
+	return gpus, byNode, nil
 }
 
 // restartCounts maps namespace/pod/container to its restart count, for the control-plane pods and
