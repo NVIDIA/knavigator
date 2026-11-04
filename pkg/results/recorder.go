@@ -55,6 +55,8 @@ type Recorder struct {
 	events map[types.UID]*Event
 	// Occurrences an event had before the run, left out of its count during the run.
 	eventsBefore map[types.UID]int32
+	// rackLabel is the node label that names each node's rack; empty leaves out rack fragmentation.
+	rackLabel string
 }
 
 // Start begins watching pods and returns once the watch cache has synced.
@@ -109,7 +111,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
-		nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
+		nodes, racks, capacity, maxNode, err := r.gpuCapacity(ctx)
 		if err != nil {
 			return Summary{}, err
 		}
@@ -117,7 +119,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeRacks: racks, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -337,9 +339,12 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	end := time.Now()
 
-	nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
+	nodes, racks, capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
+	}
+	if r.rackLabel != "" && len(racks) == 0 {
+		log.Warningf("Results: no GPU node has the label %q", r.rackLabel)
 	}
 	pods := r.snapshot()
 	events := r.eventList()
@@ -347,7 +352,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: bsldFloor, Speedup: speedup})
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeRacks: racks, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	if speedup > 1 {
@@ -396,22 +401,32 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity reads allocatable GPUs per node at the end of the run, and their sum and maximum.
-func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
+// SetRackLabel names the node label that holds each node's rack, for rack fragmentation.
+func (r *Recorder) SetRackLabel(label string) {
+	r.rackLabel = label
+}
+
+// gpuCapacity reads allocatable GPUs per node at the end of the run, their sum and maximum, and
+// the rack of each GPU node that has the rack label.
+func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, racks map[string]string, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to list nodes: %v", err)
+		return nil, nil, 0, 0, fmt.Errorf("failed to list nodes: %v", err)
 	}
 	nodes = map[string]float64{}
+	racks = map[string]string{}
 	for _, node := range list.Items {
 		if q, ok := node.Status.Allocatable[gpuResource]; ok {
 			g := q.AsApproximateFloat64()
 			nodes[node.Name] = g
 			total += g
 			maxNode = math.Max(maxNode, g)
+			if rack, ok := node.Labels[r.rackLabel]; ok {
+				racks[node.Name] = rack
+			}
 		}
 	}
-	return nodes, total, maxNode, nil
+	return nodes, racks, total, maxNode, nil
 }
 
 func writeTimeline(path string, pods []Pod) error {

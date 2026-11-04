@@ -32,6 +32,8 @@ type Options struct {
 	Speedup float64
 	// NodeGPUs maps each node to its allocatable GPUs, for fragmentation.
 	NodeGPUs map[string]float64
+	// NodeRacks maps GPU nodes to their racks; empty leaves out rack fragmentation.
+	NodeRacks map[string]string
 }
 
 // DefaultBSLDFloor is the runtime below which slowdown reports queueing noise rather than service.

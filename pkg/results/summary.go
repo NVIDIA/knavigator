@@ -225,6 +225,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 			s.GPUUtilization = s.GPUHours / (gpuCapacity * s.MakespanSec / 3600)
 		}
 		s.Fragmentation = fragmentation(pods, opt.NodeGPUs, first, last)
+		s.GPUFragmentationRack = rackFragmentation(pods, opt.NodeGPUs, opt.NodeRacks, first, last)
 	}
 	s.PodWaitSec = stats(podWaits)
 	s.JobWaitSec = stats(jobWaits)
