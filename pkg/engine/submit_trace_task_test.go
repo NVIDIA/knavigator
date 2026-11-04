@@ -392,6 +392,36 @@ func TestGenerateTraceAccountSet(t *testing.T) {
 	require.Error(t, c.validateLoad(), "99 jobs cannot give 20 accounts 5 each")
 }
 
+func TestGenerateTraceArrivalShape(t *testing.T) {
+	c := shapedClass(2000)
+	c.Start = 100
+	c.Arrival.Shape, c.Arrival.Duration = "gaussian", 600
+	require.NoError(t, c.validateLoad())
+
+	middle := 0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		require.GreaterOrEqual(t, j.Submit, 100.0)
+		require.LessOrEqual(t, j.Submit, 700.0)
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+	}
+	// A third of the window around the mean holds about 68% of a gaussian, 33% of a uniform.
+	require.Greater(t, middle, 1100)
+
+	c.Arrival.Shape = "uniform"
+	middle = 0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+	}
+	require.InDelta(t, 667, middle, 100)
+
+	c.ArrivalInterval = 5
+	require.Error(t, c.validateLoad(), "arrival and arrivalInterval conflict")
+}
+
 func TestSubmitTraceContinuous(t *testing.T) {
 	task := &SubmitTraceTask{BaseTask: BaseTask{taskType: TaskSubmitTrace, taskID: "trace"}}
 	require.NoError(t, task.validate(map[string]interface{}{

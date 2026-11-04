@@ -89,9 +89,11 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 
 [resources/workflows/k8s/test-trace.yml](../resources/workflows/k8s/test-trace.yml) replays a six-job trace on two virtual nodes. It has no check task, so run it with `-results`, which waits for the jobs to finish.
 
-### Accounts
+### Accounts and arrival shapes
 
 A class can split its jobs over many generated accounts instead of a fixed `accounts` list. `accountSet` names `count` accounts `prefix` plus a zero-padded number (`tenant-001` to `tenant-200`) and shares the class's `jobs` over them. Every account gets `minJobs` first, and the rest follow `distribution`: `uniform` (the default), `lognormal` (`mu`, `sigma` over the account number, so a few busy accounts and a long tail) or `gaussian` (`mean`, `stddev` as account numbers; default the middle account and a sixth of `count`).
+
+`arrival` places the class's jobs at random times in a window instead of using `arrivalInterval`. `shape: uniform` is a constant rate. `shape: gaussian` ramps up, peaks and ramps down, around `mean` seconds into the window with spread `stddev` (default the middle and a sixth of `duration`). All times are in seconds from the class's `start`.
 
 ```yaml
     - name: tenants
@@ -101,6 +103,7 @@ A class can split its jobs over many generated accounts instead of a fixed `acco
         count: 200
         minJobs: 5
         distribution: {type: lognormal, mu: 3.0, sigma: 1.0}
+      arrival: {shape: gaussian, duration: 600}
       runtime: {mu: 4.0, sigma: 0.8, max: 600}
       gpus: [1]
 ```
