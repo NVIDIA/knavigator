@@ -1,0 +1,56 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copied from the Scheduling Capabilities Suite at e5968b1
+# (https://github.com/ArangoGutierrez/scheduler-capabilities-suite/tree/e5968b1/claims).
+# Documented claims for KAI Scheduler v0.18.5. Each claim is quoted from the
+# file cited, with markdown emphasis removed, at tag v0.18.5 (commit
+# 36b2cabb463ef63e9cbde73c17ca8e4eac644f11), read and checked on 2026-10-14.
+# backfill has no such claim to quote: its claim says so and quotes the
+# nearest sentence. mechanism is how the Suite's probe exercised the
+# capability. expected is the verdict the documentation implies under the
+# rules in pkg/verdict.
+scheduler: kai
+version: KAI Scheduler v0.18.5 on Kubernetes v1.37.0
+claims:
+  gang:
+    claim: '`MinMember`: The minimum number of pods that must be scheduled together'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/docs/developer/pod-grouper.md#L18
+    expected: supported
+    mechanism: an explicit PodGroup (scheduling.run.ai/v2alpha2) per Job with minMember equal to its pods, created before the Job; the Job carries kai.scheduler/skip-podgrouper "true" and its pod template the pod-group-name annotation (docs/batch/README.md, External PodGroups); pods set schedulerName kai-scheduler
+  priority:
+    claim: 'The scheduler attempts to schedule higher priority workloads first.'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/docs/priority/README.md#L35
+    expected: supported
+    mechanism: PriorityClass scs-high (1000) over scs-low (100) in PodGroup spec.priorityClassName, every PodGroup spec.preemptibility preemptible; the probe does not allow preemption, so its Queue sets preemptMinRuntime and reclaimMinRuntime to 24h and the high job cannot evict the fillers
+  preemption:
+    claim: 'a higher-priority workload can evict a lower-priority preemptible workload to free up resources, but only within the same queue'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/docs/scheduling-deep-dive/README.md#L56
+    expected: supported
+    mechanism: one Queue with preemptMinRuntime 0s; victim gang PodGroup minMember 4 at scs-low, preemptible; high job at scs-high in the same Queue; a victim job with no elastic surplus is evicted whole (pkg/scheduler/api/podgroup_info/eviction_info.go:47-49,88-97)
+  fair-share:
+    claim: 'Quota Reclaim - Workloads from queues under their quota can evict workloads from queues that have exceeded their quota.'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/docs/fairness/README.md#L69
+    expected: supported
+    mechanism: one leaf Queue per tenant (gpu quota 16, limit -1, overQuotaWeight 1, reclaimMinRuntime 0s) under a per-probe parent Queue (gpu quota 32); jobs preemptible; B's entitlement is its quota, so B reclaims what A holds over its quota; the quotas add up to the fleet, so the over-quota fair-share split has nothing to divide and this probe does not exercise it
+  backfill:
+    claim: 'No backfill, and no reservation for a waiting workload, is documented for KAI v0.18.5. The nearest statement, in a proposed design, describes current behavior: "a regression against today, where a broken pending pod blocks nothing."'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/docs/developer/designs/queue-admission-gating/README.md#L84
+    expected: partial
+    mechanism: one Queue; the big gang's PodGroup has minMember 4; nothing reserves capacity for it, so short jobs may pass it and delay it
+  topology:
+    claim: 'If set, all pods of the job must be scheduled within a single domain at this level.'
+    citation: https://github.com/kai-scheduler/KAI-Scheduler/blob/v0.18.5/pkg/apis/scheduling/v2alpha2/podgroup_types.go#L426-L429
+    expected: supported
+    mechanism: Topology scs-topology (kai.scheduler/v1alpha1; levels block, rack, hostname); a same-rack gang's PodGroup sets spec.topologyConstraint topology scs-topology, requiredTopologyLevel scs.arangogutierrez.github.io/rack
