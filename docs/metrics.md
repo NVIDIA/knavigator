@@ -141,4 +141,4 @@ done
 
 Combine only runs made with the same `-results.allow-leftovers` and `-results.rack-label` settings. With `-results.allow-leftovers`, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity. With different `-results.rack-label` values, `gpu_fragmentation_rack` measures different groups, such as racks and zones.
 
-If the runs replayed different traces, `-aggregate` logs a warning, since the spread then includes the difference between the traces as well as the variation between runs.
+If the runs replayed different traces, `-aggregate` logs a warning, since the spread then includes the difference between the traces as well as the variation between runs. It also warns when only some of the runs report a `trace_digest`: the others, such as runs from before the field existed, may have run any workload.

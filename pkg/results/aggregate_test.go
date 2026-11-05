@@ -17,7 +17,6 @@
 package results
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,11 +68,7 @@ func TestAggregate(t *testing.T) {
 	require.Nil(t, bsld.CV)
 	require.False(t, bsld.Stable, "one run cannot show reproducibility")
 
-	state := log.CaptureState()
-	defer state.Restore()
-	var buf bytes.Buffer
-	log.LogToStderr(false)
-	log.SetOutput(&buf)
+	buf := captureLog(t)
 	_, err = Aggregate(dirs)
 	require.NoError(t, err)
 	log.Flush()
@@ -85,6 +80,47 @@ func TestAggregate(t *testing.T) {
 	log.Flush()
 	require.Contains(t, buf.String(), "the runs replayed 2 different traces (08c1e5b7aa20, 3f2a9c41d07e)")
 
+	require.NoError(t, os.WriteFile(filepath.Join(dirs[1], "results.json"), []byte(`{"pods": 4}`), 0o644))
+	_, err = Aggregate(dirs)
+	require.NoError(t, err)
+	log.Flush()
+	require.Contains(t, buf.String(), "no trace_digest in 1 of 2 runs")
+
 	_, err = Aggregate([]string{t.TempDir()})
 	require.Error(t, err, "a directory without results.json")
+}
+
+func TestWarnMixedTraces(t *testing.T) {
+	tests := []struct {
+		name     string
+		traces   []string
+		untraced int
+		want     []string
+		wantNot  []string
+	}{
+		{name: "one trace", traces: []string{"a"}, wantNot: []string{"different traces", "no trace_digest"}},
+		{name: "same two traces in every run", traces: []string{"a,b"}, wantNot: []string{"different traces"}},
+		{name: "two traces", traces: []string{"a", "b"}, want: []string{"replayed 2 different traces (a, b)"}},
+		{name: "a run with several traces", traces: []string{"a,b", "a"}, want: []string{"replayed 2 different traces (a, b)"}},
+		{name: "runs with several traces each", traces: []string{"a,b", "b,c"}, want: []string{"replayed 3 different traces (a, b, c)"}},
+		{name: "some runs without a digest", traces: []string{"a"}, untraced: 1, want: []string{"no trace_digest in 1 of 2 runs"}, wantNot: []string{"different traces"}},
+		{name: "no run has a digest", untraced: 2, wantNot: []string{"different traces", "no trace_digest"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := captureLog(t)
+			traces := map[string]bool{}
+			for _, d := range tt.traces {
+				traces[d] = true
+			}
+			warnMixedTraces(traces, tt.untraced, len(tt.traces)+tt.untraced)
+			log.Flush()
+			for _, w := range tt.want {
+				require.Contains(t, buf.String(), w)
+			}
+			for _, w := range tt.wantNot {
+				require.NotContains(t, buf.String(), w)
+			}
+		})
+	}
 }
