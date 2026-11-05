@@ -47,8 +47,10 @@ func (task *PauseTask) Exec(ctx context.Context) error {
 	fmt.Printf("-> Press 'Return' key to continue.")
 	// The read cannot be interrupted, so it runs aside and a canceled context wins.
 	res := make(chan error, 1)
+	// Read pauseInput here, not in the goroutine, so a test can restore it once Exec returns.
+	input := pauseInput
 	go func() {
-		scanner := bufio.NewScanner(pauseInput)
+		scanner := bufio.NewScanner(input)
 		scanner.Scan()
 		res <- scanner.Err()
 	}()
