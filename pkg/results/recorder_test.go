@@ -47,7 +47,7 @@ func TestFinishStopsWhenStalled(t *testing.T) {
 	defer func() { pollInterval = old }()
 
 	client := fake.NewSimpleClientset()
-	rec, err := Start(context.Background(), client)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
 	require.NoError(t, err)
 	// A gang pod that no scheduler ever places.
 	_, err = client.CoreV1().Pods("default").Create(context.Background(), gpuPod("g-0"), metav1.CreateOptions{})
@@ -78,7 +78,7 @@ func TestFinishReportsFragmentation(t *testing.T) {
 			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{gpuResource: resource.MustParse("8")}}}
 	}
 	client := fake.NewSimpleClientset(gpuNode("n0"), gpuNode("n1"), &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "cpu"}})
-	rec, err := Start(context.Background(), client)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
 	require.NoError(t, err)
 	// A pod holds half of n0 until the run ends; n1 stays empty.
 	now := metav1.Now()

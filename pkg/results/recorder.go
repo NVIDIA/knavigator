@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -55,10 +56,17 @@ type Recorder struct {
 	events map[types.UID]*Event
 	// Occurrences an event had before the run, left out of its count during the run.
 	eventsBefore map[types.UID]int32
+	harness      *harnessStart
 }
 
-// Start begins watching pods and returns once the watch cache has synced.
-func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) {
+// Start begins watching pods and returns once the watch cache has synced. It refuses to start while
+// GPU pods from before the run are active, unless opts.AllowLeftovers is set. A restart of a
+// control-plane container, or of any container in opts.RestartNamespaces, during the run fails it.
+func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*Recorder, error) {
+	harness, err := startHarness(ctx, client, opts)
+	if err != nil {
+		return nil, err
+	}
 	r := &Recorder{
 		client: client,
 		// Creation timestamps have one second resolution.
@@ -68,11 +76,12 @@ func Start(ctx context.Context, client kubernetes.Interface) (*Recorder, error) 
 		events: make(map[types.UID]*Event),
 
 		eventsBefore: make(map[types.UID]int32),
+		harness:      harness,
 	}
 
 	factory := informers.NewSharedInformerFactory(client, 0)
 	informer := factory.Core().V1().Pods().Informer()
-	_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { r.observe(obj, false) },
 		UpdateFunc: func(_, obj interface{}) { r.observe(obj, false) },
 		DeleteFunc: func(obj interface{}) {
@@ -113,11 +122,12 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if err != nil {
 			return Summary{}, err
 		}
+		held, _ := r.heldGPUs(nodes)
 		floor := DefaultBSLDFloor
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: floor, Speedup: speedup})
+		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -337,9 +347,17 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	}
 	end := time.Now()
 
+	harness, err := r.harness.finish(ctx, r.client)
+	if err != nil {
+		return err
+	}
 	nodes, capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
 		return err
+	}
+	held, heldTotal := r.heldGPUs(nodes)
+	if r.harness.leftoverGPUs != nil && capacity <= 0 {
+		log.Warningf("Results: GPU capacity is %g after subtracting the %g GPUs that pods from before the run hold; gpu_utilization and idle_waiting_gpu_hours read 0", capacity, heldTotal)
 	}
 	pods := r.snapshot()
 	events := r.eventList()
@@ -347,9 +365,10 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, BSLDFloor: bsldFloor, Speedup: speedup})
+	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
+	summary.Harness = harness
 	if speedup > 1 {
 		summary.ScaleTime(speedup)
 	}
@@ -379,7 +398,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
 		return err
 	}
-	return summary.check(drained)
+	return errors.Join(harness.check(), summary.check(drained))
 }
 
 // progress counts placements and completions; a run that stops changing it is not advancing.
@@ -396,7 +415,8 @@ func progress(pods []Pod) int {
 	return n
 }
 
-// gpuCapacity reads allocatable GPUs per node at the end of the run, and their sum and maximum.
+// gpuCapacity reads allocatable GPUs per node at the end of the run, their sum less the GPUs that
+// pods from before the run hold on those nodes under AllowLeftovers, and the biggest node's size.
 func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, total, maxNode float64, err error) {
 	list, err := r.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -411,7 +431,26 @@ func (r *Recorder) gpuCapacity(ctx context.Context) (nodes map[string]float64, t
 			maxNode = math.Max(maxNode, g)
 		}
 	}
-	return nodes, total, maxNode, nil
+	// The final summary and every interim push use this, so they agree.
+	_, held := r.heldGPUs(nodes)
+	return nodes, total - held, maxNode, nil
+}
+
+// heldGPUs maps each of nodes to the GPUs that pods from before the run, let stay by AllowLeftovers,
+// hold on it, and sums them; nil without the flag. A node gone by the end of the run is not counted,
+// and neither are the pods on it.
+func (r *Recorder) heldGPUs(nodes map[string]float64) (held map[string]float64, total float64) {
+	if r.harness.leftoverByNode == nil {
+		return nil, 0
+	}
+	held = map[string]float64{}
+	for node, g := range r.harness.leftoverByNode {
+		if _, ok := nodes[node]; ok {
+			held[node] = g
+			total += g
+		}
+	}
+	return held, total
 }
 
 func writeTimeline(path string, pods []Pod) error {
