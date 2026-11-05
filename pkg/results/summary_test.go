@@ -111,10 +111,10 @@ func TestScaleTime(t *testing.T) {
 }
 
 func TestScaleTimeSizes(t *testing.T) {
-	s := Summary{Sizes: Sizes{AbandonedGPUHours: 2,
+	s := Summary{Sizes: Sizes{UnfinishedGPUHours: 2,
 		WaitByFootprint: []Footprint{{WaitSec: Stats{Mean: 1, P95: 2, Max: 3}, BSLD: Stats{Mean: 1.5}}}}}
 	s.ScaleTime(10)
-	require.Equal(t, 20.0, s.AbandonedGPUHours)
+	require.Equal(t, 20.0, s.UnfinishedGPUHours)
 	require.Equal(t, Stats{Mean: 10, P95: 20, Max: 30}, s.WaitByFootprint[0].WaitSec)
 	require.Equal(t, 1.5, s.WaitByFootprint[0].BSLD.Mean, "slowdown is a ratio")
 }
@@ -453,7 +453,7 @@ func TestSizes(t *testing.T) {
 
 	require.InDelta(t, 8.0*40/3600, s.BindingGapGPUHours, 1e-9)
 	require.Equal(t, 1, s.JobsNeverAdmitted)
-	require.Equal(t, 0, s.JobsAbandoned)
+	require.Equal(t, 0, s.JobsUnfinished)
 	require.Nil(t, s.BSLDMacro, "a job never ran")
 	// Footprint 1 waited 0s, footprint 16 waited 50s: perfectly ranked.
 	require.InDelta(t, 1.0, *s.FootprintWaitSpearman, 1e-9)
@@ -467,15 +467,15 @@ func TestSizes(t *testing.T) {
 	require.InDelta(t, (110.0/60+1)/2, *s.BSLDMacro, 1e-9)
 }
 
-func TestAbandoned(t *testing.T) {
+func TestUnfinished(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"}}
 	pods := []Pod{{Namespace: "default", Name: "a-0", GPUs: 4, Created: t0, Scheduled: t0}}
 
 	s := Summarize(pods, jobs, 4, t0.Add(time.Hour), Options{})
 
-	require.Equal(t, 1, s.JobsAbandoned)
-	require.InDelta(t, 4.0, s.AbandonedGPUHours, 1e-9)
+	require.Equal(t, 1, s.JobsUnfinished)
+	require.InDelta(t, 4.0, s.UnfinishedGPUHours, 1e-9)
 }
 
 func TestSpearmanTies(t *testing.T) {
