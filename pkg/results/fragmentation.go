@@ -221,8 +221,8 @@ func strandedGPUHours(pods []Pod, nodes, held map[string]float64, first, last ti
 }
 
 // rackFragmentation sweeps the window like fragmentation, per rack. racks maps nodes to racks;
-// nodes without a rack are left out.
-func rackFragmentation(pods []Pod, nodes map[string]float64, racks map[string]string, first, last time.Time) *float64 {
+// nodes without a rack are left out. held GPUs are in use for the whole window.
+func rackFragmentation(pods []Pod, nodes, held map[string]float64, racks map[string]string, first, last time.Time) *float64 {
 	capacity := map[string]float64{}
 	for node, rack := range racks {
 		capacity[rack] += nodes[node]
@@ -252,6 +252,9 @@ func rackFragmentation(pods []Pod, nodes map[string]float64, racks map[string]st
 	sort.Slice(changes, func(a, b int) bool { return changes[a].t.Before(changes[b].t) })
 
 	used := map[string]float64{}
+	for node, rack := range racks {
+		used[rack] += held[node]
+	}
 	var freeSec, fragmentedSec float64
 	prev := first
 	hold := func(until time.Time) {

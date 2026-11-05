@@ -154,5 +154,10 @@ func TestRackFragmentation(t *testing.T) {
 
 	require.Nil(t, Summarize(pods, nil, 40, at(100), Options{NodeGPUs: nodes}).GPUFragmentationRack)
 	full := []Pod{{Node: "n0", GPUs: 8, Scheduled: at(0), Finished: at(100)}, {Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(100)}}
-	require.Nil(t, rackFragmentation(full, nodes, map[string]string{"n0": "a", "n1": "a"}, at(0), at(100)), "no free GPU")
+	require.Nil(t, rackFragmentation(full, nodes, nil, map[string]string{"n0": "a", "n1": "a"}, at(0), at(100)), "no free GPU")
+
+	// A pod from before the run holds n2 for the whole window, so rack b is in use too.
+	s = Summarize(pods, nil, 32, at(100), Options{NodeGPUs: nodes, NodeHeldGPUs: map[string]float64{"n2": 8}, NodeRacks: racks})
+	require.NotNil(t, s.GPUFragmentationRack)
+	require.InDelta(t, 1.0, *s.GPUFragmentationRack, 1e-12)
 }
