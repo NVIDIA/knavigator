@@ -76,6 +76,8 @@ Metrics that cannot be computed, such as a correlation over one job, are null.
 
 When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each of its classes, `wait_by_class` has one row per class with `jobs`, `started`, `wait_sec` and `slo_attainment`. `slo_attainment` gives the share of the class's jobs that started within each wait in a fixed ladder: `1m`, `5m`, `15m`, `1h` and `4h`, in simulated time under `-speedup`. A job that never started counts as a miss, so a class that reads 0.98 at `5m` started 98% of its jobs within five minutes. Jobs without a class are left out, and the field is absent when no job has one. The ladder needs no target chosen in advance, so classes with different latency needs, such as inference and training, can be read side by side.
 
+When jobs come from `SubmitTrace`, `trace_digest` is a 12-character fingerprint of the trace. The same seed and classes, or the same file, always give the same digest. Times count to the millisecond, so a file shifted in time keeps its digest. Two runs with the same `trace_digest` replayed the same jobs. A run with several traces lists each, comma-separated.
+
 `results.json` also shows where the free GPUs were, since free GPUs spread over partly used nodes cannot run a pod that needs a whole node.
 
 - `fragmented_gpu_hours`: free GPU-hours on nodes that were partly in use, in simulated time under `-speedup`.
@@ -126,3 +128,5 @@ done
 - `cv`: `sd` over the absolute mean, null when the mean is 0.
 - `ci95`: a 95% interval for the mean, from 4000 bootstrap resamples with a fixed seed, so the same runs always give the same interval.
 - `stable`: at least two runs, and either no variation or a `cv` of at most 5%. Treat a difference between two configurations as real only when their intervals do not overlap.
+
+If the runs replayed different traces, `-aggregate` logs a warning, since the spread then includes the difference between the traces as well as the variation between runs.

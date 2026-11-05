@@ -17,6 +17,7 @@
 package results
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -149,6 +150,15 @@ func TestWaitByClass(t *testing.T) {
 	require.Equal(t, 0.5, s.WaitByClass[0].SLOAttainment["5m"], "shares do not scale")
 
 	require.Empty(t, Summarize(pods, jobs[3:], 16, at(300), Options{}).WaitByClass)
+}
+
+func TestTraceDigest(t *testing.T) {
+	jobs := []Job{{Name: "default/a", Trace: "b2"}, {Name: "default/b", Trace: "a1"}, {Name: "default/c", Trace: "b2"}, {Name: "default/d"}}
+	require.Equal(t, "a1,b2", Summarize(nil, jobs, 8, time.Time{}, Options{}).TraceDigest)
+
+	data, err := json.Marshal(Summarize(nil, jobs[3:], 8, time.Time{}, Options{}))
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "trace_digest")
 }
 
 func TestByGangSize(t *testing.T) {

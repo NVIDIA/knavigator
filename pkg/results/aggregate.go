@@ -19,12 +19,16 @@ package results
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+
+	log "k8s.io/klog/v2"
 )
 
 const (
@@ -55,6 +59,7 @@ type Spread struct {
 // metric that a run left out or reported as null counts only the runs that have it.
 func Aggregate(dirs []string) (map[string]Spread, error) {
 	values := map[string][]float64{}
+	traces := map[string]bool{}
 	for _, dir := range dirs {
 		data, err := os.ReadFile(filepath.Join(dir, "results.json"))
 		if err != nil {
@@ -68,6 +73,15 @@ func Aggregate(dirs []string) (map[string]Spread, error) {
 			k := metricKey(s)
 			values[k] = append(values[k], s.value)
 		}
+		if m, ok := tree.(map[string]interface{}); ok {
+			if d, _ := m["trace_digest"].(string); d != "" {
+				traces[d] = true
+			}
+		}
+	}
+	if len(traces) > 1 {
+		log.Warningf("Aggregate: the runs replayed %d different traces (%s), so the spread includes the difference between them",
+			len(traces), strings.Join(slices.Sorted(maps.Keys(traces)), ", "))
 	}
 
 	out := make(map[string]Spread, len(values))
