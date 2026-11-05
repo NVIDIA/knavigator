@@ -4,7 +4,7 @@ metadata:
   name: "{{._NAME_}}"
   namespace: "default"
   labels:
-    runai/queue: "test"
+    kai.scheduler/queue: "test"
 spec:
   slotsPerWorker: 1
   runPolicy:
