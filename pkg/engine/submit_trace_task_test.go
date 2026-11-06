@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -31,6 +32,36 @@ import (
 
 	"github.com/NVIDIA/knavigator/pkg/config"
 )
+
+// Changing any one field of one job changes the digest, and the sample trace's digest is pinned,
+// so a format change that would split old runs from new fails here.
+func TestTraceDigest(t *testing.T) {
+	jobs, err := readTrace("../../resources/traces/trace.csv")
+	require.NoError(t, err)
+	base := traceDigest(jobs)
+	require.Equal(t, "b5a2887c4f7c", base)
+
+	for name, change := range map[string]func(*traceJob){
+		"id":       func(j *traceJob) { j.ID++ },
+		"class":    func(j *traceJob) { j.Class += "x" },
+		"account":  func(j *traceJob) { j.Account += "x" },
+		"submit":   func(j *traceJob) { j.Submit += 0.001 },
+		"runtime":  func(j *traceJob) { j.Runtime += 0.001 },
+		"gpus":     func(j *traceJob) { j.GPUs++ },
+		"gangSize": func(j *traceJob) { j.GangSize++ },
+		"priority": func(j *traceJob) { j.Priority++ },
+	} {
+		changed := slices.Clone(jobs)
+		change(&changed[1])
+		require.NotEqual(t, base, traceDigest(changed), name)
+	}
+
+	// Under half a millisecond on a whole-millisecond time keeps the digest.
+	changed := slices.Clone(jobs)
+	changed[1].Submit += 0.0004
+	changed[1].Runtime += 0.0004
+	require.Equal(t, base, traceDigest(changed))
+}
 
 func TestGenerateTrace(t *testing.T) {
 	inference := traceClass{Name: "inference", Jobs: 300, ArrivalInterval: 6, GPUs: []int{1},
@@ -318,8 +349,8 @@ func TestSubmitTraceFile(t *testing.T) {
 	require.Len(t, got[1]["traceDigest"], 12)
 	require.Equal(t, got[1]["traceDigest"], got[2]["traceDigest"])
 
-	// The same jobs an hour later are the same trace.
-	later, err := readTrace(writeTrace(t, traceHeader+"2,research,3600.200,120,8,2,100\n1,trading,3600,60,1,1,0\n"))
+	// The same jobs at an epoch offset are the same trace.
+	later, err := readTrace(writeTrace(t, traceHeader+"2,research,1700000000.200,120,8,2,100\n1,trading,1700000000,60,1,1,0\n"))
 	require.NoError(t, err)
 	require.Equal(t, got[1]["traceDigest"], traceDigest(later))
 }
