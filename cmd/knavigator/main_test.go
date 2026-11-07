@@ -59,5 +59,6 @@ func TestValidateRackLabel(t *testing.T) {
 	require.NoError(t, validate(args("example.com/rack", "out")))
 	require.EqualError(t, validate(args("example.com/rack", "")), "'results.rack-label' requires 'results'")
 	require.ErrorContains(t, validate(args("example.com/rack=rack-1", "out")), "'results.rack-label' must be a label key")
-	require.ErrorContains(t, validate(args("Bad Key", "out")), "'results.rack-label' must be a label key")
+	require.ErrorContains(t, validate(args("Bad Key", "out")),
+		"'results.rack-label' must be a label key such as example.com/rack: name part must consist of alphanumeric characters")
 }

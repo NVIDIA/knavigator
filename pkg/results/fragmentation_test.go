@@ -151,6 +151,10 @@ func TestRackFragmentation(t *testing.T) {
 	require.Zero(t, *s.GPUFragmentation)
 	require.NotNil(t, s.GPUFragmentationRack)
 	require.InDelta(t, 8.0/24, *s.GPUFragmentationRack, 1e-12, "n4 has no rack and is left out")
+	more := append([]Pod{{Node: "n4", GPUs: 8, Scheduled: at(0)}, {Node: "n2", GPUs: 8, Scheduled: at(50), Finished: at(40)}}, pods...)
+	f := rackFragmentation(more, nodes, nil, racks, at(0), at(100))
+	require.NotNil(t, f)
+	require.InDelta(t, 8.0/24, *f, 1e-12, "neither a pod on n4 nor one that ends before it is placed changes it")
 
 	require.Nil(t, Summarize(pods, nil, 40, at(100), Options{NodeGPUs: nodes}).GPUFragmentationRack)
 	full := []Pod{{Node: "n0", GPUs: 8, Scheduled: at(0), Finished: at(100)}, {Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(100)}}
@@ -163,7 +167,13 @@ func TestRackFragmentation(t *testing.T) {
 
 	// A finished leftover still holds n2 and a run pod takes it too, so n2 adds no free GPUs.
 	onHeld := []Pod{{Node: "n2", GPUs: 8, Created: at(0), Scheduled: at(0)}}
-	f := rackFragmentation(onHeld, nodes, map[string]float64{"n2": 8}, racks, at(0), at(100))
+	f = rackFragmentation(onHeld, nodes, map[string]float64{"n2": 8}, racks, at(0), at(100))
 	require.NotNil(t, f)
 	require.InDelta(t, 8.0/24, *f, 1e-12)
+
+	// The pod holds n0 for the first 25s only: 8*25 of 8*25 + 16*75 + 16*100 free GPU-seconds.
+	short := []Pod{{Node: "n0", GPUs: 8, Created: at(0), Scheduled: at(0), Finished: at(25)}}
+	f = rackFragmentation(short, nodes, nil, racks, at(0), at(100))
+	require.NotNil(t, f)
+	require.InDelta(t, 200.0/3000, *f, 1e-12)
 }

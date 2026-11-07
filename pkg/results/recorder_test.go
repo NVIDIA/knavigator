@@ -19,6 +19,7 @@ package results
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,8 +29,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func gpuPod(name string) *corev1.Pod {
@@ -109,27 +112,56 @@ func TestFinishReportsFragmentation(t *testing.T) {
 }
 
 func TestGPUCapacityRacks(t *testing.T) {
-	node := func(name, rack, gpus string) *corev1.Node {
-		n := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
-		if rack != "" {
-			n.Labels = map[string]string{"example.com/rack": rack}
-		}
-		if gpus != "" {
-			n.Status.Allocatable = corev1.ResourceList{gpuResource: resource.MustParse(gpus)}
-		}
-		return n
-	}
-	client := fake.NewSimpleClientset(node("n0", "a", "8"), node("n1", "", "8"), node("cpu", "a", ""))
-
-	r := &Recorder{client: client, rackLabel: "example.com/rack", harness: &harnessStart{}}
+	n0, cpu := gpuNode("n0", "8"), &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "cpu"}}
+	n0.Labels = map[string]string{"example.com/rack": "a"}
+	cpu.Labels = n0.Labels
+	client := fake.NewSimpleClientset(n0, gpuNode("n1", "8"), cpu)
+	r, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	r.SetRackLabel("example.com/rack")
 	_, racks, _, _, err := r.gpuCapacity(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"n0": "a"}, racks, "n1 has no label and cpu has no GPUs")
 
-	r = &Recorder{client: client, harness: &harnessStart{}}
+	r.SetRackLabel("")
 	_, racks, _, _, err = r.gpuCapacity(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, racks)
+
+	client.PrependReactor("list", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("connection refused")
+	})
+	_, _, _, _, err = r.gpuCapacity(context.Background())
+	require.EqualError(t, err, "failed to list nodes: connection refused")
+}
+
+func TestFinishWarnsWhenNoNodeHasTheRackLabel(t *testing.T) {
+	for _, tc := range []struct {
+		name, label, rack string
+		warns             bool
+	}{
+		{name: "no GPU node has the label", label: "example.com/rack", warns: true},
+		{name: "a GPU node has the label", label: "example.com/rack", rack: "a"},
+		{name: "no label"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fastPoll(t)
+			logs := captureLog(t)
+			node := gpuNode("n0", "8")
+			if tc.rack != "" {
+				node.Labels = map[string]string{"example.com/rack": tc.rack}
+			}
+			rec, err := Start(context.Background(), fake.NewSimpleClientset(node), HarnessOptions{})
+			require.NoError(t, err)
+			rec.SetRackLabel(tc.label)
+			require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
+			if tc.warns {
+				require.Contains(t, logs.String(), `Results: no GPU node has the label "example.com/rack"`)
+			} else {
+				require.NotContains(t, logs.String(), "no GPU node has the label")
+			}
+		})
+	}
 }
 
 func TestProgress(t *testing.T) {
