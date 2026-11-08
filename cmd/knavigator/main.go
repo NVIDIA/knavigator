@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	log "k8s.io/klog/v2"
 
@@ -55,6 +56,7 @@ type Args struct {
 	aggregate    string
 	restartNS    string
 	leftovers    bool
+	rackLabel    string
 }
 
 func mainInternal() error {
@@ -80,6 +82,7 @@ func mainInternal() error {
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
 	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
+	flag.StringVar(&args.rackLabel, "results.rack-label", "", "node label that names each node's rack; fills gpu_fragmentation_rack in the results (requires 'results')")
 
 	log.InitFlags(nil)
 	flag.Parse()
@@ -149,6 +152,7 @@ func mainInternal() error {
 		if rec, err = results.Start(ctx, client, opts); err != nil {
 			return err
 		}
+		rec.SetRackLabel(args.rackLabel)
 		if len(args.pushURL) != 0 {
 			if len(args.pushRun) == 0 {
 				args.pushRun = time.Now().UTC().Format("20060102T150405")
@@ -303,6 +307,15 @@ func validate(args *Args) error {
 
 	if len(args.results) != 0 && len(args.workflow) == 0 {
 		return fmt.Errorf("'results' requires 'workflow'")
+	}
+
+	if len(args.rackLabel) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.rack-label' requires 'results'")
+		}
+		if errs := validation.IsQualifiedName(args.rackLabel); len(errs) != 0 {
+			return fmt.Errorf("'results.rack-label' must be a label key such as example.com/rack: %s", errs[0])
+		}
 	}
 
 	return nil

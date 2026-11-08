@@ -36,6 +36,10 @@ type Fragmentation struct {
 	// StrandedGPUHours is free GPU time, while pods waited, on nodes with fewer free GPUs than the
 	// smallest waiting pod requests.
 	StrandedGPUHours float64 `json:"stranded_gpu_hours"`
+	// GPUFragmentationRack is the share of free GPU time in racks with a GPU in use, so a job that
+	// needs a whole rack could not run there; null without -results.rack-label or when no GPU in a
+	// rack was free.
+	GPUFragmentationRack *float64 `json:"gpu_fragmentation_rack"`
 }
 
 // fragmentation sweeps the window from first to last. nodes maps each node to its allocatable GPUs;
@@ -214,4 +218,78 @@ func strandedGPUHours(pods []Pod, nodes, held map[string]float64, first, last ti
 	}
 	hold(last)
 	return gpuSeconds / 3600
+}
+
+// rackFragmentation sweeps the window like fragmentation, per rack. racks maps nodes to racks;
+// nodes without a rack are left out. held GPUs are in use for the whole window.
+func rackFragmentation(pods []Pod, nodes, held map[string]float64, racks map[string]string, first, last time.Time) *float64 {
+	if !last.After(first) || len(racks) == 0 {
+		return nil
+	}
+	type change struct {
+		t    time.Time
+		node string
+		gpus float64
+	}
+	var changes []change
+	for _, p := range pods {
+		if _, ok := racks[p.Node]; !ok || p.Scheduled.IsZero() {
+			continue
+		}
+		fin := p.Finished
+		if fin.IsZero() || fin.After(last) {
+			fin = last
+		}
+		if fin.After(p.Scheduled) {
+			changes = append(changes, change{p.Scheduled, p.Node, p.GPUs}, change{fin, p.Node, -p.GPUs})
+		}
+	}
+	sort.Slice(changes, func(a, b int) bool { return changes[a].t.Before(changes[b].t) })
+
+	// Running totals: free GPUs per rack, counted per node so a node with more in use than it has adds
+	// none, nodes in use per rack, and free GPUs over all racks and over racks in use. A node and its
+	// rack add their share again after each change.
+	used := map[string]float64{}
+	free, inUse := map[string]float64{}, map[string]int{}
+	var freeAll, fragmentedAll float64
+	share := func(node string, sign float64) {
+		rack := racks[node]
+		freeAll -= free[rack]
+		if inUse[rack] > 0 {
+			fragmentedAll -= free[rack]
+		}
+		free[rack] += sign * math.Max(nodes[node]-used[node], 0)
+		if used[node] > 0 {
+			inUse[rack] += int(sign)
+		}
+		freeAll += free[rack]
+		if inUse[rack] > 0 {
+			fragmentedAll += free[rack]
+		}
+	}
+	for node := range racks {
+		used[node] = held[node]
+		share(node, 1)
+	}
+	var freeSec, fragmentedSec float64
+	prev := first
+	hold := func(until time.Time) {
+		if dt := until.Sub(prev).Seconds(); dt > 0 {
+			freeSec += freeAll * dt
+			fragmentedSec += fragmentedAll * dt
+			prev = until
+		}
+	}
+	for _, c := range changes {
+		hold(c.t)
+		share(c.node, -1)
+		used[c.node] += c.gpus
+		share(c.node, 1)
+	}
+	hold(last)
+	if freeSec == 0 {
+		return nil
+	}
+	f := fragmentedSec / freeSec
+	return &f
 }

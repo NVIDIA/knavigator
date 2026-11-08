@@ -35,6 +35,8 @@ type Options struct {
 	// NodeHeldGPUs maps nodes to GPUs held there for the whole run by pods outside it, for
 	// fragmentation.
 	NodeHeldGPUs map[string]float64
+	// NodeRacks maps GPU nodes to their racks; empty gives a null gpu_fragmentation_rack.
+	NodeRacks map[string]string
 }
 
 // DefaultBSLDFloor is the runtime below which slowdown reports queueing noise rather than service.

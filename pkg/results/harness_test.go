@@ -226,7 +226,7 @@ func TestAllowLeftoversSubtractsTheirGPUs(t *testing.T) {
 	rec, err := Start(context.Background(), leftoverCluster(), HarnessOptions{AllowLeftovers: true})
 	require.NoError(t, err)
 	// The biggest node is a node size for the size-bias metrics, not free capacity.
-	_, _, maxNode, err := rec.gpuCapacity(context.Background())
+	_, _, _, maxNode, err := rec.gpuCapacity(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 8.0, maxNode)
 
@@ -412,7 +412,7 @@ func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
 			}
 			rec, err := Start(context.Background(), twoNodeCluster(pods...), tc.opts)
 			require.NoError(t, err)
-			nodes, capacity, maxNode, err := rec.gpuCapacity(context.Background())
+			nodes, _, capacity, maxNode, err := rec.gpuCapacity(context.Background())
 			require.NoError(t, err)
 			require.Equal(t, tc.nodes, nodes)
 			require.Equal(t, tc.capacity, capacity)
@@ -534,6 +534,37 @@ func TestAllowLeftoversPushesPerNodeFragmentation(t *testing.T) {
 		srv.value("knavigator_stranded_gpu_hours", nil)}
 	srv.mu.Unlock()
 	require.InDeltaSlice(t, []float64{3, 0.6, 0.6, 0.5, 1.5}, pushed, 1e-12)
+
+	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
+}
+
+func TestPushesRackFragmentation(t *testing.T) {
+	fastPoll(t)
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	client := twoNodeCluster()
+	for _, name := range []string{"n1", "n2"} {
+		node, err := client.CoreV1().Nodes().Get(context.Background(), name, metav1.GetOptions{})
+		require.NoError(t, err)
+		node.Labels = map[string]string{"example.com/rack": "a"}
+		_, err = client.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	rec.SetRackLabel("example.com/rack")
+	rec.PushTo(context.Background(), ts.URL, "r1", 10*time.Millisecond, func() []Job { return nil }, 1)
+
+	// n1 is in use for the whole run, so every free GPU of the rack sits in a rack in use.
+	require.Eventually(t, func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return srv.value("knavigator_gpu_fragmentation_rack", nil) != -1
+	}, 5*time.Second, 10*time.Millisecond)
+	srv.mu.Lock()
+	require.InDelta(t, 1.0, srv.value("knavigator_gpu_fragmentation_rack", nil), 1e-12)
+	srv.mu.Unlock()
 
 	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
 }
