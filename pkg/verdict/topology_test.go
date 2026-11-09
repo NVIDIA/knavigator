@@ -46,7 +46,7 @@ func TestTopology(t *testing.T) {
 	racks := map[string]string{"n1": "rack-a", "n2": "rack-a", "n3": "rack-b", "n4": "rack-b"}
 	params := verdict.TopologyParams{AttemptJobs: []string{"t1", "t2", "t3"}, PodsPerJob: 2, RackOf: racks}
 	run := func(ps ...[]pod) verdict.Timeline {
-		return verdict.Build(fixture("topology", attempts(ps...)...), "topology", at(200))
+		return mustBuild(fixture("topology", attempts(ps...)...), "topology", at(200))
 	}
 	tests := []struct {
 		name   string
@@ -97,7 +97,7 @@ func TestTopology(t *testing.T) {
 			// t1 lands in rack B; t2 has one pod on n3 and one pending; a queue
 			// holds t3 as a Job with no pods
 			name: "an attempt a queue holds, or one half placed, is not one rack",
-			tl: verdict.Build(fixtureJobs("topology", []job{{name: "t3", tenant: "t1", gpus: 16, created: 60, end: -1}},
+			tl: mustBuild(fixtureJobs("topology", []job{{name: "t3", tenant: "t1", gpus: 16, created: 60, end: -1}},
 				append(attempt("t1", "n3", "n4", 0),
 					done("t2-0", "t2", "n3", 30, 31, 31.5, 50), pending("t2-1", "t2", 30))...),
 				"topology", at(200)),

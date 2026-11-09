@@ -48,7 +48,7 @@ func TestPriority(t *testing.T) {
 	}{
 		{
 			name: "supported when the high-priority pod takes the first freed slot",
-			tl: verdict.Build(fixture("priority", append(queued(40, 50, 60, 70),
+			tl: mustBuild(fixture("priority", append(queued(40, 50, 60, 70),
 				done("h0", "high", "n1", 3, 30, 30.5, 50))...), "priority", at(100)),
 			want: want{
 				outcome:      verdict.Supported,
@@ -58,13 +58,13 @@ func TestPriority(t *testing.T) {
 		},
 		{
 			name: "a queued pod scheduled at the same instant does not count as ahead",
-			tl: verdict.Build(fixture("priority", append(queued(30, 50, 60, 70),
+			tl: mustBuild(fixture("priority", append(queued(30, 50, 60, 70),
 				done("h0", "high", "n2", 3, 30, 30.5, 50))...), "priority", at(100)),
 			want: want{outcome: verdict.Supported},
 		},
 		{
 			name: "partial when some queued pods go first",
-			tl: verdict.Build(fixture("priority", append(queued(30, 40, 60, 70),
+			tl: mustBuild(fixture("priority", append(queued(30, 40, 60, 70),
 				done("h0", "high", "n1", 3, 50, 50.5, 70))...), "priority", at(100)),
 			want: want{
 				outcome: verdict.Partial,
@@ -76,7 +76,7 @@ func TestPriority(t *testing.T) {
 			// q2 and q3 go first too, q4 after: 3 of the 4 queued jobs are ahead,
 			// not "all 4" as counting pods (2 + 1 + 1) would say
 			name: "a queued job with two pods ahead counts once",
-			tl: verdict.Build(fixture("priority",
+			tl: mustBuild(fixture("priority",
 				done("q1-0", "q1", "n1", 1, 30, 30.5, 50), done("q1-1", "q1", "n2", 1, 31, 31.5, 51),
 				done("q2", "q2", "n3", 1, 40, 40.5, 60), done("q3", "q3", "n4", 1, 45, 45.5, 65),
 				done("q4", "q4", "n1", 1, 70, 70.5, 90), done("h0", "high", "n1", 3, 50, 50.5, 70),
@@ -91,7 +91,7 @@ func TestPriority(t *testing.T) {
 			// every queued job goes first and q1 has two pods: 4 of the 4 jobs
 			// are ahead, so not supported, not "4 of 5" as counting pods would say
 			name: "every queued job ahead is not supported, whatever their pod count",
-			tl: verdict.Build(fixture("priority",
+			tl: mustBuild(fixture("priority",
 				done("q1-0", "q1", "n1", 1, 30, 30.5, 50), done("q1-1", "q1", "n2", 1, 31, 31.5, 51),
 				done("q2", "q2", "n3", 1, 40, 40.5, 60), done("q3", "q3", "n4", 1, 45, 45.5, 65),
 				done("q4", "q4", "n1", 1, 48, 48.5, 68), done("h0", "high", "n2", 3, 50, 50.5, 70),
@@ -104,7 +104,7 @@ func TestPriority(t *testing.T) {
 		},
 		{
 			name: "not supported when the pods run in arrival order",
-			tl: verdict.Build(fixture("priority", append(queued(30, 40, 50, 60),
+			tl: mustBuild(fixture("priority", append(queued(30, 40, 50, 60),
 				done("h0", "high", "n1", 3, 70, 70.5, 90))...), "priority", at(100)),
 			want: want{
 				outcome: verdict.NotSupported,
@@ -113,7 +113,7 @@ func TestPriority(t *testing.T) {
 		},
 		{
 			name: "not supported when the high-priority pod is never scheduled",
-			tl: verdict.Build(fixture("priority", append(queued(30, 40, -1, -1),
+			tl: mustBuild(fixture("priority", append(queued(30, 40, -1, -1),
 				pending("h0", "high", 3))...), "priority", at(100)),
 			want: want{
 				outcome:      verdict.NotSupported,
@@ -125,7 +125,7 @@ func TestPriority(t *testing.T) {
 			// a queue holds a queued Job without pods: the Job is created at
 			// 2.2 s, its pod only at admission (33.24 s), scheduled at 34.26 s
 			name: "time to schedule runs from the Job's submission, not its pod's creation",
-			tl: verdict.Build(fixtureJobs("priority", []job{{name: "high", tenant: "t1", gpus: 8, created: 2.2, end: -1}},
+			tl: mustBuild(fixtureJobs("priority", []job{{name: "high", tenant: "t1", gpus: 8, created: 2.2, end: -1}},
 				append(queued(44, 54, 64, 67),
 					pod{name: "h0", job: "high", tenant: "t1", gpus: 8, node: "n1", created: 33.24, scheduled: 34.26, running: 34.3, end: -1})...),
 				"priority", at(100)),
@@ -133,7 +133,7 @@ func TestPriority(t *testing.T) {
 		},
 		{
 			name: "not supported when the high-priority job is held as a Job and never gets a pod",
-			tl: verdict.Build(fixtureJobs("priority", []job{{name: "high", tenant: "t1", gpus: 8, created: 3, end: -1}},
+			tl: mustBuild(fixtureJobs("priority", []job{{name: "high", tenant: "t1", gpus: 8, created: 3, end: -1}},
 				queued(30, 40, 50, 60)...), "priority", at(100)),
 			want: want{outcome: verdict.NotSupported, reason: "the high-priority job was never scheduled"},
 		},

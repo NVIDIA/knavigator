@@ -72,7 +72,7 @@ func TestFairShare(t *testing.T) {
 	params := verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 16, JobLengthSec: 60,
 		ToleranceSec: 5, CapacityGPUs: 32, WindowSec: 10}
 	run := func(until float64, pods ...pod) verdict.Timeline {
-		return verdict.Build(fixture("fair-share", pods...), "fair-share", at(until))
+		return mustBuild(fixture("fair-share", pods...), "fair-share", at(until))
 	}
 	tests := []struct {
 		name   string
@@ -215,7 +215,7 @@ func TestFairShare(t *testing.T) {
 // threeTenants is one 10 s window with tenants a, b and c, each with a
 // 30-GPU Job from 0 s, running ga, gb and gc GPUs for the whole window.
 func threeTenants(ga, gb, gc int64) verdict.Timeline {
-	return verdict.Build(fixtureJobs("fair-share",
+	return mustBuild(fixtureJobs("fair-share",
 		[]job{{name: "a1", tenant: "a", gpus: 30, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 30, created: 0, end: -1},
 			{name: "c1", tenant: "c", gpus: 30, created: 0, end: -1}},
 		tenantPod("a1", "a", ga, 0, 0, 10), tenantPod("b1", "b", gb, 0, 0, 10), tenantPod("c1", "c", gc, 0, 0, 10),
@@ -236,7 +236,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// x = (2, 0), J = 0.5. Window [20,30): only b has demand, excluded from
 			// J; b's shortfall is 20 + 20 + 0 = 40 GPU-seconds.
 			name: "per-window Jain's index and the worst shortfall, by hand",
-			tl: verdict.Build(fixture("fair-share",
+			tl: mustBuild(fixture("fair-share",
 				tenantPod("a1", "a", 4, 0, 0, 20), tenantPod("b1", "b", 4, 5, 20, 30),
 			), "fair-share", at(30)),
 			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 4, JobLengthSec: 10,
@@ -254,7 +254,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// b's shortfall is 40 + 40 = 80 GPU-s. Counting demand from the pod's
 			// creation instead would leave b without demand in windows 1 and 2.
 			name: "demand counts from the Job's submission, while a queue holds it without pods",
-			tl: verdict.Build(fixtureJobs("fair-share",
+			tl: mustBuild(fixtureJobs("fair-share",
 				[]job{{name: "a1", tenant: "a", gpus: 4, created: 0, end: 30}, {name: "b1", tenant: "b", gpus: 4, created: 0, end: 30}},
 				tenantPod("a1", "a", 4, 0, 0, 30), tenantPod("b1", "b", 4, 20, 20, 30),
 			), "fair-share", at(30)),
@@ -271,7 +271,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// window used, no shortfall. Reading a's demand to the horizon instead
 			// would give J = 0.5 in those windows and a shortfall of 80 GPU-s.
 			name: "a tenant's demand ends when its Job's end is recorded",
-			tl: verdict.Build(fixtureJobs("fair-share",
+			tl: mustBuild(fixtureJobs("fair-share",
 				[]job{{name: "a1", tenant: "a", gpus: 4, created: 0, end: 10}, {name: "b1", tenant: "b", gpus: 4, created: 0, end: -1}},
 				tenantPod("a1", "a", 4, 0, 0, 10), tenantPod("b1", "b", 4, 0, 0, 30),
 			), "fair-share", at(30)),
@@ -288,7 +288,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// x = (0, 1), J = 0.5, and a falls 20 GPU-s short. Ending a's demand
 			// with its first pod instead would leave that window to b alone.
 			name: "a job seen only through its pods wants capacity until all of them end",
-			tl: verdict.Build(fixture("fair-share",
+			tl: mustBuild(fixture("fair-share",
 				pod{name: "a1-0", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 0, scheduled: 0, running: 0, end: 10, endBy: eventlog.Succeeded},
 				pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, created: 0, scheduled: -1, running: -1, end: -1},
 				tenantPod("b1", "b", 2, 0, 0, -1),
@@ -306,7 +306,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// short. Window [10,20): x = (1, 1), J = 1. The worst shortfall is a's
 			// 10 GPU-s, from the window J leaves out.
 			name: "the shortfall of a window with one tenant's demand counts",
-			tl: verdict.Build(fixtureJobs("fair-share",
+			tl: mustBuild(fixtureJobs("fair-share",
 				[]job{{name: "a1", tenant: "a", gpus: 2, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 2, created: 10, end: -1}},
 				tenantPod("a1", "a", 2, 0, 5, -1), tenantPod("b1", "b", 2, 10, 10, -1),
 			), "fair-share", at(20)),
@@ -321,7 +321,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// Window 2: both want capacity and neither gets any, so Jain's index is
 			// 0/0; the window is excluded rather than turning the percentiles NaN.
 			name: "a window where tenants want capacity and none is delivered is excluded",
-			tl: verdict.Build(fixtureJobs("fair-share",
+			tl: mustBuild(fixtureJobs("fair-share",
 				[]job{{name: "a1", tenant: "a", gpus: 2, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 2, created: 0, end: -1}},
 				tenantPod("a1", "a", 2, 0, 0, 10), tenantPod("b1", "b", 2, 0, 0, 10),
 				pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 20, scheduled: 20, running: 20, end: 30, endBy: eventlog.Succeeded},
@@ -339,7 +339,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// Sorted J = [0.5, 1]: the even-count median is (0.5 + 1) / 2 = 0.75, and
 			// p5 is J[ceil(0.05 * 2) - 1] = J[0] = 0.5.
 			name: "the 5th percentile and the even-count median come from distinct windows",
-			tl: verdict.Build(fixtureJobs("fair-share",
+			tl: mustBuild(fixtureJobs("fair-share",
 				[]job{{name: "a1", tenant: "a", gpus: 4, created: 0, end: -1}, {name: "b1", tenant: "b", gpus: 4, created: 0, end: -1}},
 				tenantPod("a1", "a", 4, 0, 0, 10),
 				pod{name: "a1-1", job: "a1", tenant: "a", gpus: 2, node: "n1", created: 10, scheduled: 10, running: 10, end: 20, endBy: eventlog.Succeeded},
@@ -368,7 +368,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// whole window. Capped water-filling gives entitlements 30 and 10, so
 			// x = (1, 1) and J = 1. An uncapped equal split (20, 20) would give 0.8.
 			name: "each tenant's entitlement is capped at its demand",
-			tl: verdict.Build(fixture("fair-share",
+			tl: mustBuild(fixture("fair-share",
 				tenantPod("a1", "a", 3, 0, 0, 10), tenantPod("b1", "b", 1, 0, 0, 10),
 			), "fair-share", at(10)),
 			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 1, JobLengthSec: 10,
@@ -383,7 +383,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// J = 1. Sorted, p5 is J[ceil(0.05 * 21) - 1] = J[1] = 0.9, and b's
 			// shortfall is 20 + 10 = 30 GPU-s.
 			name: "the 5th percentile over 21 windows",
-			tl: verdict.Build(fixture("fair-share",
+			tl: mustBuild(fixture("fair-share",
 				tenantPod("a1", "a", 2, 0, 0, -1), tenantPod("b1", "b", 2, 0, 15, -1),
 			), "fair-share", at(210)),
 			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 2, JobLengthSec: 10,
@@ -396,7 +396,7 @@ func TestFairnessOverTime(t *testing.T) {
 			// with 10 GPU-s of capacity split 5 and 5. Tenant b never runs, so its
 			// shortfall is 10 + 10 + 5 = 25 GPU-s; a full last window would give 30.
 			name: "the last window is shorter when the horizon is not a multiple of the window",
-			tl: verdict.Build(fixture("fair-share",
+			tl: mustBuild(fixture("fair-share",
 				tenantPod("a1", "a", 2, 0, 0, -1), tenantPod("b1", "b", 2, 0, -1, -1),
 			), "fair-share", at(25)),
 			params: verdict.FairShareParams{TenantB: "b", EntitlementGPUs: 1, JobLengthSec: 10,

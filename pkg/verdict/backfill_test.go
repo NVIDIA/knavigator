@@ -64,12 +64,12 @@ func scenario(bigAt float64, smallAt ...float64) verdict.Timeline {
 		}
 		ps = append(ps, done(n, n, "n4", 2, s, s+0.5, s+25))
 	}
-	return verdict.Build(fixture("backfill", ps...), "backfill", at(200))
+	return mustBuild(fixture("backfill", ps...), "backfill", at(200))
 }
 
 // backfillRun builds a backfill timeline from the blockers and pods.
 func backfillRun(pods ...pod) verdict.Timeline {
-	return verdict.Build(fixture("backfill", append(blockers(), pods...)...), "backfill", at(200))
+	return mustBuild(fixture("backfill", append(blockers(), pods...)...), "backfill", at(200))
 }
 
 func TestBackfill(t *testing.T) {
@@ -233,7 +233,7 @@ func TestBackfill(t *testing.T) {
 		},
 		{
 			name: "a blocker job that never finished is a harness error",
-			tl: verdict.Build(fixture("backfill",
+			tl: mustBuild(fixture("backfill",
 				done("blk0", "blk0", "n1", 0, 0, 0.5, 50), done("blk1", "blk1", "n2", 0, 0, 0.5, 55),
 				done("blk2", "blk2", "n3", 0, 0, 0.5, -1),
 				pending("b0", "big", 1), done("s0", "s0", "n4", 2, 2, 2.5, 27),

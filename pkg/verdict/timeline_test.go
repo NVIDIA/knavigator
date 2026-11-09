@@ -29,7 +29,7 @@ func TestBuildIgnoresJobEventsAfterTheWindow(t *testing.T) {
 	// seq 1 is the Job's creation at 0 s, seq 6 its end at 30 s
 	evs := fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: 30}},
 		done("j-0", "j", "n1", 0, 1, 2, 20))
-	tl := verdict.Build(evs, "p", at(25))
+	tl := mustBuild(evs, "p", at(25))
 	require.Contains(t, tl.Jobs, "j")
 	require.Equal(t, at(0), tl.Jobs["j"].Created)
 	require.True(t, tl.Jobs["j"].End.IsZero())
@@ -42,7 +42,7 @@ func TestBuildEndsAJobAtItsEnd(t *testing.T) {
 			evs := fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: 30}})
 			require.Len(t, evs, 2)
 			evs[1].Transition = tr
-			tl := verdict.Build(evs, "p", at(60))
+			tl := mustBuild(evs, "p", at(60))
 			require.Contains(t, tl.Jobs, "j")
 			require.Equal(t, at(30), tl.Jobs["j"].End)
 		})
@@ -75,7 +75,7 @@ func TestBuildDerivesAJobFromItsPods(t *testing.T) {
 			for i := range tc.pods {
 				tc.pods[i].job = "j"
 			}
-			tl := verdict.Build(fixture("p", tc.pods...), "p", at(100))
+			tl := mustBuild(fixture("p", tc.pods...), "p", at(100))
 			require.Contains(t, tl.Jobs, "j")
 			require.Equal(t, int64(16), tl.Jobs["j"].GPUs)
 			require.Equal(t, at(tc.created), tl.Jobs["j"].Created)
@@ -84,6 +84,91 @@ func TestBuildDerivesAJobFromItsPods(t *testing.T) {
 			} else {
 				require.Equal(t, at(tc.end), tl.Jobs["j"].End)
 			}
+		})
+	}
+}
+
+// relabel moves the events of object name (a Job's or a pod's name) to
+// namespace ns and tenant tn.
+func relabel(evs []eventlog.Event, name, ns, tn string) []eventlog.Event {
+	for i := range evs {
+		if evs[i].Name == name {
+			evs[i].Namespace, evs[i].Tenant = ns, tn
+		}
+	}
+	return evs
+}
+
+func TestBuildRejectsAJobNameWithTwoIdentities(t *testing.T) {
+	tests := []struct {
+		name string
+		evs  []eventlog.Event
+		err  string
+	}{
+		{
+			// fixture events are in namespace "p"; the second Job's are moved to "q"
+			name: "a Job name in two namespaces",
+			evs: func() []eventlog.Event {
+				evs := fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: -1},
+					{name: "j", tenant: "t1", gpus: 8, created: 5, end: -1}})
+				evs[1].Namespace = "q"
+				return evs
+			}(),
+			err: `job j is recorded in two namespaces, "p" and "q"`,
+		},
+		{
+			name: "a Job name for two tenants",
+			evs: fixtureJobs("p", []job{{name: "j", tenant: "a", gpus: 8, created: 0, end: -1},
+				{name: "j", tenant: "b", gpus: 8, created: 5, end: -1}}),
+			err: `job j is recorded for two tenants, "a" and "b"`,
+		},
+		{
+			name: "pods of one job name in two namespaces",
+			evs: relabel(fixture("p", done("j-0", "j", "n1", 0, 1, 2, 20), done("j-1", "j", "n2", 3, 4, 5, 20)),
+				"j-1", "q", "t1"),
+			err: `job j is recorded in two namespaces, "p" and "q"`,
+		},
+		{
+			name: "a pod in another namespace than its Job",
+			evs: relabel(fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: -1}},
+				done("j-0", "j", "n1", 1, 2, 3, 20)), "j-0", "q", "t1"),
+			err: `job j is recorded in two namespaces, "p" and "q"`,
+		},
+		{
+			name: "a pod for another tenant than its Job",
+			evs: relabel(fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: -1}},
+				done("j-0", "j", "n1", 1, 2, 3, 20)), "j-0", "p", "t2"),
+			err: `job j is recorded for two tenants, "t1" and "t2"`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := verdict.Build(tc.evs, "p", at(100))
+			require.EqualError(t, err, tc.err)
+		})
+	}
+}
+
+func TestBuildIgnoresAnotherIdentityOutsideTheProbeAndWindow(t *testing.T) {
+	tests := []struct {
+		name string
+		// other is a Job event for job j in namespace "q", tenant "t2"
+		other eventlog.Event
+	}{
+		{name: "another probe's job of the same name", other: eventlog.Event{Kind: "Job", Probe: "other", Name: "j",
+			Namespace: "q", Tenant: "t2", ObservedAt: at(10), Transition: eventlog.Created}},
+		{name: "a Job event after the window", other: eventlog.Event{Kind: "Job", Probe: "p", Name: "j",
+			Namespace: "q", Tenant: "t2", ObservedAt: at(101), Transition: eventlog.Created}},
+		{name: "a pod event after the window", other: eventlog.Event{Kind: "Pod", Probe: "p", Name: "j-9", Job: "j",
+			UID: "uid-j-9", Namespace: "q", Tenant: "t2", ObservedAt: at(101), Transition: eventlog.Created}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			evs := fixtureJobs("p", []job{{name: "j", tenant: "t1", gpus: 8, created: 0, end: -1}},
+				done("j-0", "j", "n1", 1, 2, 3, 20))
+			tl, err := verdict.Build(append(evs, tc.other), "p", at(100))
+			require.NoError(t, err)
+			require.Equal(t, "t1", tl.Jobs["j"].Tenant)
 		})
 	}
 }
