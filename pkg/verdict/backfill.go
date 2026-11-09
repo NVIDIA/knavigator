@@ -37,6 +37,12 @@ func (p BackfillParams) validate() error {
 	if p.BigJob == "" || len(p.BlockerJobs) == 0 || len(p.SmallJobs) == 0 {
 		return errors.New("big_job, blocker_jobs and small_jobs must all be set")
 	}
+	if n := repeated(p.BlockerJobs); n != "" {
+		return fmt.Errorf("blocker_jobs lists %s twice", n)
+	}
+	if n := repeated(p.SmallJobs); n != "" {
+		return fmt.Errorf("small_jobs lists %s twice", n)
+	}
 	if p.BigPods < 1 {
 		return fmt.Errorf("big_pods %d, want 1 or more", p.BigPods)
 	}

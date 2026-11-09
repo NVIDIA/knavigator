@@ -34,6 +34,9 @@ func (p TopologyParams) validate() error {
 	if len(p.AttemptJobs) == 0 || len(p.RackOf) == 0 {
 		return errors.New("attempt_jobs and rack_of must both be set")
 	}
+	if n := repeated(p.AttemptJobs); n != "" {
+		return fmt.Errorf("attempt_jobs lists %s twice", n)
+	}
 	if p.PodsPerJob < 1 {
 		return fmt.Errorf("pods_per_job %d, want 1 or more", p.PodsPerJob)
 	}

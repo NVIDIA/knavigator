@@ -35,6 +35,9 @@ func (p GangParams) validate() error {
 	if len(p.Jobs) == 0 {
 		return errors.New("jobs is empty")
 	}
+	if n := repeated(p.Jobs); n != "" {
+		return fmt.Errorf("jobs lists %s twice", n)
+	}
 	if p.Size < 2 {
 		return fmt.Errorf("size %d, want 2 or more", p.Size)
 	}

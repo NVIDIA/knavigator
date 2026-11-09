@@ -19,6 +19,7 @@ package verdict
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // PriorityParams are the priority probe's parameters: the high-priority
@@ -34,6 +35,12 @@ func (p PriorityParams) validate() error {
 	}
 	if len(p.QueuedJobs) == 0 {
 		return errors.New("queued_jobs is empty")
+	}
+	if n := repeated(p.QueuedJobs); n != "" {
+		return fmt.Errorf("queued_jobs lists %s twice", n)
+	}
+	if slices.Contains(p.QueuedJobs, p.HighJob) {
+		return fmt.Errorf("queued_jobs lists the high_job %s", p.HighJob)
 	}
 	return nil
 }

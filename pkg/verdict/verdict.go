@@ -127,6 +127,19 @@ func setOnce(t *time.Time, v time.Time) {
 	}
 }
 
+// repeated returns the first name in names that appeared earlier in names,
+// or "" when every name is distinct.
+func repeated(names []string) string {
+	seen := map[string]bool{}
+	for _, n := range names {
+		if seen[n] {
+			return n
+		}
+		seen[n] = true
+	}
+	return ""
+}
+
 // ofJob returns the pods of job, in order of first appearance.
 func ofJob(pods []*Pod, job string) []*Pod {
 	var out []*Pod
