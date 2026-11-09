@@ -65,7 +65,10 @@ func evaluate(evs []eventlog.Event, pr Probe) (Verdict, error) {
 	if pr.WindowEnd.IsZero() {
 		return Verdict{}, fmt.Errorf("window_end is missing")
 	}
-	t := Build(evs, pr.Capability, pr.WindowEnd)
+	t, err := Build(evs, pr.Capability, pr.WindowEnd)
+	if err != nil {
+		return Verdict{}, err
+	}
 	switch pr.Capability {
 	case CapGang, CapGangControl:
 		var p GangParams

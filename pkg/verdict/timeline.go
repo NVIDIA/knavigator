@@ -17,6 +17,7 @@
 package verdict
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/NVIDIA/knavigator/pkg/eventlog"
@@ -45,7 +46,12 @@ type Timeline struct {
 // pods and jobs. A job seen only through its pods (no Job events, as in
 // hand-built fixtures) gets a Job derived from them: created with its first
 // pod, its pods' GPUs, and ended with its last pod when all of them ended.
-func Build(evs []eventlog.Event, probe string, until time.Time) Timeline {
+// Build returns an error when one job name is recorded, by its Job or its
+// pods, in two namespaces or for two tenants.
+func Build(evs []eventlog.Event, probe string, until time.Time) (Timeline, error) {
+	if err := oneIdentity(evs, probe, until); err != nil {
+		return Timeline{}, err
+	}
 	t := Timeline{Pods: Pods(evs, probe, until), Jobs: map[string]*Job{}, End: until}
 	for _, e := range evs {
 		if e.Kind != "Job" || e.Probe != probe || e.ObservedAt.After(until) {
@@ -93,7 +99,38 @@ func Build(evs []eventlog.Event, probe string, until time.Time) Timeline {
 		}
 		t.Jobs[name] = j
 	}
-	return t
+	return t, nil
+}
+
+// oneIdentity checks that the Job and Pod events of a probe, observed no
+// later than until, record each job name in one namespace and for one
+// tenant. A Job event names its job by the Job's name, a Pod event by its
+// job label.
+func oneIdentity(evs []eventlog.Event, probe string, until time.Time) error {
+	type identity struct{ namespace, tenant string }
+	first := map[string]identity{}
+	for _, e := range evs {
+		if (e.Kind != "Job" && e.Kind != "Pod") || e.Probe != probe || e.ObservedAt.After(until) {
+			continue
+		}
+		name := e.Job
+		if e.Kind == "Job" {
+			name = e.Name
+		}
+		if name == "" {
+			continue
+		}
+		id, seen := first[name]
+		switch {
+		case !seen:
+			first[name] = identity{e.Namespace, e.Tenant}
+		case id.namespace != e.Namespace:
+			return fmt.Errorf("job %s is recorded in two namespaces, %q and %q", name, id.namespace, e.Namespace)
+		case id.tenant != e.Tenant:
+			return fmt.Errorf("job %s is recorded for two tenants, %q and %q", name, id.tenant, e.Tenant)
+		}
+	}
+	return nil
 }
 
 // job returns a job's pods, and whether the job was seen at all (as a Job
