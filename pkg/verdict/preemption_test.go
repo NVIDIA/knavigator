@@ -203,6 +203,16 @@ func TestPreemption(t *testing.T) {
 			},
 		},
 		{
+			// v0 is deleted at 11.5 s, inside the 12 s window; v1's deletion at
+			// 14 s falls outside it, so v1 is the victim that cannot be judged
+			name: "a window that ends before the grace is a harness error for any victim not yet ended, not only the first",
+			tl: mustBuild(fixture("preemption",
+				victim("v0", "n1", 11.5, eventlog.Deleted), victim("v1", "n2", 14, eventlog.Deleted),
+				high("h0", "n1", 11), high("h1", "n2", 11),
+			), "preemption", at(12)),
+			err: "the window ends 1 s after the high-priority job was scheduled, before the 5 s grace, and victim pod v1 has no recorded end",
+		},
+		{
 			// every victim is deleted at 11.5 s, inside a window that ends at 12 s
 			name: "a window that ends before the grace still judges victims all ended within it",
 			tl: mustBuild(fixture("preemption",
