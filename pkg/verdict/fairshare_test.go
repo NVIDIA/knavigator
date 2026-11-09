@@ -164,6 +164,40 @@ func TestFairShare(t *testing.T) {
 				some:    map[string]float64{"b_max_gpus_by_check": 8, "b_after_first_submit_s": 10},
 			},
 		},
+		{
+			// the first case's run, cut at 50 s: B submits at 10 s, so the
+			// check is at 75 s, and B's pods start at 60.5 s, after the window
+			name:   "a window that ends before the check, with B short of its entitlement, is a harness error",
+			tl:     run(50, append(aPods(60.5, 60.5, 120.5, 120.5), bPods(60.5, 60.5, 120.5, 120.5)...)...),
+			params: params,
+			err:    "the window ends 40 s after tenant b submitted, before the 65 s check",
+		},
+		{
+			// b0 runs from 20 s; b1 starts at 60.5 s, after the window ends at 50 s
+			name:   "a window that ends before the check, with B partly served, is a harness error",
+			tl:     run(50, append(aPods(60.5, 60.5, 120.5, 120.5), bPods(20, 60.5)...)...),
+			params: params,
+			err:    "the window ends 40 s after tenant b submitted, before the 65 s check",
+		},
+		{
+			name:   "a window that ends before the check keeps an entitlement already reached",
+			tl:     run(50, append(aPods(60.5, 60.5, 120.5, 120.5), bPods(20, 20)...)...),
+			params: params,
+			want: want{
+				outcome: verdict.Supported,
+				reason:  "tenant b had 16 GPUs running within 65 s of submitting; its entitlement is 16",
+			},
+		},
+		{
+			// the window ends at 75 s, exactly at the check; b1 starts at 80 s
+			name:   "a window that ends at the check judges what B had by then",
+			tl:     run(75, append(aPods(60.5, 60.5, 120.5, 120.5), bPods(20, 80)...)...),
+			params: params,
+			want: want{
+				outcome: verdict.Partial,
+				reason:  "tenant b had at most 8 of its 16 entitled GPUs running within 65 s of submitting",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
