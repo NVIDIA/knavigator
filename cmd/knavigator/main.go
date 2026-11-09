@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -175,13 +176,22 @@ func mainInternal() error {
 		}
 	}
 
+	// A stopped open-ended SubmitTrace ends the workflow as intended; later tasks do not run.
+	stopped := errors.Is(runErr, engine.ErrStopped)
+	if stopped {
+		runErr = nil
+	}
 	if rec == nil {
 		return runErr
 	}
+	if runErr == nil && !stopped && ctx.Err() != nil {
+		// Ctrl+C during any other task, such as a trailing Sleep that returns nil, aborts the run.
+		runErr = ctx.Err()
+	}
 	if runErr == nil {
-		// Stopping an open-ended SubmitTrace cancels ctx but still owes results, so drain on a fresh one.
+		// Only a stopped SubmitTrace still owes results after Ctrl+C, so only it drains on a fresh context.
 		fctx := ctx
-		if ctx.Err() != nil {
+		if stopped {
 			fctx = context.WithoutCancel(ctx)
 		}
 		runErr = rec.Finish(fctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)

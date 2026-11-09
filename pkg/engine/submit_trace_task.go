@@ -144,6 +144,10 @@ type traceJob struct {
 	Priority int
 }
 
+// ErrStopped is returned by a SubmitTrace that runs until stopped once it is stopped. The run
+// ended as intended and still owes its results.
+var ErrStopped = errors.New("submission stopped")
+
 func newSubmitTraceTask(client *dynamic.DynamicClient, accessor ObjInfoAccessor, cfg *config.Task) (*SubmitTraceTask, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%s/%s: DynamicClient is not set", cfg.Type, cfg.ID)
@@ -616,7 +620,8 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 		wg.Add(1)
 		go func(id int, params map[string]interface{}) {
 			defer wg.Done()
-			if err := task.submitJob(subCtx, id, params); err != nil {
+			// A canceled Create may still land on the server unrecorded, where Reset cannot delete it.
+			if err := task.submitJob(context.WithoutCancel(subCtx), id, params); err != nil {
 				once.Do(func() { firstErr = err; cancel() })
 			}
 		}(job.ID, params)
@@ -629,9 +634,8 @@ func (task *SubmitTraceTask) Exec(ctx context.Context) error {
 	if firstErr != nil {
 		return firstErr
 	}
-	// Stopping an open-ended run is how it ends, so the caller can still write results.
-	if continuous {
-		return nil
+	if continuous && ctx.Err() != nil {
+		return ErrStopped
 	}
 	return ctx.Err()
 }

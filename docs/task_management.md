@@ -110,7 +110,7 @@ A class can split its jobs over many generated accounts instead of a fixed `acco
 
 ### Open-ended runs
 
-Set `jobs: -1` on a class with `arrivalInterval` to keep submitting until you stop the run. Ctrl+C then stops submission, waits for the submitted jobs to finish, and writes the results as usual; a second Ctrl+C exits at once. An `accountSet` on such a class draws each job's account by its distribution (`minJobs` does not apply). Add `-results.report-interval 2m` to write `partial-<n>.json` into the results directory every two minutes. Each file summarizes the whole run up to that point, so a run you stop early still leaves numbers behind.
+Set `jobs: -1` on a class with a positive `arrivalInterval` to keep submitting until you stop the run. With `-results`, Ctrl+C then stops submission, waits for the submitted jobs to finish, and writes the results as usual; a second Ctrl+C exits at once. Without `-results`, Ctrl+C stops submission and the cleanup deletes the submitted jobs. Stopping ends the workflow, so make an open-ended `SubmitTrace` its last task: tasks after it do not run. An `accountSet` on such a class draws each job's account by its distribution (`minJobs` does not apply). Add `-results.report-interval 2m` to write `partial-<n>.json` into the results directory every two minutes. Each file summarizes the whole run up to that point, so a run you stop early still leaves numbers behind. A new run removes the `partial-*.json` files an earlier one left in the directory.
 
 ### Waiting for the scheduler to see virtual nodes
 

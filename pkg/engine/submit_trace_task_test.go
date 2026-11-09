@@ -432,11 +432,21 @@ func TestSubmitTraceContinuous(t *testing.T) {
 			"accountSet": map[string]interface{}{"prefix": "a-", "count": 3},
 		}},
 	}))
-	var n atomic.Int32
-	task.submitJob = func(context.Context, int, map[string]interface{}) error { n.Add(1); return nil }
+	var (
+		mu       sync.Mutex
+		accounts = map[string]bool{}
+	)
+	task.submitJob = func(ctx context.Context, _ int, params map[string]interface{}) error {
+		mu.Lock()
+		accounts[params["account"].(string)] = true
+		mu.Unlock()
+		// A Create still in flight at Ctrl+C must not fail the run.
+		time.Sleep(20 * time.Millisecond)
+		return ctx.Err()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	require.NoError(t, task.Exec(ctx), "stopping an open-ended run is not an error")
-	require.Greater(t, n.Load(), int32(5))
+	require.ErrorIs(t, task.Exec(ctx), ErrStopped)
+	require.Equal(t, map[string]bool{"a-1": true, "a-2": true, "a-3": true}, accounts)
 }

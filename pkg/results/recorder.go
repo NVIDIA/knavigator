@@ -120,6 +120,8 @@ func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions
 func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Duration, jobs func() []Job, speedup float64) {
 	r.pusher = NewPusher(url, run)
 	r.pusher.SetSpeedup(speedup)
+	// Pushes continue while a stopped run drains, after ctx is canceled.
+	ctx = context.WithoutCancel(ctx)
 	r.pusher.Start(r.snapshot, func(pods []Pod) (Summary, error) {
 		return r.partial(ctx, pods, jobs(), speedup)
 	}, interval)
@@ -146,11 +148,18 @@ func (r *Recorder) partial(ctx context.Context, pods []Pod, jobs []Job, speedup 
 // ReportEvery writes the summary of the run so far to dir/partial-<n>.json every interval, so a
 // run that never drains still leaves numbers behind. Each file covers the whole run to that point.
 func (r *Recorder) ReportEvery(ctx context.Context, dir string, interval time.Duration, jobs func() []Job, speedup float64) {
+	// Numbering restarts at 1, so files left by an earlier run would look current.
+	if old, _ := filepath.Glob(filepath.Join(dir, "partial-*.json")); len(old) > 0 {
+		log.Infof("Results: removing %d partial files from an earlier run", len(old))
+		for _, f := range old {
+			_ = os.Remove(f)
+		}
+	}
+	// Reports continue while a stopped run drains, after ctx is canceled; Finish ends them.
+	ctx = context.WithoutCancel(ctx)
 	go func() {
 		for n := 1; ; n++ {
 			select {
-			case <-ctx.Done():
-				return
 			case <-r.stop:
 				return
 			case <-time.After(interval):
