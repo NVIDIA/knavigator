@@ -132,6 +132,39 @@ func TestEvaluateErrors(t *testing.T) {
 			probe: verdict.Probe{Capability: "topology", Params: json.RawMessage(`{"attempt_jobs":["t1"],"pods_per_job":0,"rack_of":{"n1":"rack-a"}}`), WindowEnd: at(50)},
 			err:   "topology: pods_per_job 0, want 1 or more",
 		},
+		{
+			// gang-b is the first name seen a second time
+			name:  "gang jobs listing a job twice",
+			probe: verdict.Probe{Capability: "gang", Params: json.RawMessage(`{"jobs":["gang-a","gang-b","gang-b","gang-a"],"size":2,"grace_sec":5}`), WindowEnd: at(50)},
+			err:   "gang: jobs lists gang-b twice",
+		},
+		{
+			name:  "priority queued jobs listing a job twice",
+			probe: verdict.Probe{Capability: "priority", Params: json.RawMessage(`{"high_job":"high","queued_jobs":["q1","q2","q1"]}`), WindowEnd: at(50)},
+			err:   "priority: queued_jobs lists q1 twice",
+		},
+		{
+			name:  "priority queued jobs listing the high job",
+			probe: verdict.Probe{Capability: "priority", Params: json.RawMessage(`{"high_job":"high","queued_jobs":["q1","high"]}`), WindowEnd: at(50)},
+			err:   "priority: queued_jobs lists the high_job high",
+		},
+		{
+			name:  "topology attempts listing a job twice",
+			probe: verdict.Probe{Capability: "topology", Params: json.RawMessage(`{"attempt_jobs":["t1","t1"],"pods_per_job":2,"rack_of":{"n1":"rack-a"}}`), WindowEnd: at(50)},
+			err:   "topology: attempt_jobs lists t1 twice",
+		},
+		{
+			name: "backfill blockers listing a job twice",
+			probe: verdict.Probe{Capability: "backfill", Params: json.RawMessage(
+				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0","blk0"],"small_jobs":["s0"],"tolerance_sec":5}`), WindowEnd: at(50)},
+			err: "backfill: blocker_jobs lists blk0 twice",
+		},
+		{
+			name: "backfill short jobs listing a job twice",
+			probe: verdict.Probe{Capability: "backfill", Params: json.RawMessage(
+				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0"],"small_jobs":["s0","s1","s1"],"tolerance_sec":5}`), WindowEnd: at(50)},
+			err: "backfill: small_jobs lists s1 twice",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
