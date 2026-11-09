@@ -172,3 +172,17 @@ func TestBuildIgnoresAnotherIdentityOutsideTheProbeAndWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildIgnoresTheNamespaceOfPodsWithoutAJob(t *testing.T) {
+	// two pods of the probe with no job label, in namespaces "p" and "q":
+	// they belong to no job, so they record no job name twice
+	evs := []eventlog.Event{
+		{Seq: 1, Kind: "Pod", Probe: "p", Name: "x-0", UID: "uid-x-0", Namespace: "p", Tenant: "t1",
+			ObservedAt: at(1), Transition: eventlog.Created},
+		{Seq: 2, Kind: "Pod", Probe: "p", Name: "x-1", UID: "uid-x-1", Namespace: "q", Tenant: "t2",
+			ObservedAt: at(2), Transition: eventlog.Created},
+	}
+	tl, err := verdict.Build(evs, "p", at(100))
+	require.NoError(t, err)
+	require.Len(t, tl.Pods, 2)
+}
