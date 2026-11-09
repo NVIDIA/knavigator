@@ -165,6 +165,17 @@ func TestEvaluateErrors(t *testing.T) {
 				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0"],"small_jobs":["s0","s1","s1"],"tolerance_sec":5}`), WindowEnd: at(50)},
 			err: "backfill: small_jobs lists s1 twice",
 		},
+		{
+			name: "backfill listing a job as both a blocker and a short job",
+			probe: verdict.Probe{Capability: "backfill", Params: json.RawMessage(
+				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0","blk1"],"small_jobs":["s0","blk1"],"tolerance_sec":5}`), WindowEnd: at(50)},
+			err: "backfill: blocker_jobs and small_jobs both list blk1",
+		},
+		{
+			name:  "preemption whose high job is its victim job",
+			probe: verdict.Probe{Capability: "preemption", Params: json.RawMessage(`{"high_job":"j","high_pods":1,"victim_job":"j","grace_sec":5}`), WindowEnd: at(50)},
+			err:   "preemption: high_job and victim_job are both j",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
