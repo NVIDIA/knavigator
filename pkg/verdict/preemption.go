@@ -37,6 +37,9 @@ func (p PreemptionParams) validate() error {
 	if p.HighJob == "" || p.VictimJob == "" {
 		return errors.New("high_job and victim_job must both be set")
 	}
+	if p.HighJob == p.VictimJob {
+		return fmt.Errorf("high_job and victim_job are both %s", p.HighJob)
+	}
 	if p.HighPods < 1 {
 		return fmt.Errorf("high_pods %d, want 1 or more", p.HighPods)
 	}
