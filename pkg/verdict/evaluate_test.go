@@ -140,3 +140,13 @@ func TestEvaluateErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestEvaluateRejectsAJobNameInTwoNamespaces(t *testing.T) {
+	// gang-b's pod b1 is moved from the probe's namespace "gang" to "other"
+	_, err := verdict.Evaluate(relabel(gangRun(), "b1", "other", "t1"), verdict.Probe{
+		Capability: "gang",
+		Params:     json.RawMessage(`{"jobs":["gang-a","gang-b"],"size":2,"grace_sec":5}`),
+		WindowEnd:  at(50),
+	})
+	require.EqualError(t, err, `gang: job gang-b is recorded in two namespaces, "gang" and "other"`)
+}

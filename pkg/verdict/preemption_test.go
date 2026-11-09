@@ -47,7 +47,7 @@ func TestPreemption(t *testing.T) {
 	}{
 		{
 			name: "supported when the whole victim workload is evicted",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 10.5, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
 				victim("v2", "n3", 10.5, eventlog.Deleted), victim("v3", "n4", 10.5, eventlog.Deleted),
 				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
@@ -61,7 +61,7 @@ func TestPreemption(t *testing.T) {
 		},
 		{
 			name: "partial when only some victim pods are evicted, ignoring recreated ones",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 10.3, eventlog.Preempted), victim("v1", "n2", 10.3, eventlog.Preempted),
 				victim("v2", "n3", -1, ""), victim("v3", "n4", -1, ""),
 				pod{name: "v4", job: "victim", tenant: "t1", gpus: 8, node: "n3", created: 10.4, scheduled: 30, running: 30.5, end: -1},
@@ -75,7 +75,7 @@ func TestPreemption(t *testing.T) {
 		},
 		{
 			name: "a victim that ends exactly at the grace counts as evicted",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 16.2, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
 				victim("v2", "n3", 10.5, eventlog.Deleted), victim("v3", "n4", 10.5, eventlog.Deleted),
 				high("h0", "n3", 11.0), high("h1", "n4", 11.2),
@@ -84,7 +84,7 @@ func TestPreemption(t *testing.T) {
 		},
 		{
 			name: "not supported when the high-priority job never gets all its pods",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", -1, ""), victim("v1", "n2", -1, ""),
 				victim("v2", "n3", -1, ""), victim("v3", "n4", -1, ""),
 				pending("h0", "high", 10), pending("h1", "high", 10),
@@ -95,7 +95,7 @@ func TestPreemption(t *testing.T) {
 			// the victims succeed at 20 s, before the high-priority pods are
 			// scheduled at 21 s: nothing was evicted, so preemption was not tested
 			name: "a victim that completes on its own is a harness error",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 20, eventlog.Succeeded), victim("v1", "n2", 20, eventlog.Succeeded),
 				victim("v2", "n3", 20, eventlog.Succeeded), victim("v3", "n4", 20, eventlog.Succeeded),
 				high("h0", "n1", 21), high("h1", "n2", 21),
@@ -106,7 +106,7 @@ func TestPreemption(t *testing.T) {
 			// v4 is scheduled at 10 s, the instant the high-priority job is
 			// created, and never ends: it is not a victim considered
 			name: "a victim pod scheduled as the high-priority job is created is not counted",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 10.5, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
 				victim("v2", "n3", 10.5, eventlog.Deleted), victim("v3", "n4", 10.5, eventlog.Deleted),
 				pod{name: "v4", job: "victim", tenant: "t1", gpus: 8, node: "n5", created: 9, scheduled: 10, running: 10.5, end: -1},
@@ -122,7 +122,7 @@ func TestPreemption(t *testing.T) {
 			// v3 is scheduled and deleted without ever running: it counts as
 			// evicted but lost no GPU-time. Lost: 3 pods * 8 GPUs * 8.5 s = 204.
 			name: "a victim pod that never ran loses no GPU-seconds",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 10.5, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
 				victim("v2", "n3", 10.5, eventlog.Deleted),
 				pod{name: "v3", job: "victim", tenant: "t1", gpus: 8, node: "n4", created: 0, scheduled: 1, running: -1, end: 10.5, endBy: eventlog.Deleted},
@@ -139,7 +139,7 @@ func TestPreemption(t *testing.T) {
 			// 10 s; v1 runs until it is deleted at 10.5 s. Only v1 was a victim
 			// when the high-priority job arrived. Lost: 8 GPUs * 8.5 s = 68.
 			name: "a victim pod that succeeded before the high-priority job arrived is not a victim",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 5, eventlog.Succeeded), victim("v1", "n2", 10.5, eventlog.Deleted),
 				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
 			), "preemption", at(60)),
@@ -154,7 +154,7 @@ func TestPreemption(t *testing.T) {
 			// v0 fails at 5 s; v1 and v2 are deleted at 10.5 s. Counting v0 would
 			// give 3 evicted and 24 + 68 + 68 = 160 GPU-seconds lost.
 			name: "a victim pod that failed before the high-priority job arrived adds no eviction or lost time",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 5, eventlog.Failed), victim("v1", "n2", 10.5, eventlog.Deleted),
 				victim("v2", "n3", 10.5, eventlog.Deleted),
 				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
@@ -168,7 +168,7 @@ func TestPreemption(t *testing.T) {
 		{
 			// v0 is deleted at 10 s, the instant the high-priority job is created
 			name: "a victim pod that ended as the high-priority job was created is not a victim",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 10, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
 				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
 			), "preemption", at(60)),
@@ -183,7 +183,7 @@ func TestPreemption(t *testing.T) {
 			// 16 s; the window ends at 12 s, and the victims' deletions at 14 s
 			// fall outside it. Nothing says whether they were still running at 16 s.
 			name: "a window that ends before the grace, with a victim not yet ended, is a harness error",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 14, eventlog.Deleted), victim("v1", "n2", 14, eventlog.Deleted),
 				victim("v2", "n3", 14, eventlog.Deleted), victim("v3", "n4", 14, eventlog.Deleted),
 				high("h0", "n1", 11), high("h1", "n2", 11),
@@ -192,7 +192,7 @@ func TestPreemption(t *testing.T) {
 		},
 		{
 			name: "the same run with a complete window is supported",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 14, eventlog.Deleted), victim("v1", "n2", 14, eventlog.Deleted),
 				victim("v2", "n3", 14, eventlog.Deleted), victim("v3", "n4", 14, eventlog.Deleted),
 				high("h0", "n1", 11), high("h1", "n2", 11),
@@ -205,7 +205,7 @@ func TestPreemption(t *testing.T) {
 		{
 			// every victim is deleted at 11.5 s, inside a window that ends at 12 s
 			name: "a window that ends before the grace still judges victims all ended within it",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 11.5, eventlog.Deleted), victim("v1", "n2", 11.5, eventlog.Deleted),
 				high("h0", "n1", 11), high("h1", "n2", 11),
 			), "preemption", at(12)),
@@ -217,7 +217,7 @@ func TestPreemption(t *testing.T) {
 		{
 			// the window ends at 16 s, exactly when the grace does
 			name: "a window that ends at the grace judges a victim still running as left running",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				victim("v0", "n1", 11.5, eventlog.Deleted), victim("v1", "n2", -1, ""),
 				high("h0", "n1", 11), high("h1", "n3", 11),
 			), "preemption", at(16)),
@@ -228,7 +228,7 @@ func TestPreemption(t *testing.T) {
 		},
 		{
 			name: "no victim running first is a harness error",
-			tl: verdict.Build(fixture("preemption",
+			tl: mustBuild(fixture("preemption",
 				pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
 			), "preemption", at(60)),
 			err: "no victim pod was running when the high-priority job was created",

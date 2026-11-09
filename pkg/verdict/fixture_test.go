@@ -128,6 +128,16 @@ func fixtureJobs(probe string, jobs []job, pods ...pod) []eventlog.Event {
 	return out
 }
 
+// mustBuild is verdict.Build for fixtures that hold one identity per job
+// name; it panics on an error, so a broken fixture fails its test.
+func mustBuild(evs []eventlog.Event, probe string, until time.Time) verdict.Timeline {
+	tl, err := verdict.Build(evs, probe, until)
+	if err != nil {
+		panic(err)
+	}
+	return tl
+}
+
 // done is a pod that ran to completion on node.
 func done(name, job string, node string, created, scheduled, running, end float64) pod {
 	return pod{name: name, job: job, tenant: "t1", gpus: 8, node: node, created: created,

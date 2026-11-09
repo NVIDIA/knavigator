@@ -36,7 +36,7 @@ func TestGang(t *testing.T) {
 	}{
 		{
 			name: "supported when each gang is placed at once and both complete",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1.0, 2, 22), done("a1", "gang-a", "n2", 0, 1.5, 2, 22),
 				done("b0", "gang-b", "n1", 0, 22.5, 23.5, 44), done("b1", "gang-b", "n2", 0, 23.0, 24, 44),
 			), "gang", at(50)),
@@ -50,7 +50,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "exactly the grace still counts as placed at once",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1, 7, 27), done("a1", "gang-a", "n2", 0, 6, 7, 27),
 				done("b0", "gang-b", "n1", 0, 28, 29, 49), done("b1", "gang-b", "n2", 0, 28, 29, 49),
 			), "gang", at(60)),
@@ -59,7 +59,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "partial when a gang is partly placed past the grace but every gang completes",
-			tl: verdict.Build(fixture("gang-control",
+			tl: mustBuild(fixture("gang-control",
 				done("a0", "gang-a", "n1", 0, 1, 2, 22), done("a1", "gang-a", "n2", 0, 1, 2, 22),
 				done("a2", "gang-a", "n1", 0, 22.5, 23, 43),
 				done("b0", "gang-b", "n3", 0, 1, 2, 22), done("b1", "gang-b", "n4", 0, 1, 2, 22),
@@ -74,7 +74,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "one millisecond past the grace counts as partly placed",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1, 7.001, 27), done("a1", "gang-a", "n2", 0, 6.001, 7.001, 27),
 				done("b0", "gang-b", "n1", 0, 28, 29, 49), done("b1", "gang-b", "n2", 0, 28, 29, 49),
 			), "gang", at(60)),
@@ -83,7 +83,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "not supported when a partial placement lasts until the probe ends",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				pod{name: "a0", job: "gang-a", tenant: "t1", gpus: 8, node: "n1", created: 0, scheduled: 1, running: 2, end: -1},
 				pending("a1", "gang-a", 0),
 				done("b0", "gang-b", "n2", 0, 1, 2, 22), done("b1", "gang-b", "n3", 0, 1, 2, 22),
@@ -97,7 +97,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "not supported when a gang never gets a pod placed",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1, 2, 22), done("a1", "gang-a", "n2", 0, 1, 2, 22),
 				pending("b0", "gang-b", 0), pending("b1", "gang-b", 0),
 			), "gang", at(120)),
@@ -110,7 +110,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "a deleted pod does not count as completed",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1, 2, 22),
 				pod{name: "a1", job: "gang-a", tenant: "t1", gpus: 8, node: "n2", created: 0, scheduled: 1, running: 2, end: 22, endBy: eventlog.Deleted},
 				done("b0", "gang-b", "n1", 0, 23, 24, 44), done("b1", "gang-b", "n2", 0, 23, 24, 44),
@@ -123,7 +123,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name: "not supported when a queue never admits a gang, so it has a Job and no pods",
-			tl: verdict.Build(fixtureJobs("gang", []job{{name: "gang-b", tenant: "t1", gpus: 16, created: 0, end: -1}},
+			tl: mustBuild(fixtureJobs("gang", []job{{name: "gang-b", tenant: "t1", gpus: 16, created: 0, end: -1}},
 				done("a0", "gang-a", "n1", 0, 1, 2, 22), done("a1", "gang-a", "n2", 0, 1, 2, 22),
 			), "gang", at(120)),
 			params: params,
@@ -135,7 +135,7 @@ func TestGang(t *testing.T) {
 		},
 		{
 			name:   "a gang with no recorded event at all is a harness error",
-			tl:     verdict.Build(fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22)), "gang", at(50)),
+			tl:     mustBuild(fixture("gang", done("a0", "gang-a", "n1", 0, 1, 2, 22)), "gang", at(50)),
 			params: params,
 			err:    "no events recorded for job gang-b",
 		},
@@ -143,7 +143,7 @@ func TestGang(t *testing.T) {
 			// gang-a is partly placed for exactly the grace (1 to 6 s) and
 			// completes; gang-b never gets a pod scheduled
 			name: "a gang partly placed for exactly the grace is not in the reason",
-			tl: verdict.Build(fixture("gang",
+			tl: mustBuild(fixture("gang",
 				done("a0", "gang-a", "n1", 0, 1, 7, 27), done("a1", "gang-a", "n2", 0, 6, 7, 27),
 				pending("b0", "gang-b", 0), pending("b1", "gang-b", 0),
 			), "gang", at(60)),
