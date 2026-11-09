@@ -20,9 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -378,7 +380,13 @@ func TestGenerateTraceAccountSet(t *testing.T) {
 		total += n
 	}
 	require.Equal(t, 1000, total)
-	require.Greater(t, counts["tenant-04"], counts["tenant-20"], "the mode is near account 4, the tail is thin")
+	// The lognormal mode is exp(mu - sigma^2), about account 2.4, so the head outweighs the tail.
+	head, tail := 0, 0
+	for k := 1; k <= 5; k++ {
+		head += counts[fmt.Sprintf("tenant-%02d", k)]
+		tail += counts[fmt.Sprintf("tenant-%02d", 21-k)]
+	}
+	require.Greater(t, head, 3*tail)
 
 	c.AccountSet.Distribution.Type = "uniform"
 	counts = map[string]int{}
@@ -390,6 +398,44 @@ func TestGenerateTraceAccountSet(t *testing.T) {
 
 	c.Jobs = 99
 	require.Error(t, c.validateLoad(), "99 jobs cannot give 20 accounts 5 each")
+
+	g := accountSet{Count: 10, MinJobs: 3}
+	g.Distribution.Type = "gaussian"
+	require.Equal(t, []int{3, 5, 9, 14, 19, 19, 14, 9, 5, 3}, g.split(100))
+
+	c = shapedClass(100)
+	c.AccountSet = g
+	var order []string
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		order = append(order, j.Account)
+	}
+	require.False(t, sort.StringsAreSorted(order), "accounts arrive shuffled, not in blocks")
+}
+
+func TestValidateLoadErrors(t *testing.T) {
+	for name, edit := range map[string]func(c *traceClass){
+		"open-ended without arrivalInterval": func(c *traceClass) { c.Jobs = -1 },
+		"accountSet without count":           func(c *traceClass) { c.AccountSet.Prefix = "a-" },
+		"arrival without shape":              func(c *traceClass) { c.Arrival.Duration = 600 },
+		"negative arrival stddev": func(c *traceClass) {
+			c.Arrival.Shape, c.Arrival.Duration, c.Arrival.Stddev = "gaussian", 600, -1
+		},
+		"weights that all underflow": func(c *traceClass) {
+			c.AccountSet.Count = 2
+			c.AccountSet.Distribution.Type, c.AccountSet.Distribution.Stddev = "gaussian", 0.01
+		},
+	} {
+		c := shapedClass(100)
+		edit(&c)
+		require.Error(t, c.validateLoad(), name)
+	}
+
+	c := shapedClass(100)
+	zero := 0.0
+	c.Arrival.Shape, c.Arrival.Duration, c.Arrival.Mean = "gaussian", 600, &zero
+	require.NoError(t, c.validateLoad())
+	jobs := generateTrace([]traceClass{c}, 1)
+	require.Less(t, jobs[len(jobs)/2].Submit, 100.0, "mean 0 puts the peak at the window's start")
 }
 
 func TestGenerateTraceArrivalShape(t *testing.T) {
@@ -411,12 +457,17 @@ func TestGenerateTraceArrivalShape(t *testing.T) {
 
 	c.Arrival.Shape = "uniform"
 	middle = 0
+	last := 0.0
 	for _, j := range generateTrace([]traceClass{c}, 3) {
+		require.GreaterOrEqual(t, j.Submit, 100.0)
+		require.LessOrEqual(t, j.Submit, 700.0)
 		if j.Submit > 300 && j.Submit < 500 {
 			middle++
 		}
+		last = math.Max(last, j.Submit)
 	}
 	require.InDelta(t, 667, middle, 100)
+	require.Greater(t, last, 640.0, "a uniform shape fills the whole window")
 
 	c.ArrivalInterval = 5
 	require.Error(t, c.validateLoad(), "arrival and arrivalInterval conflict")

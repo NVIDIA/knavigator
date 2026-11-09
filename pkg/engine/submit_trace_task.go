@@ -123,9 +123,10 @@ type arrival struct {
 	// Shape: uniform (constant rate) or gaussian (ramps up, peaks, ramps down)
 	Shape    string  `yaml:"shape"`
 	Duration float64 `yaml:"duration"`
-	// Mean, Stddev: gaussian only; default the middle of Duration and a sixth of it
-	Mean   float64 `yaml:"mean"`
-	Stddev float64 `yaml:"stddev"`
+	// Mean, Stddev: gaussian only; default the middle of Duration and a sixth of it. Mean is a
+	// pointer so 0, the start of the window, can be asked for.
+	Mean   *float64 `yaml:"mean"`
+	Stddev float64  `yaml:"stddev"`
 }
 
 type weightedValue struct {
@@ -229,8 +230,14 @@ func (c traceClass) continuous() bool { return c.Jobs < 0 }
 
 func (c traceClass) validateLoad() error {
 	set, arr := c.AccountSet, c.Arrival
+	if c.continuous() && c.ArrivalInterval <= 0 {
+		return fmt.Errorf("jobs: -1 needs a positive arrivalInterval")
+	}
 	if set.Count < 0 || set.MinJobs < 0 {
 		return fmt.Errorf("accountSet count and minJobs must not be negative")
+	}
+	if set.Count == 0 && (set.Prefix != "" || set.MinJobs != 0 || set.Distribution != (accountSet{}).Distribution) {
+		return fmt.Errorf("accountSet needs a count")
 	}
 	if set.Count > 0 {
 		if len(c.Accounts) != 0 {
@@ -251,8 +258,22 @@ func (c traceClass) validateLoad() error {
 		default:
 			return fmt.Errorf("unknown distribution %q", t)
 		}
+		if set.Distribution.Stddev < 0 {
+			return fmt.Errorf("accountSet stddev must not be negative")
+		}
+		// A narrow distribution far from every account underflows to all-zero weights.
+		var total float64
+		for _, w := range set.weights() {
+			total += w
+		}
+		if !(total > 0) || math.IsInf(total, 0) {
+			return fmt.Errorf("accountSet distribution gives every account zero weight; widen it or move it over the accounts")
+		}
 	}
 	if arr.Shape == "" {
+		if arr != (arrival{}) {
+			return fmt.Errorf("arrival needs a shape")
+		}
 		return nil
 	}
 	if c.continuous() || c.Regular || c.ArrivalInterval != 0 {
@@ -261,8 +282,11 @@ func (c traceClass) validateLoad() error {
 	if arr.Shape != "uniform" && arr.Shape != "gaussian" {
 		return fmt.Errorf("unknown arrival shape %q", arr.Shape)
 	}
-	if arr.Duration <= 0 || arr.Stddev < 0 {
+	if arr.Duration <= 0 {
 		return fmt.Errorf("arrival needs a positive duration")
+	}
+	if arr.Stddev < 0 {
+		return fmt.Errorf("arrival stddev must not be negative")
 	}
 	return nil
 }
@@ -326,9 +350,9 @@ func (s accountSet) split(jobs int) []int {
 // times draws n sorted arrival offsets over the window; gaussian draws outside it are redrawn.
 func (a arrival) times(rng *rand.Rand, n int) []float64 {
 	t := make([]float64, n)
-	mean, std := a.Mean, a.Stddev
-	if mean == 0 {
-		mean = a.Duration / 2
+	mean, std := a.Duration/2, a.Stddev
+	if a.Mean != nil {
+		mean = *a.Mean
 	}
 	if std == 0 {
 		std = a.Duration / 6
