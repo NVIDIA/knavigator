@@ -49,6 +49,12 @@ func (p BackfillParams) validate() error {
 			return fmt.Errorf("blocker_jobs and small_jobs both list %s", n)
 		}
 	}
+	if slices.Contains(p.BlockerJobs, p.BigJob) {
+		return fmt.Errorf("blocker_jobs lists the big_job %s", p.BigJob)
+	}
+	if slices.Contains(p.SmallJobs, p.BigJob) {
+		return fmt.Errorf("small_jobs lists the big_job %s", p.BigJob)
+	}
 	if p.BigPods < 1 {
 		return fmt.Errorf("big_pods %d, want 1 or more", p.BigPods)
 	}
