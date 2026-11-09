@@ -417,7 +417,7 @@ func TestSubmitObjTaskExecCanExistContinues(t *testing.T) {
 	// even and pre-existing regardless of the starting value.
 	task := &SubmitObjTask{
 		BaseTask:            BaseTask{taskType: TaskSubmitObj, taskID: "submit"},
-		submitObjTaskParams: submitObjTaskParams{RefTaskID: "reg", Count: 2, CanExist: true, Params: map[string]interface{}{}},
+		submitObjTaskParams: submitObjTaskParams{RefTaskID: "reg", Count: 2, CanExist: true, Params: map[string]interface{}{"class": "training", "traceDigest": "b5a2887c4f7c"}},
 		client:              client,
 		accessor:            eng,
 	}
@@ -429,4 +429,6 @@ func TestSubmitObjTaskExecCanExistContinues(t *testing.T) {
 	info, err := eng.GetObjInfo("submit")
 	require.NoError(t, err, "task info is registered even when objects already exist")
 	require.Len(t, info.Names, 2)
+	require.Equal(t, "training", info.Class)
+	require.Equal(t, "b5a2887c4f7c", info.Trace, "results read the trace digest from the task info")
 }

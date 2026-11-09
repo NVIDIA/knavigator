@@ -19,12 +19,16 @@ package results
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+
+	log "k8s.io/klog/v2"
 )
 
 const (
@@ -55,6 +59,8 @@ type Spread struct {
 // metric that a run left out or reported as null counts only the runs that have it.
 func Aggregate(dirs []string) (map[string]Spread, error) {
 	values := map[string][]float64{}
+	traces := map[string]bool{}
+	untraced := 0
 	for _, dir := range dirs {
 		data, err := os.ReadFile(filepath.Join(dir, "results.json"))
 		if err != nil {
@@ -68,13 +74,41 @@ func Aggregate(dirs []string) (map[string]Spread, error) {
 			k := metricKey(s)
 			values[k] = append(values[k], s.value)
 		}
+		digest := ""
+		if m, ok := tree.(map[string]interface{}); ok {
+			digest, _ = m["trace_digest"].(string)
+		}
+		if digest == "" {
+			untraced++
+		} else {
+			traces[digest] = true
+		}
 	}
+	warnMixedTraces(traces, untraced, len(dirs))
 
 	out := make(map[string]Spread, len(values))
 	for k, v := range values {
 		out[k] = spread(v)
 	}
 	return out, nil
+}
+
+// warnMixedTraces logs when the runs did not all replay the same traces. traces holds each run's
+// whole trace_digest, since runs with the same several traces match. untraced counts the others.
+func warnMixedTraces(traces map[string]bool, untraced, runs int) {
+	if len(traces) > 1 {
+		each := map[string]bool{}
+		for digest := range traces {
+			for _, d := range strings.Split(digest, ",") {
+				each[d] = true
+			}
+		}
+		log.Warningf("Aggregate: the runs replayed %d different traces (%s), so the spread includes the difference between them",
+			len(each), strings.Join(slices.Sorted(maps.Keys(each)), ", "))
+	}
+	if untraced > 0 && len(traces) > 0 {
+		log.Warningf("Aggregate: no trace_digest in %d of %d runs, so the spread may include the difference between traces", untraced, runs)
+	}
 }
 
 // metricKey names a sample like an unquoted Prometheus series, such as job_wait_sec{stat=p95}.

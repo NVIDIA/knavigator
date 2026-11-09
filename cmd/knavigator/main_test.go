@@ -22,7 +22,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
+	"github.com/NVIDIA/knavigator/pkg/engine"
+	"github.com/NVIDIA/knavigator/pkg/results"
 )
+
+func TestSubmittedJobs(t *testing.T) {
+	eng, err := engine.New(nil, nil, true)
+	require.NoError(t, err)
+	info := engine.NewObjInfo([]string{"job1"}, "default", nil, 2, "job1-.*")
+	info.Class, info.Trace = "training", "b5a2887c4f7c"
+	require.NoError(t, eng.SetObjInfo("trace-1", info))
+
+	require.Equal(t, []results.Job{{Name: "default/job1", Namespace: "default", Pods: 2, PodRegexp: "job1-.*",
+		Class: "training", Trace: "b5a2887c4f7c"}}, submittedJobs(eng))
+}
 
 func TestSpeedUp(t *testing.T) {
 	w := &config.Workflow{Tasks: []*config.Task{

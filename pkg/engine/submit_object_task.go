@@ -155,6 +155,7 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 	info := NewObjInfo(names, objs[0][0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...)
 	info.Submitted = submitted
 	info.Class, _ = task.Params["class"].(string)
+	info.Trace, _ = task.Params["traceDigest"].(string)
 	return task.accessor.SetObjInfo(task.taskID, info)
 }
 

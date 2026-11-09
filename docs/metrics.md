@@ -85,6 +85,8 @@ Metrics that cannot be computed, such as a correlation over one job, are null.
 
 When jobs are submitted with a `class` parameter, as `SubmitTrace` does for each of its classes, `wait_by_class` has one row per class with `jobs`, `started`, `wait_sec` and `slo_attainment`. `slo_attainment` gives the share of the class's jobs that started within each wait in a fixed ladder: `1m`, `5m`, `15m`, `1h` and `4h`, in simulated time under `-speedup`. A job that never started counts as a miss, so a class that reads 0.98 at `5m` started 98% of its jobs within five minutes. Jobs without a class are left out, and the field is absent when no job has one. The ladder needs no target chosen in advance, so classes with different latency needs, such as inference and training, can be read side by side.
 
+When jobs are submitted with a `traceDigest` parameter, as `SubmitTrace` does for each of its jobs, `trace_digest` is a 12-character fingerprint of the trace's jobs: their IDs, classes, accounts, arrival times, runtimes, GPUs, gang sizes and priorities. Jobs without one are left out, and the field is absent when no job has one. The same seed and classes, or the same file, always give the same digest. In a file, arrival times count from the first job, to the millisecond, so a file shifted in time keeps its digest as long as its times have at most three decimals. A run with several traces lists each once, sorted and comma-separated. Two runs with the same `trace_digest` replayed the same traces, but not necessarily the same workload: the digest leaves out how the workflow replays them, such as `-speedup`, `timeLimitFactor` and how many `SubmitTrace` tasks replay each trace. It also leaves out jobs submitted without one, such as from a plain `SubmitObj`.
+
 `results.json` also shows where the free GPUs were, since free GPUs spread over partly used nodes cannot run a pod that needs a whole node.
 
 - `fragmented_gpu_hours`: free GPU-hours on nodes that were partly in use, in simulated time under `-speedup`.
@@ -138,3 +140,5 @@ done
 - `stable`: at least two runs, and either no variation or a `cv` of at most 5%. Treat a difference between two configurations as real only when their intervals do not overlap.
 
 Combine only runs made with the same `-results.allow-leftovers` and `-results.rack-label` settings. With `-results.allow-leftovers`, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity. With different `-results.rack-label` values, `gpu_fragmentation_rack` measures different groups, such as racks and zones.
+
+If the runs replayed different traces, `-aggregate` logs a warning, since the spread then includes the difference between the traces as well as the variation between runs. It also warns when only some of the runs report a `trace_digest`: the others, such as runs from before the field existed, may have run any workload.
