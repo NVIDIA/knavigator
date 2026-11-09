@@ -172,6 +172,18 @@ func TestEvaluateErrors(t *testing.T) {
 			err: "backfill: blocker_jobs and small_jobs both list blk1",
 		},
 		{
+			name: "backfill blockers listing the big job",
+			probe: verdict.Probe{Capability: "backfill", Params: json.RawMessage(
+				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0","big"],"small_jobs":["s0"],"tolerance_sec":5}`), WindowEnd: at(50)},
+			err: "backfill: blocker_jobs lists the big_job big",
+		},
+		{
+			name: "backfill short jobs listing the big job",
+			probe: verdict.Probe{Capability: "backfill", Params: json.RawMessage(
+				`{"big_job":"big","big_pods":4,"blocker_jobs":["blk0"],"small_jobs":["s0","big"],"tolerance_sec":5}`), WindowEnd: at(50)},
+			err: "backfill: small_jobs lists the big_job big",
+		},
+		{
 			name:  "preemption whose high job is its victim job",
 			probe: verdict.Probe{Capability: "preemption", Params: json.RawMessage(`{"high_job":"j","high_pods":1,"victim_job":"j","grace_sec":5}`), WindowEnd: at(50)},
 			err:   "preemption: high_job and victim_job are both j",
