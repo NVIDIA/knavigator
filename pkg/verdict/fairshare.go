@@ -51,7 +51,9 @@ func (p FairShareParams) validate() error {
 // job length (plus tolerance) of its first submission: the most GPUs B had
 // running at any moment of [submission, submission + length + tolerance].
 // It also records how long after the probe's first submission B arrived,
-// and the fairness of capacity over time across the probe's tenants.
+// and the fairness of capacity over time across the probe's tenants. When
+// the window ends before the check and B has not yet reached its
+// entitlement, FairShare returns an error instead of a verdict.
 func FairShare(t Timeline, p FairShareParams) (Verdict, error) {
 	if err := p.validate(); err != nil {
 		return Verdict{}, err
@@ -80,6 +82,11 @@ func FairShare(t Timeline, p FairShareParams) (Verdict, error) {
 	offset := p.JobLengthSec + p.ToleranceSec
 	check := bSubmit.Add(seconds(offset))
 	bMax := maxRunningGPUs(bPods, check)
+	if bMax < p.EntitlementGPUs && t.End.Before(check) {
+		// B may yet reach its entitlement between the window's end and the check
+		return Verdict{}, fmt.Errorf("the window ends %s s after tenant %s submitted, before the %s s check",
+			fmtSec(t.End.Sub(bSubmit).Seconds()), p.TenantB, fmtSec(offset))
+	}
 	f := fairnessOverTime(t, p.CapacityGPUs, p.WindowSec)
 	v := Verdict{
 		Measurements: map[string]float64{
