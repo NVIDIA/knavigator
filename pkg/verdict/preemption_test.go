@@ -135,6 +135,50 @@ func TestPreemption(t *testing.T) {
 			},
 		},
 		{
+			// v0 succeeds at 5 s, before the high-priority job is created at
+			// 10 s; v1 runs until it is deleted at 10.5 s. Only v1 was a victim
+			// when the high-priority job arrived. Lost: 8 GPUs * 8.5 s = 68.
+			name: "a victim pod that succeeded before the high-priority job arrived is not a victim",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 5, eventlog.Succeeded), victim("v1", "n2", 10.5, eventlog.Deleted),
+				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				reason:  "no victim pod was left running 5 s after the high-priority job was scheduled",
+				some:    map[string]float64{"victim_pods_before": 1, "victim_pods_evicted": 1, "victim_pods_remaining": 0},
+				near:    map[string]float64{"gpu_seconds_lost": 68, "high_time_to_schedule_s": 1.2},
+			},
+		},
+		{
+			// v0 fails at 5 s; v1 and v2 are deleted at 10.5 s. Counting v0 would
+			// give 3 evicted and 24 + 68 + 68 = 160 GPU-seconds lost.
+			name: "a victim pod that failed before the high-priority job arrived adds no eviction or lost time",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 5, eventlog.Failed), victim("v1", "n2", 10.5, eventlog.Deleted),
+				victim("v2", "n3", 10.5, eventlog.Deleted),
+				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				some:    map[string]float64{"victim_pods_before": 2, "victim_pods_evicted": 2, "victim_pods_remaining": 0},
+				near:    map[string]float64{"gpu_seconds_lost": 136},
+			},
+		},
+		{
+			// v0 is deleted at 10 s, the instant the high-priority job is created
+			name: "a victim pod that ended as the high-priority job was created is not a victim",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 10, eventlog.Deleted), victim("v1", "n2", 10.5, eventlog.Deleted),
+				high("h0", "n1", 11.0), high("h1", "n2", 11.2),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				some:    map[string]float64{"victim_pods_before": 1, "victim_pods_evicted": 1},
+				near:    map[string]float64{"gpu_seconds_lost": 68},
+			},
+		},
+		{
 			name: "no victim running first is a harness error",
 			tl: verdict.Build(fixture("preemption",
 				pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
