@@ -52,7 +52,8 @@ func (p PreemptionParams) validate() error {
 // not yet ended. Pods that ended earlier, and pods the victim's controller
 // recreates later, are not. A victim pod is left running when it
 // had not ended GraceSec after the high-priority job's last pod was
-// scheduled.
+// scheduled. When the window ends before that, a victim pod not yet ended
+// cannot be judged, and Preemption returns an error instead of a verdict.
 func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
 	if err := p.validate(); err != nil {
 		return Verdict{}, err
@@ -86,6 +87,15 @@ func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
 		return v, nil
 	}
 	cut := th.Add(seconds(p.GraceSec))
+	if t.End.Before(cut) {
+		// a victim not ended by the window's end may yet end before the cut
+		for _, q := range before {
+			if q.End.IsZero() {
+				return Verdict{}, fmt.Errorf("the window ends %s s after the high-priority job was scheduled, before the %s s grace, and victim pod %s has no recorded end",
+					fmtSec(t.End.Sub(th).Seconds()), fmtSec(p.GraceSec), q.Name)
+			}
+		}
+	}
 	remaining, evicted, lost := 0, 0, 0.0
 	for _, q := range before {
 		if !q.End.IsZero() && !q.End.After(cut) {
