@@ -179,6 +179,54 @@ func TestPreemption(t *testing.T) {
 			},
 		},
 		{
+			// the high-priority pods are scheduled at 11 s, so the grace ends at
+			// 16 s; the window ends at 12 s, and the victims' deletions at 14 s
+			// fall outside it. Nothing says whether they were still running at 16 s.
+			name: "a window that ends before the grace, with a victim not yet ended, is a harness error",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 14, eventlog.Deleted), victim("v1", "n2", 14, eventlog.Deleted),
+				victim("v2", "n3", 14, eventlog.Deleted), victim("v3", "n4", 14, eventlog.Deleted),
+				high("h0", "n1", 11), high("h1", "n2", 11),
+			), "preemption", at(12)),
+			err: "the window ends 1 s after the high-priority job was scheduled, before the 5 s grace, and victim pod v0 has no recorded end",
+		},
+		{
+			name: "the same run with a complete window is supported",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 14, eventlog.Deleted), victim("v1", "n2", 14, eventlog.Deleted),
+				victim("v2", "n3", 14, eventlog.Deleted), victim("v3", "n4", 14, eventlog.Deleted),
+				high("h0", "n1", 11), high("h1", "n2", 11),
+			), "preemption", at(60)),
+			want: want{
+				outcome: verdict.Supported,
+				some:    map[string]float64{"victim_pods_before": 4, "victim_pods_evicted": 4, "victim_pods_remaining": 0},
+			},
+		},
+		{
+			// every victim is deleted at 11.5 s, inside a window that ends at 12 s
+			name: "a window that ends before the grace still judges victims all ended within it",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 11.5, eventlog.Deleted), victim("v1", "n2", 11.5, eventlog.Deleted),
+				high("h0", "n1", 11), high("h1", "n2", 11),
+			), "preemption", at(12)),
+			want: want{
+				outcome: verdict.Supported,
+				some:    map[string]float64{"victim_pods_before": 2, "victim_pods_evicted": 2, "victim_pods_remaining": 0},
+			},
+		},
+		{
+			// the window ends at 16 s, exactly when the grace does
+			name: "a window that ends at the grace judges a victim still running as left running",
+			tl: verdict.Build(fixture("preemption",
+				victim("v0", "n1", 11.5, eventlog.Deleted), victim("v1", "n2", -1, ""),
+				high("h0", "n1", 11), high("h1", "n3", 11),
+			), "preemption", at(16)),
+			want: want{
+				outcome: verdict.Partial,
+				reason:  "1 of 2 victim pods were left running 5 s after the high-priority job was scheduled",
+			},
+		},
+		{
 			name: "no victim running first is a harness error",
 			tl: verdict.Build(fixture("preemption",
 				pending("v0", "victim", 0), high("h0", "n1", 11.0), high("h1", "n2", 11.2),
