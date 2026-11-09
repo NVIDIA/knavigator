@@ -19,6 +19,7 @@ package verdict
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -42,6 +43,11 @@ func (p BackfillParams) validate() error {
 	}
 	if n := repeated(p.SmallJobs); n != "" {
 		return fmt.Errorf("small_jobs lists %s twice", n)
+	}
+	for _, n := range p.SmallJobs {
+		if slices.Contains(p.BlockerJobs, n) {
+			return fmt.Errorf("blocker_jobs and small_jobs both list %s", n)
+		}
 	}
 	if p.BigPods < 1 {
 		return fmt.Errorf("big_pods %d, want 1 or more", p.BigPods)
