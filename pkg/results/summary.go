@@ -265,7 +265,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 		st.P95 *= speedup
 		st.Max *= speedup
 	}
-	s.AbandonedGPUHours *= speedup
+	s.UnfinishedGPUHours *= speedup
 	for i := range s.WaitByFootprint {
 		w := &s.WaitByFootprint[i].WaitSec
 		w.Mean *= speedup
