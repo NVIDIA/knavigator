@@ -20,6 +20,11 @@
 // rests on. Every function here is pure: the same events and parameters
 // give the same verdict, so a run's verdicts can be rebuilt from its event
 // log later or on another machine.
+//
+// Within a probe a job is known by its name alone: probe parameters list
+// jobs by name, and pods are matched to their job by its name. A probe's
+// job names must therefore be unique; Build rejects a job name recorded in
+// two namespaces or for two tenants rather than merge two jobs into one.
 package verdict
 
 import (
