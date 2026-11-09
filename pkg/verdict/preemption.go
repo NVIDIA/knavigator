@@ -48,8 +48,9 @@ func (p PreemptionParams) validate() error {
 
 // Preemption judges whether making room for the high-priority job evicted
 // the victim workload as a whole. The victim pods considered are those
-// scheduled before the high-priority Job was submitted; pods the victim's
-// controller recreates later are not. A victim pod is left running when it
+// running when the high-priority Job was submitted: scheduled before it and
+// not yet ended. Pods that ended earlier, and pods the victim's controller
+// recreates later, are not. A victim pod is left running when it
 // had not ended GraceSec after the high-priority job's last pod was
 // scheduled.
 func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
@@ -67,7 +68,7 @@ func Preemption(t Timeline, p PreemptionParams) (Verdict, error) {
 	}
 	var before []*Pod
 	for _, q := range victims {
-		if !q.Scheduled.IsZero() && q.Scheduled.Before(highCreated) {
+		if !q.Scheduled.IsZero() && q.Scheduled.Before(highCreated) && (q.End.IsZero() || q.End.After(highCreated)) {
 			before = append(before, q)
 		}
 	}
