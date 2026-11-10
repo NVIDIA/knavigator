@@ -116,3 +116,23 @@ jobs:
 
     - name: Run govulncheck
       run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  dco:
+    runs-on: linux-amd64-cpu8
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    # Bots like dependabot cannot sign off, so their commits are exempt.
+    - name: Check DCO sign-off
+      run: |
+        missing=$(git log --no-merges --format='%h %ae%x09%(trailers:key=Signed-off-by,valueonly,separator=;)' origin/main..HEAD \
+          | awk -F'\t' '$2 == "" && $1 !~ /\[bot\]@/ {print $1}')
+        if [ -n "$missing" ]; then
+          echo "Commits missing Signed-off-by (use git commit -s):"
+          echo "$missing"
+          exit 1
+        fi
