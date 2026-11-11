@@ -697,20 +697,22 @@ func TestFinishOmitsUnmeasuredClockOffset(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		reactor k8stesting.ReactionFunc
+		warning string
 	}{
 		{"create fails", func(k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, fmt.Errorf("forbidden")
-		}},
+		}, "cannot measure the API server clock: forbidden"},
 		// The fake API server leaves CreationTimestamp unset; a zero time is not a measurement.
 		{"no creation timestamp", func(a k8stesting.Action) (bool, runtime.Object, error) {
 			cm := a.(k8stesting.CreateAction).GetObject().(*corev1.ConfigMap)
 			cm.Name = cm.GenerateName + "x"
 			return false, nil, nil
-		}},
+		}, "ConfigMap knavigator-clock-x has no creation timestamp"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := fake.NewSimpleClientset()
 			client.PrependReactor("create", "configmaps", tc.reactor)
+			buf := captureLog(t)
 			rec, err := Start(context.Background(), client, HarnessOptions{})
 			require.NoError(t, err)
 
@@ -719,6 +721,518 @@ func TestFinishOmitsUnmeasuredClockOffset(t *testing.T) {
 			h := readHarness(t, dir)
 			require.NotContains(t, h, "clock_offset_start_s")
 			require.NotContains(t, h, "clock_offset_end_s")
+			log.Flush()
+			require.Contains(t, buf.String(), tc.warning)
+			require.NotContains(t, buf.String(), "cannot delete ConfigMap", "the ConfigMap is deleted, or was never created")
 		})
 	}
+}
+
+// clockStamp is how the fake API server answers one clock ConfigMap create: offset from the host,
+// stamped in whole seconds at the end of a create that takes delay on readClock's host clock, or a
+// failed create.
+type clockStamp struct {
+	offset, delay time.Duration
+	fail          bool
+}
+
+// stampClock answers the i-th clock ConfigMap create with stamps[i], repeating the last. A delay
+// needs standHostClock.
+func stampClock(client *fake.Clientset, stamps ...clockStamp) {
+	n := 0
+	client.PrependReactor("create", "configmaps", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		s := stamps[min(n, len(stamps)-1)]
+		n++
+		if s.fail {
+			return true, nil, fmt.Errorf("forbidden")
+		}
+		if s.delay > 0 {
+			later := hostNow().Add(s.delay)
+			hostNow = func() time.Time { return later }
+		}
+		cm := a.(k8stesting.CreateAction).GetObject().(*corev1.ConfigMap)
+		cm.Name = fmt.Sprintf("%s%d", cm.GenerateName, n)
+		cm.CreationTimestamp = metav1.NewTime(hostNow().Add(s.offset).Truncate(time.Second))
+		return false, nil, nil
+	})
+}
+
+// standHostClock stops readClock's host clock at now until a slow create moves it on.
+func standHostClock(t *testing.T, now time.Time) {
+	old := hostNow
+	hostNow = func() time.Time { return now }
+	t.Cleanup(func() { hostNow = old })
+}
+
+func TestReadClockBoundsTheOffset(t *testing.T) {
+	// Four tenths into a second, so the whole-second stamp reads 0.4s low.
+	now := time.Date(2026, 1, 1, 12, 0, 0, 4e8, time.UTC)
+	standHostClock(t, now)
+	client := fake.NewSimpleClientset()
+	skewClock(client, -1000*time.Second)
+
+	c := readClock(context.Background(), client)
+	require.NotNil(t, c)
+	require.InDelta(t, -1000.4, c.offset, 1e-9)
+	require.InDelta(t, -1000.4, c.lo, 1e-9)
+	require.InDelta(t, -999.4, c.hi, 1e-9)
+	require.Equal(t, now.Add(-1000*time.Second).Truncate(time.Second), c.at)
+}
+
+// skewClock stamps the i-th clock ConfigMap offsets[i] from the host, repeating the last.
+func skewClock(client *fake.Clientset, offsets ...time.Duration) {
+	stamps := make([]clockStamp, len(offsets))
+	for i, o := range offsets {
+		stamps[i].offset = o
+	}
+	stampClock(client, stamps...)
+}
+
+// between is a clock measurement whose field reads hi - 1 and that puts the true offset between lo
+// and hi seconds.
+func between(lo, hi float64) *clockReading {
+	return &clockReading{offset: hi - 1, lo: lo, hi: hi}
+}
+
+// measured is a clock measurement whose field reads offset, from a request that took latency.
+func measured(offset, latency float64) *clockReading {
+	return &clockReading{offset: offset, lo: offset - latency, hi: offset + 1}
+}
+
+func TestSkew(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		clock *clockReading
+		want  float64
+		log   string
+	}{
+		{name: "not measured"},
+		{name: "agrees to the second", clock: between(-0.6, 0.4)},
+		{name: "just under the tolerance ahead", clock: between(1.999, 2.999)},
+		{name: "at the tolerance ahead", clock: between(2, 3), want: 2.5, log: "the API server clock is 2.0s ahead of the host"},
+		{name: "just under the tolerance behind", clock: between(-2.999, -1.999)},
+		{name: "at the tolerance behind", clock: between(-3, -2), want: -2.5,
+			log: "the API server clock is 3.0s behind the host; reading run times on its clock"},
+		{name: "a slow request", clock: between(-0.9, 3.1)},
+		{name: "after the host slept", clock: between(-977.6, -976.6), want: -977.1, log: "is 977.6s behind the host"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := captureLog(t)
+			require.InDelta(t, tc.want, (&harnessStart{clock: tc.clock}).skew().Seconds(), 1e-6)
+			log.Flush()
+			if tc.log == "" {
+				require.NotContains(t, buf.String(), "API server clock")
+			} else {
+				require.Contains(t, buf.String(), tc.log)
+			}
+		})
+	}
+}
+
+func TestCheckFailsWhenTheClockMoves(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		start, end *clockReading
+		restarts   []Restart
+		want       string
+	}{
+		{name: "start not measured", end: between(-1, 0)},
+		{name: "end not measured", start: between(-978, -977)},
+		{name: "just under the tolerance ahead", start: between(-3, -2), end: between(-0.001, 0.999)},
+		{name: "at the tolerance ahead", start: between(-3, -2), end: between(0, 1),
+			want: "the API server clock moved by +3.0s during the run, so its times are not on one clock"},
+		{name: "just under the tolerance behind", start: between(0, 1), end: between(-2.999, -1.999)},
+		{name: "at the tolerance behind", start: between(0, 1), end: between(-3, -2),
+			want: "the API server clock moved by -3.0s during the run, so its times are not on one clock"},
+		{name: "a slow end request", start: between(-0.5, 0.5), end: between(-0.5, 3.5)},
+		{name: "reported as the fields read", start: measured(-977.6, 0), end: measured(-1.4, 1.5),
+			want: "the API server clock moved by +976.2s during the run, so its times are not on one clock"},
+		{name: "and a restart", start: between(-978, -977), end: between(-1.5, -0.5), restarts: []Restart{{Container: "kube-system/etcd-n1/etcd", After: 1}},
+			want: "containers restarted during the run: kube-system/etcd-n1/etcd (0 to 1)\n" +
+				"the API server clock moved by +976.5s during the run, so its times are not on one clock"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Harness{start: tc.start, end: tc.end, ControlPlaneRestarts: tc.restarts}.check()
+			if tc.want == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestSlowClockReadsAreNotSkew(t *testing.T) {
+	fastPoll(t)
+	for _, tc := range []struct {
+		name   string
+		stamps []clockStamp
+		field  string
+		offset float64
+	}{
+		{"slow start", []clockStamp{{delay: 3 * time.Second}, {}}, "clock_offset_start_s", 2.6},
+		{"slow start, stamped as it arrived", []clockStamp{{offset: -3 * time.Second, delay: 3 * time.Second}, {}}, "clock_offset_start_s", -0.4},
+		{"slow end", []clockStamp{{}, {delay: 3 * time.Second}}, "clock_offset_end_s", 2.6},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			standHostClock(t, time.Now().Truncate(time.Second).Add(4e8))
+			client := fake.NewSimpleClientset()
+			stampClock(client, tc.stamps...)
+			buf := captureLog(t)
+			rec, err := Start(context.Background(), client, HarnessOptions{})
+			require.NoError(t, err)
+			require.Zero(t, rec.offset)
+
+			dir := t.TempDir()
+			require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+			log.Flush()
+			require.NotContains(t, buf.String(), "API server clock")
+			var offset float64
+			require.NoError(t, json.Unmarshal(readHarness(t, dir)[tc.field], &offset))
+			require.InDelta(t, tc.offset, offset, 1e-9, "results.json still reports the stamp minus the time before the request")
+		})
+	}
+}
+
+func TestFinishReadsRunTimesOnTheAPIServerClock(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, -1000*time.Second)
+	buf := captureLog(t)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+
+	// Submitted on the host; placed 10s later and finished 30s later on the API server's clock.
+	submitted := time.Now()
+	server := submitted.Add(-1000 * time.Second)
+	_, err = client.CoreV1().Pods("default").Create(context.Background(),
+		runPod("w-0", "8", "n1", server, server.Add(10*time.Second), server.Add(30*time.Second)), metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: submitted, Pods: 1, PodRegexp: "w-[0-9]+"}}
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, 2*time.Second, jobs, 1, 0, DefaultBSLDFloor))
+	s := readSummary(t, dir)
+	require.Equal(t, 1, s.Pods)
+	require.InDelta(t, 10, s.JobWaitSec.Max, 0.6)
+	require.InDelta(t, 30, s.MakespanSec, 0.6)
+	require.Equal(t, submitted, jobs[0].Submitted, "the caller's jobs keep host time")
+	log.Flush()
+	var offset float64
+	require.NoError(t, json.Unmarshal(readHarness(t, dir)["clock_offset_start_s"], &offset))
+	require.Contains(t, buf.String(), fmt.Sprintf("the API server clock is %.1fs behind the host; reading run times on its clock", -offset),
+		"the warning and results.json give the same offset")
+}
+
+func TestStartTakesTheAPIServerStamp(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, -1500*time.Millisecond)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	// Created 100ms after Start, stamped in whole seconds by a server 1.5s behind.
+	server := time.Now().Add(100*time.Millisecond - 1500*time.Millisecond).Truncate(time.Second)
+	_, err = client.CoreV1().Pods("default").Create(context.Background(),
+		runPod("w-0", "8", "n1", server, server, server.Add(time.Second)), metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: time.Now(), Pods: 1, PodRegexp: "w-[0-9]+"}}
+
+	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), 2*time.Second, jobs, 1, 0, DefaultBSLDFloor))
+	require.Len(t, rec.snapshot(), 1)
+}
+
+func TestFinishEndsOnTheAPIServerClock(t *testing.T) {
+	fastPoll(t)
+	for _, tc := range []struct {
+		name   string
+		stamps []clockStamp
+	}{
+		{"end measured", []clockStamp{{offset: -1000 * time.Second}}},
+		{"end measurement fails", []clockStamp{{offset: -1000 * time.Second}, {fail: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+			stampClock(client, tc.stamps...)
+			rec, err := Start(context.Background(), client, HarnessOptions{})
+			require.NoError(t, err)
+			server := time.Now().Add(-1000 * time.Second)
+			running := runPod("r-0", "8", "n1", server, server, server)
+			running.Status.Phase, running.Status.ContainerStatuses = corev1.PodRunning, nil
+			_, err = client.CoreV1().Pods("default").Create(context.Background(), running, metav1.CreateOptions{})
+			require.NoError(t, err)
+			jobs := []Job{{Name: "default/r", Namespace: "default", Submitted: time.Now(), Pods: 1, PodRegexp: "r-[0-9]+"}}
+
+			dir := t.TempDir()
+			require.EqualError(t, rec.Finish(context.Background(), dir, 100*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor),
+				"run did not drain: 1/1 jobs started")
+			s := readSummary(t, dir)
+			require.Equal(t, 1, s.Pods)
+			require.InDelta(t, 0.5, s.MakespanSec, 1.5, "the end is on the API server's clock")
+			require.GreaterOrEqual(t, s.GPUHours, 0.0)
+			require.InDelta(t, 0, s.GPUHours, 8*1.5/3600)
+		})
+	}
+}
+
+// earlyEstimate starts a run 1000s behind, measured at the end of a second, so the recorder's
+// estimate of the API server's time reads about 0.45s early; the end measurement fails.
+func earlyEstimate(t *testing.T) (*Recorder, *fake.Clientset) {
+	fastPoll(t)
+	standHostClock(t, time.Now().Truncate(time.Second).Add(950*time.Millisecond))
+	client := fake.NewSimpleClientset(gpuNode("n1", "16"))
+	stampClock(client, clockStamp{offset: -1000 * time.Second}, clockStamp{fail: true})
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	return rec, client
+}
+
+func runningPod(name string, created, placed time.Time) *corev1.Pod {
+	p := runPod(name, "8", "n1", created, placed, placed)
+	p.Status.Phase, p.Status.ContainerStatuses = corev1.PodRunning, nil
+	return p
+}
+
+func TestFinishEndsNoEarlierThanAnyTimeRecorded(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		pods               func(start time.Time) []*corev1.Pod
+		makespan, gpuHours float64
+	}{
+		{"placed last", func(s time.Time) []*corev1.Pod {
+			return []*corev1.Pod{runningPod("r-0", s, s.Add(2*time.Second))}
+		}, 2, 0},
+		{"created last", func(s time.Time) []*corev1.Pod {
+			pending := gpuPod("p-0")
+			pending.CreationTimestamp = metav1.NewTime(s.Add(2 * time.Second))
+			pending.Status.Phase = corev1.PodPending
+			return []*corev1.Pod{runPod("d-0", "8", "n1", s, s, s), pending}
+		}, 2, 0},
+		{"finished last", func(s time.Time) []*corev1.Pod {
+			return []*corev1.Pod{runningPod("r-0", s, s), runPod("d-0", "8", "n1", s, s, s.Add(2*time.Second))}
+		}, 2, 8 * 4 / 3600.0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, client := earlyEstimate(t)
+			for _, p := range tc.pods(rec.start) {
+				_, err := client.CoreV1().Pods("default").Create(context.Background(), p, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+			dir := t.TempDir()
+			_ = rec.Finish(context.Background(), dir, 100*time.Millisecond, nil, 1, 0, DefaultBSLDFloor)
+			s := readSummary(t, dir)
+			require.InDelta(t, tc.makespan, s.MakespanSec, 0.01)
+			require.InDelta(t, tc.gpuHours, s.GPUHours, 8*0.01/3600)
+		})
+	}
+}
+
+func TestPushCountsARunningPodUntilNow(t *testing.T) {
+	fastPoll(t)
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, -1000*time.Second)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), runningPod("r-0", rec.start, rec.start), metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(rec.snapshot()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	rec.PushTo(context.Background(), ts.URL, "r1", 10*time.Millisecond, func() []Job { return nil }, 1)
+
+	require.Eventually(t, func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return srv.value("knavigator_gpu_hours", nil) >= 8*2/3600.0
+	}, 5*time.Second, 10*time.Millisecond, "the pushed GPU-hours keep growing while the pod runs")
+	_ = rec.Finish(context.Background(), t.TempDir(), 100*time.Millisecond, nil, 1, 0, DefaultBSLDFloor)
+}
+
+func TestPushEndsNoEarlierThanAnyTimeRecorded(t *testing.T) {
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	rec, client := earlyEstimate(t)
+	placed := rec.start.Add(time.Second)
+	_, err := client.CoreV1().Pods("default").Create(context.Background(), runningPod("r-0", placed, placed), metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(rec.snapshot()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	rec.PushTo(context.Background(), ts.URL, "r1", 10*time.Millisecond, func() []Job { return nil }, 1)
+
+	require.Eventually(t, func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return srv.value("knavigator_gpu_hours", nil) != -1
+	}, 5*time.Second, 10*time.Millisecond)
+	srv.mu.Lock()
+	gpuHours := srv.value("knavigator_gpu_hours", nil)
+	srv.mu.Unlock()
+	require.InDelta(t, 0, gpuHours, 1e-9, "the push ends no earlier than the placement")
+	_ = rec.Finish(context.Background(), t.TempDir(), 100*time.Millisecond, nil, 1, 0, DefaultBSLDFloor)
+}
+
+func TestFinishEndsNoEarlierThanTimesItTook(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	// Clocks that agree, with an end stamp a little behind, inside the tolerance.
+	skewClock(client, 0, -900*time.Millisecond)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	// Placed without a PodScheduled condition, so its placement is the exact time it was seen.
+	running := gpuPod("r-0")
+	running.CreationTimestamp = metav1.Now()
+	running.Spec.NodeName = "n1"
+	running.Status.Phase = corev1.PodRunning
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), running, metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/r", Namespace: "default", Pods: 1, PodRegexp: "r-[0-9]+"}}
+
+	dir := t.TempDir()
+	require.EqualError(t, rec.Finish(context.Background(), dir, 100*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor),
+		"run did not drain: 1/1 jobs started")
+	s := readSummary(t, dir)
+	require.GreaterOrEqual(t, s.GPUHours, 8*0.09/3600, "it ran at least through the 100ms wait")
+	require.InDelta(t, 8*0.25/3600, s.GPUHours, 8*0.25/3600)
+	require.InDelta(t, 0.5, s.MakespanSec, 0.5)
+}
+
+func TestFinishEndsOnTheEndStamp(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	// 1000s behind at the start and caught up at the end, with a pod placed after the catch-up.
+	skewClock(client, -1000*time.Second, 0)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	placed := time.Now().Truncate(time.Second).Add(-time.Second)
+	running := runPod("r-0", "8", "n1", placed, placed, placed)
+	running.Status.Phase, running.Status.ContainerStatuses = corev1.PodRunning, nil
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), running, metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/r", Namespace: "default", Submitted: time.Now(), Pods: 1, PodRegexp: "r-[0-9]+"}}
+
+	dir := t.TempDir()
+	err = rec.Finish(context.Background(), dir, 100*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor)
+	require.ErrorContains(t, err, "so its times are not on one clock")
+	s := readSummary(t, dir)
+	// The pod held 8 GPUs from placed to the end stamp, 1 to 2.5 seconds later.
+	require.InDelta(t, 8*1.75/3600, s.GPUHours, 8*0.75/3600)
+	// The submission moved to the start's clock, 1000s behind the end's: why the run fails.
+	require.InDelta(t, 999.5, s.MakespanSec, 1.2)
+}
+
+func TestOnServerClockKeepsAnUnknownSubmission(t *testing.T) {
+	submitted := time.Now()
+	r := &Recorder{offset: -1000 * time.Second}
+	jobs := r.onServerClock([]Job{{Name: "a"}, {Name: "b", Submitted: submitted}})
+	require.True(t, jobs[0].Submitted.IsZero())
+	require.Equal(t, submitted.Add(-1000*time.Second), jobs[1].Submitted)
+}
+
+func TestFinishFailsWhenTheClockMovesBack(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, 0, -1000*time.Second)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	// Stamped after the clock fell 1000s behind, so before the run's start.
+	server := time.Now().Add(-1000 * time.Second)
+	_, err = client.CoreV1().Pods("default").Create(context.Background(),
+		runPod("w-0", "8", "n1", server, server, server.Add(time.Second)), metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: time.Now(), Pods: 1, PodRegexp: "w-[0-9]+"}}
+
+	err = rec.Finish(context.Background(), t.TempDir(), 100*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor)
+	require.ErrorContains(t, err, "so its times are not on one clock")
+	require.ErrorContains(t, err, "run did not drain: 0/1 jobs started")
+	require.Empty(t, rec.snapshot())
+}
+
+func TestStartFallsBackToTheHostSecond(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	stampClock(client, clockStamp{fail: true}, clockStamp{})
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	// Stamped in the same second the run started.
+	now := time.Now().Truncate(time.Second)
+	_, err = client.CoreV1().Pods("default").Create(context.Background(),
+		runPod("w-0", "8", "n1", now, now, now), metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: now, Pods: 1, PodRegexp: "w-[0-9]+"}}
+
+	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), 2*time.Second, jobs, 1, 0, DefaultBSLDFloor))
+	require.Len(t, rec.snapshot(), 1)
+	require.Zero(t, rec.start.Nanosecond(), "the host time, truncated like a stamp")
+	require.WithinDuration(t, time.Now(), rec.start, 2*time.Second)
+}
+
+func TestPushToReadsRunTimesOnTheAPIServerClock(t *testing.T) {
+	fastPoll(t)
+	srv := &pushed{}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, -1000*time.Second)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	// Submitted 10s before it is placed, and still running.
+	submitted := time.Now().Add(-10 * time.Second)
+	server := time.Now().Add(-1000 * time.Second)
+	running := runPod("w-0", "8", "n1", server, server, server)
+	running.Status.Phase, running.Status.ContainerStatuses = corev1.PodRunning, nil
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), running, metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return len(rec.snapshot()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: submitted, Pods: 1, PodRegexp: "w-[0-9]+"}}
+	rec.PushTo(context.Background(), ts.URL, "r1", 10*time.Millisecond, func() []Job { return jobs }, 1)
+
+	require.Eventually(t, func() bool {
+		srv.mu.Lock()
+		defer srv.mu.Unlock()
+		return srv.value("knavigator_makespan_sec", nil) != -1
+	}, 5*time.Second, 10*time.Millisecond)
+	srv.mu.Lock()
+	makespan, wait := srv.value("knavigator_makespan_sec", nil), srv.value("knavigator_job_wait_sec", map[string]string{"stat": "max"})
+	srv.mu.Unlock()
+	require.InDelta(t, 10.5, makespan, 1)
+	require.InDelta(t, 10, wait, 0.6)
+	require.Error(t, rec.Finish(context.Background(), t.TempDir(), 100*time.Millisecond, jobs, 1, 0, DefaultBSLDFloor))
+}
+
+func TestStartLeavesOutPodsFromBeforeTheRun(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	skewClock(client, -400*time.Millisecond)
+	buf := captureLog(t)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	before := runPod("old-0", "8", "n1", time.Now().Add(-2*time.Second), time.Now(), time.Now())
+	_, err = client.CoreV1().Pods("default").Create(context.Background(), before, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	require.NoError(t, rec.Finish(context.Background(), t.TempDir(), time.Minute, nil, 1, 0, DefaultBSLDFloor))
+	log.Flush()
+	require.NotContains(t, buf.String(), "API server clock")
+	require.Empty(t, rec.snapshot())
+	require.Zero(t, rec.offset)
+}
+
+func TestFinishFailsWhenTheClockMoves(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(gpuNode("n1", "8"))
+	// 1000s behind at the start, then caught up before the first pod.
+	skewClock(client, -1000*time.Second, 0)
+	rec, err := Start(context.Background(), client, HarnessOptions{})
+	require.NoError(t, err)
+	now := time.Now()
+	_, err = client.CoreV1().Pods("default").Create(context.Background(),
+		runPod("w-0", "8", "n1", now, now.Add(10*time.Second), now.Add(30*time.Second)), metav1.CreateOptions{})
+	require.NoError(t, err)
+	jobs := []Job{{Name: "default/w", Namespace: "default", Submitted: now, Pods: 1, PodRegexp: "w-[0-9]+"}}
+
+	dir := t.TempDir()
+	err = rec.Finish(context.Background(), dir, 2*time.Second, jobs, 1, 0, DefaultBSLDFloor)
+	require.Error(t, err)
+	require.Regexp(t, `^the API server clock moved by \+(999|1000)\.\ds during the run, so its times are not on one clock$`, err.Error())
+	require.Equal(t, 1, readSummary(t, dir).Pods, "the files are written first")
 }
