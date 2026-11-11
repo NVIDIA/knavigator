@@ -33,6 +33,9 @@ type Fragmentation struct {
 	GPUFragmentationLargestPod *float64 `json:"gpu_fragmentation_largest_pod"`
 	// FreeNodesMean is the time-weighted mean number of nodes with every GPU free.
 	FreeNodesMean float64 `json:"free_nodes_mean"`
+	// NodesByFreeGPUs breaks the nodes of each size down by their free GPU count; absent when the
+	// window is empty or no node has GPUs.
+	NodesByFreeGPUs []NodeSize `json:"nodes_by_free_gpus,omitempty"`
 	// StrandedGPUHours is free GPU time, while pods waited, on nodes with fewer free GPUs than the
 	// smallest waiting pod requests.
 	StrandedGPUHours float64 `json:"stranded_gpu_hours"`
@@ -40,6 +43,20 @@ type Fragmentation struct {
 	// needs a whole rack could not run there; null without -results.rack-label or when no GPU in a
 	// rack was free.
 	GPUFragmentationRack *float64 `json:"gpu_fragmentation_rack"`
+}
+
+// NodeSize is one node size: its node count and how many of them had each free GPU count.
+type NodeSize struct {
+	NodeGPUs int `json:"node_gpus"`
+	Nodes    int `json:"nodes"`
+	// ByFree has one row per free GPU count, from all free down to none.
+	ByFree []FreeCount `json:"by_free"`
+}
+
+// FreeCount is the time-weighted mean number of nodes with FreeGPUs free.
+type FreeCount struct {
+	FreeGPUs  int     `json:"free_gpus"`
+	NodesMean float64 `json:"nodes_mean"`
 }
 
 // fragmentation sweeps the window from first to last. nodes maps each node to its allocatable GPUs;
@@ -108,6 +125,28 @@ func fragmentationHeld(pods []Pod, nodes, held map[string]float64, first, last t
 		share(node, 1)
 	}
 
+	// Seconds each node size spent at each free count, credited to a node when it changes. Zero-GPU
+	// nodes land in size 0, which nodeSizes leaves out.
+	since := map[string]time.Time{}
+	sizeSec := map[int][]float64{}
+	credit := func(node string, until time.Time) {
+		// A placement before the window, as with a skewed clock, counts from the window start.
+		if until.Before(first) {
+			until = first
+		}
+		size := int(math.Round(nodes[node]))
+		if sizeSec[size] == nil {
+			sizeSec[size] = make([]float64, size+1)
+		}
+		f := int(math.Round(math.Max(nodes[node]-used[node], 0)))
+		start, ok := since[node]
+		if !ok {
+			start = first
+		}
+		sizeSec[size][f] += until.Sub(start).Seconds()
+		since[node] = until
+	}
+
 	var freeSec, fragmentedSec, smallSec, freeNodeSec float64
 	prev := first
 	hold := func(until time.Time) {
@@ -122,10 +161,20 @@ func fragmentationHeld(pods []Pod, nodes, held map[string]float64, first, last t
 	for _, c := range changes {
 		hold(c.t)
 		share(c.node, -1)
+		credit(c.node, c.t)
 		used[c.node] += c.gpus
 		share(c.node, 1)
 	}
 	hold(last)
+	// In name order, so the float sums and the output are the same for the same input.
+	names := make([]string, 0, len(nodes))
+	for node := range nodes {
+		names = append(names, node)
+	}
+	sort.Strings(names)
+	for _, node := range names {
+		credit(node, last)
+	}
 
 	out.FragmentedGPUHours = fragmentedSec / 3600
 	if freeSec > 0 {
@@ -135,6 +184,7 @@ func fragmentationHeld(pods []Pod, nodes, held map[string]float64, first, last t
 		out.GPUFragmentationLargestPod = &g
 	}
 	out.FreeNodesMean = freeNodeSec / last.Sub(first).Seconds()
+	out.NodesByFreeGPUs = nodeSizes(nodes, sizeSec, last.Sub(first).Seconds())
 	out.StrandedGPUHours = strandedGPUHours(pods, nodes, held, first, last)
 	return out
 }
@@ -292,4 +342,32 @@ func rackFragmentation(pods []Pod, nodes, held map[string]float64, racks map[str
 	}
 	f := fragmentedSec / freeSec
 	return &f
+}
+
+// nodeSizes turns the seconds each node size spent at each free count into rows, largest size and
+// most free first, with every count from all free down to none.
+func nodeSizes(nodes map[string]float64, sizeSec map[int][]float64, window float64) []NodeSize {
+	count := map[int]int{}
+	for _, g := range nodes {
+		if g > 0 {
+			count[int(math.Round(g))]++
+		}
+	}
+	sizes := make([]int, 0, len(count))
+	for size := range count {
+		sizes = append(sizes, size)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(sizes)))
+	out := make([]NodeSize, 0, len(sizes))
+	for _, size := range sizes {
+		row := NodeSize{NodeGPUs: size, Nodes: count[size], ByFree: make([]FreeCount, 0, size+1)}
+		for f := size; f >= 0; f-- {
+			row.ByFree = append(row.ByFree, FreeCount{FreeGPUs: f, NodesMean: sizeSec[size][f] / window})
+		}
+		out = append(out, row)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
