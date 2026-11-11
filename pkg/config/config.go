@@ -222,7 +222,7 @@ func parsePaths(paths string) ([]string, error) {
 	braces := false
 	ret := []string{}
 
-	for i := 1; i < n; i++ {
+	for i := 0; i < n; i++ {
 		switch paths[i] {
 		case '{':
 			if braces {
