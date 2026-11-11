@@ -106,6 +106,11 @@ func (task *SubmitObjTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: 'count' must be a positive number", task.ID())
 	}
 
+	// Exec adds _ENUM_ and _NAME_ to Params, so it must be a map even when the task sets no params.
+	if task.Params == nil {
+		task.Params = make(map[string]interface{})
+	}
+
 	return nil
 }
 
