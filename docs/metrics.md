@@ -137,8 +137,27 @@ done
 - `mean`, `min`, `max`, and `sd`, the sample standard deviation, which is null for a single run.
 - `cv`: `sd` over the absolute mean, null when the mean is 0.
 - `ci95`: a 95% interval for the mean, from 4000 bootstrap resamples with a fixed seed, so the same runs always give the same interval.
-- `stable`: at least two runs, and either no variation or a `cv` of at most 5%. Treat a difference between two configurations as real only when their intervals do not overlap.
+- `stable`: at least two runs, and either no variation or a `cv` of at most 5%. `-aggregate.baseline` below compares two configurations.
 
-Combine only runs made with the same `-results.allow-leftovers` and `-results.rack-label` settings. With `-results.allow-leftovers`, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity. With different `-results.rack-label` values, `gpu_fragmentation_rack` measures different groups, such as racks and zones.
+Combine or compare only runs made with the same `-results.allow-leftovers` and `-results.rack-label` settings. With `-results.allow-leftovers`, `gpu_capacity` excludes the leftover pods' GPUs, so the utilization of the two kinds of run is not measured against the same capacity. With different `-results.rack-label` values, `gpu_fragmentation_rack` measures different groups, such as racks and zones.
 
 If the runs replayed different traces, `-aggregate` logs a warning, since the spread then includes the difference between the traces as well as the variation between runs. It also warns when only some of the runs report a `trace_digest`: the others, such as runs from before the field existed, may have run any workload.
+
+To compare two configurations, give the runs of one as `-aggregate.baseline`:
+
+```bash
+./bin/knavigator -aggregate './out/kueue-*' -aggregate.baseline './out/volcano-*' > kueue-vs-volcano.json
+```
+
+Each metric that the baseline also reports gains `vs_baseline`:
+
+- `n`: baseline runs that reported the metric.
+- `diff`: the mean minus the baseline mean.
+- `ci95`: a 95% interval for `diff`, from 4000 bootstrap resamples of each side with a fixed seed. It is null when only one run on either side reports the metric.
+- `clear`: `ci95` excludes 0 and at least 5 runs on each side report the metric. The intervals of two means can overlap while the interval of their difference excludes 0, so read `clear` rather than comparing the two `ci95`.
+
+Take turns between the configurations, one run of each and then the next round, so slow drift on the machine does not read as a difference.
+
+With five runs a side, `clear` is a screen rather than a strict test: between two identical configurations, about one varying metric in eight reads `clear` by chance. Pick the metrics that matter before the runs, and do not read one `clear` among many as a result.
+
+A difference belongs to the configuration only when both sides replayed the same trace, so `-aggregate.baseline` refuses a side whose runs reported different `trace_digest` values and two sides with different ones. It also refuses a run that both globs match, since each side is resampled on its own. When only one side reports a `trace_digest`, or only some runs on a side do, it logs a warning and compares them anyway.

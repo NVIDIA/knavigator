@@ -17,6 +17,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,4 +78,55 @@ func TestValidateRackLabel(t *testing.T) {
 	require.ErrorContains(t, validate(args("example.com/rack=rack-1", "out")), "'results.rack-label' must be a label key")
 	require.ErrorContains(t, validate(args("Bad Key", "out")),
 		"'results.rack-label' must be a label key such as example.com/rack: name part must consist of alphanumeric characters")
+}
+
+func TestValidateBaseline(t *testing.T) {
+	require.EqualError(t, validate(&Args{baseline: "out/volcano-*", workflow: "w.yml", speedup: 1}),
+		"'aggregate.baseline' requires 'aggregate'")
+}
+
+func TestAggregateBaseline(t *testing.T) {
+	root := t.TempDir()
+	for name, makespan := range map[string]string{"a-1": "100", "a-2": "102", "b-1": "120", "b-2": "124"} {
+		require.NoError(t, os.Mkdir(filepath.Join(root, name), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, name, "results.json"), []byte(`{"makespan_sec": `+makespan+`}`), 0o644))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a-run.log"), nil, 0o644))
+	a, b := filepath.Join(root, "a-*"), filepath.Join(root, "b-*")
+
+	var out bytes.Buffer
+	require.NoError(t, aggregate(&out, a, b))
+	require.Contains(t, out.String(), "{\n  \"makespan_sec\": {")
+	require.Contains(t, out.String(), `"vs_baseline": {
+      "n": 2,
+      "diff": -21,
+      "ci95": [
+        -24,
+        -18
+      ],
+      "clear": false
+    }`)
+	var got map[string]results.Spread
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	require.Equal(t, 2, got["makespan_sec"].N, "the log file is not a run")
+	require.Equal(t, -21.0, got["makespan_sec"].VsBaseline.Diff)
+
+	out.Reset()
+	require.NoError(t, aggregate(&out, a, ""))
+	require.NotContains(t, out.String(), "vs_baseline")
+	var plain map[string]results.Spread
+	require.NoError(t, json.Unmarshal(out.Bytes(), &plain))
+	require.Equal(t, 2, plain["makespan_sec"].N)
+	require.Nil(t, plain["makespan_sec"].VsBaseline)
+
+	out.Reset()
+	require.NoError(t, aggregate(&out, a, filepath.Join(root, "b-1")))
+	require.Contains(t, out.String(), `"diff": -19,
+      "ci95": null,`, "one baseline run has no interval")
+
+	require.EqualError(t, aggregate(&out, filepath.Join(root, "c-*"), b), "no directories match \""+filepath.Join(root, "c-*")+"\"")
+	require.EqualError(t, aggregate(&out, a, "["), `"[": syntax error in pattern`)
+	require.EqualError(t, aggregate(&out, filepath.Join(root, "*"), b), filepath.Join(root, "b-1")+" is both a run and a baseline run")
+	require.NoError(t, os.Remove(filepath.Join(root, "b-2", "results.json")))
+	require.ErrorIs(t, aggregate(&out, a, b), os.ErrNotExist)
 }
