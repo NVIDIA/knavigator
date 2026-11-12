@@ -18,7 +18,7 @@ metadata:
   name: "{{._NAME_}}"
   namespace: "{{.namespace}}"
   labels:
-    runai/queue: "{{.queue}}"
+    kai.scheduler/queue: "{{.queue}}"
 spec:
   slotsPerWorker: 1
   runPolicy:
