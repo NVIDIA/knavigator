@@ -88,3 +88,47 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 ```
 
 [resources/workflows/k8s/test-trace.yml](../resources/workflows/k8s/test-trace.yml) replays a six-job trace on two virtual nodes. It has no check task, so run it with `-results`, which waits for the jobs to finish.
+
+### Accounts and arrival shapes
+
+A class can split its jobs over many generated accounts instead of a fixed `accounts` list. `accountSet` names `count` accounts `prefix` plus a zero-padded number (`tenant-001` to `tenant-200`) and shares the class's `jobs` over them. Every account gets `minJobs` first, and the rest follow `distribution`: `uniform` (the default), `lognormal` (`mu`, `sigma` over the account number, so a few busy accounts and a long tail) or `gaussian` (`mean`, `stddev` as account numbers; default the middle account and a sixth of `count`).
+
+`arrival` places the class's jobs at random times in a window instead of using `arrivalInterval`. `shape: uniform` is a constant rate. `shape: gaussian` ramps up, peaks and ramps down, around `mean` seconds into the window with spread `stddev` (default the middle and a sixth of `duration`). All times are in seconds from the class's `start`.
+
+```yaml
+    - name: tenants
+      jobs: 20000
+      accountSet:
+        prefix: tenant-
+        count: 200
+        minJobs: 5
+        distribution: {type: lognormal, mu: 3.0, sigma: 1.0}
+      arrival: {shape: gaussian, duration: 600}
+      runtime: {mu: 4.0, sigma: 0.8, max: 600}
+      gpus: [1]
+```
+
+### Open-ended runs
+
+Set `jobs: -1` on a class with a positive `arrivalInterval` to keep submitting until you stop the run. With `-results`, Ctrl+C then stops submission, waits for the submitted jobs to finish, and writes the results as usual; a second Ctrl+C exits at once. Without `-results`, Ctrl+C stops submission and the cleanup deletes the submitted jobs. Stopping ends the workflow, so make an open-ended `SubmitTrace` its last task: tasks after it do not run. An `accountSet` on such a class draws each job's account by its distribution (`minJobs` does not apply). Add `-results.report-interval 2m` to write `partial-<n>.json` into the results directory every two minutes. Each file summarizes the whole run up to that point, so a run you stop early still leaves numbers behind. A new run removes the `partial-*.json` files an earlier one left in the directory.
+
+### Waiting for the scheduler to see virtual nodes
+
+Virtual nodes exist as soon as `ConfigureNodes` returns, but a scheduler may not have cached them yet. Submit one small job and wait for its pod to run before the real load, so the first jobs are not judged against a scheduler that cannot place them. Register the job's template as for any other workflow:
+
+```yaml
+- id: canary
+  type: SubmitObj
+  params:
+    refTaskId: register
+    count: 1
+    params:
+      replicas: 1
+      ttl: 30s
+- id: canary-running
+  type: CheckPod
+  params:
+    refTaskId: canary
+    status: Running
+    timeout: 5m
+```

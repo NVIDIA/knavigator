@@ -18,6 +18,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -83,7 +84,8 @@ func Run(ctx context.Context, eng Engine, workflow *config.Workflow) error {
 		}
 	}
 
-	errReset := eng.Reset(ctx)
+	// An interrupted run still owes its cleanup; Reset applies its own timeout.
+	errReset := eng.Reset(context.WithoutCancel(ctx))
 
 	if errExec != nil {
 		return errExec
@@ -274,7 +276,11 @@ func execRunnable(ctx context.Context, r Runnable) error {
 	log.Infof("Starting task %s", id)
 	start := time.Now()
 	if err := r.Exec(ctx); err != nil {
-		log.Errorf("Task %s failed", id)
+		if errors.Is(err, ErrStopped) {
+			log.Infof("Task %s stopped after %s", id, time.Since(start).String())
+		} else {
+			log.Errorf("Task %s failed", id)
+		}
 		return err
 	}
 	log.Infof("Task %s completed in %s", id, time.Since(start).String())

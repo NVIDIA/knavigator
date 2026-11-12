@@ -20,9 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -139,7 +141,7 @@ func TestNewSubmitTraceTask(t *testing.T) {
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes":   []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "arrivalInterval": 1, "gpus": []int{1}}},
-	}), `SubmitTrace/trace: class "a" needs positive jobs and runtime.max, and gpus`)
+	}), `SubmitTrace/trace: class "a" needs jobs (-1 runs until stopped), positive runtime.max, and gpus`)
 	require.EqualError(t, task.validate(map[string]interface{}{
 		"refTaskId": "job",
 		"classes": []interface{}{map[string]interface{}{"name": "a", "jobs": 1, "start": -1,
@@ -353,4 +355,149 @@ func TestSubmitTraceFile(t *testing.T) {
 	later, err := readTrace(writeTrace(t, traceHeader+"2,research,1700000000.200,120,8,2,100\n1,trading,1700000000,60,1,1,0\n"))
 	require.NoError(t, err)
 	require.Equal(t, got[1]["traceDigest"], traceDigest(later))
+}
+
+func shapedClass(jobs int) traceClass {
+	c := traceClass{Name: "t", Jobs: jobs, GPUs: []int{1}}
+	c.Runtime.Mu, c.Runtime.Max = 1, 100
+	return c
+}
+
+func TestGenerateTraceAccountSet(t *testing.T) {
+	c := shapedClass(1000)
+	c.AccountSet.Prefix, c.AccountSet.Count, c.AccountSet.MinJobs = "tenant-", 20, 5
+	c.AccountSet.Distribution.Type, c.AccountSet.Distribution.Mu, c.AccountSet.Distribution.Sigma = "lognormal", 1.5, 0.8
+	require.NoError(t, c.validateLoad())
+
+	counts := map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Len(t, counts, 20)
+	total := 0
+	for name, n := range counts {
+		require.GreaterOrEqual(t, n, 5, name)
+		total += n
+	}
+	require.Equal(t, 1000, total)
+	// The lognormal mode is exp(mu - sigma^2), about account 2.4, so the head outweighs the tail.
+	head, tail := 0, 0
+	for k := 1; k <= 5; k++ {
+		head += counts[fmt.Sprintf("tenant-%02d", k)]
+		tail += counts[fmt.Sprintf("tenant-%02d", 21-k)]
+	}
+	require.Greater(t, head, 3*tail)
+
+	c.AccountSet.Distribution.Type = "uniform"
+	counts = map[string]int{}
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		counts[j.Account]++
+	}
+	require.Equal(t, 50, counts["tenant-01"])
+	require.Equal(t, 50, counts["tenant-20"])
+
+	c.Jobs = 99
+	require.Error(t, c.validateLoad(), "99 jobs cannot give 20 accounts 5 each")
+
+	g := accountSet{Count: 10, MinJobs: 3}
+	g.Distribution.Type = "gaussian"
+	require.Equal(t, []int{3, 5, 9, 14, 19, 19, 14, 9, 5, 3}, g.split(100))
+
+	c = shapedClass(100)
+	c.AccountSet = g
+	var order []string
+	for _, j := range generateTrace([]traceClass{c}, 1) {
+		order = append(order, j.Account)
+	}
+	require.False(t, sort.StringsAreSorted(order), "accounts arrive shuffled, not in blocks")
+}
+
+func TestValidateLoadErrors(t *testing.T) {
+	for name, edit := range map[string]func(c *traceClass){
+		"open-ended without arrivalInterval": func(c *traceClass) { c.Jobs = -1 },
+		"accountSet without count":           func(c *traceClass) { c.AccountSet.Prefix = "a-" },
+		"arrival without shape":              func(c *traceClass) { c.Arrival.Duration = 600 },
+		"negative arrival stddev": func(c *traceClass) {
+			c.Arrival.Shape, c.Arrival.Duration, c.Arrival.Stddev = "gaussian", 600, -1
+		},
+		"weights that all underflow": func(c *traceClass) {
+			c.AccountSet.Count = 2
+			c.AccountSet.Distribution.Type, c.AccountSet.Distribution.Stddev = "gaussian", 0.01
+		},
+	} {
+		c := shapedClass(100)
+		edit(&c)
+		require.Error(t, c.validateLoad(), name)
+	}
+
+	c := shapedClass(100)
+	zero := 0.0
+	c.Arrival.Shape, c.Arrival.Duration, c.Arrival.Mean = "gaussian", 600, &zero
+	require.NoError(t, c.validateLoad())
+	jobs := generateTrace([]traceClass{c}, 1)
+	require.Less(t, jobs[len(jobs)/2].Submit, 100.0, "mean 0 puts the peak at the window's start")
+}
+
+func TestGenerateTraceArrivalShape(t *testing.T) {
+	c := shapedClass(2000)
+	c.Start = 100
+	c.Arrival.Shape, c.Arrival.Duration = "gaussian", 600
+	require.NoError(t, c.validateLoad())
+
+	middle := 0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		require.GreaterOrEqual(t, j.Submit, 100.0)
+		require.LessOrEqual(t, j.Submit, 700.0)
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+	}
+	// A third of the window around the mean holds about 68% of a gaussian, 33% of a uniform.
+	require.Greater(t, middle, 1100)
+
+	c.Arrival.Shape = "uniform"
+	middle = 0
+	last := 0.0
+	for _, j := range generateTrace([]traceClass{c}, 3) {
+		require.GreaterOrEqual(t, j.Submit, 100.0)
+		require.LessOrEqual(t, j.Submit, 700.0)
+		if j.Submit > 300 && j.Submit < 500 {
+			middle++
+		}
+		last = math.Max(last, j.Submit)
+	}
+	require.InDelta(t, 667, middle, 100)
+	require.Greater(t, last, 640.0, "a uniform shape fills the whole window")
+
+	c.ArrivalInterval = 5
+	require.Error(t, c.validateLoad(), "arrival and arrivalInterval conflict")
+}
+
+func TestSubmitTraceContinuous(t *testing.T) {
+	task := &SubmitTraceTask{BaseTask: BaseTask{taskType: TaskSubmitTrace, taskID: "trace"}}
+	require.NoError(t, task.validate(map[string]interface{}{
+		"refTaskId": "job",
+		"speedup":   100,
+		"classes": []interface{}{map[string]interface{}{
+			"name": "steady", "jobs": -1, "arrivalInterval": 1, "gpus": []int{1}, "runtime": map[string]interface{}{"max": 10},
+			"accountSet": map[string]interface{}{"prefix": "a-", "count": 3},
+		}},
+	}))
+	var (
+		mu       sync.Mutex
+		accounts = map[string]bool{}
+	)
+	task.submitJob = func(ctx context.Context, _ int, params map[string]interface{}) error {
+		mu.Lock()
+		accounts[params["account"].(string)] = true
+		mu.Unlock()
+		// A Create still in flight at Ctrl+C must not fail the run.
+		time.Sleep(20 * time.Millisecond)
+		return ctx.Err()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, task.Exec(ctx), ErrStopped)
+	require.Equal(t, map[string]bool{"a-1": true, "a-2": true, "a-3": true}, accounts)
 }
