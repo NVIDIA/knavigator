@@ -148,6 +148,11 @@ func TestParsePaths(t *testing.T) {
 			paths: []string{"dd/ee/f/xx/yy", "dd/ee/f/xx/zz", "dd/ee/g/xx/yy", "dd/ee/g/xx/zz", "dd/ee/e/xx/yy", "dd/ee/e/xx/zz"},
 		},
 		{
+			name:  "Case 1d: valid, braces at the start",
+			input: "{a,b}/c.yaml, {d.yaml,e.yaml}",
+			paths: []string{"a/c.yaml", "b/c.yaml", "d.yaml", "e.yaml"},
+		},
+		{
 			name:  "Case 2a: unbalanced braces",
 			input: "a/b/c{{",
 			err:   `unbalanced braces in "a/b/c{{"`,
@@ -161,6 +166,11 @@ func TestParsePaths(t *testing.T) {
 			name:  "Case 2c: unbalanced braces",
 			input: "a/b/c{",
 			err:   `unbalanced braces in "a/b/c{"`,
+		},
+		{
+			name:  "Case 2d: unbalanced braces at the start",
+			input: "}a/b/c",
+			err:   `unbalanced braces in "}a/b/c"`,
 		},
 		{
 			name:  "Case 3: single character",
