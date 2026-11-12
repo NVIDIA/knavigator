@@ -1,0 +1,54 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copied from the Scheduling Capabilities Suite at e5968b1
+# (https://github.com/ArangoGutierrez/scheduler-capabilities-suite/tree/e5968b1/claims).
+# Documented claims for Kueue v0.20.1. Each claim is quoted from the page
+# cited (fetched and checked on 2026-10-10; every quote re-checked on
+# 2026-10-12). mechanism is how the Suite's probe exercised the capability.
+# expected is the verdict the documentation implies under the rules in
+# pkg/verdict.
+scheduler: kueue
+version: Kueue v0.20.1 on Kubernetes v1.37.0
+claims:
+  gang:
+    claim: 'a Workload is only unsuspended when the quota for all of its pod sets can be reserved at once.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/all_or_nothing/
+    expected: supported
+    mechanism: a Job is admitted only when quota for all its pods is reserved; nothing gang-specific is set on the Job
+  priority:
+    claim: 'StrictFIFO: Workloads are ordered first by priority and then by .metadata.creationTimestamp. [...] BestEffortFIFO: Workloads are ordered the same way as StrictFIFO.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/
+    expected: supported
+    mechanism: WorkloadPriorityClass scs-high (1000) over scs-low (100) through the kueue.x-k8s.io/priority-class label; BestEffortFIFO ClusterQueue without preemption
+  preemption:
+    claim: 'The preemptee belongs to the same ClusterQueue as the preemptor and the preemptee has a lower priority.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/preemption/
+    expected: supported
+    mechanism: ClusterQueue preemption.withinClusterQueue LowerPriority; Kueue evicts a Workload by suspending its Job
+  fair-share:
+    claim: 'reclaimWithinCohort determines whether a pending Workload can preempt Workloads from other ClusterQueues in the cohort that are using more than their nominal quota.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/
+    expected: supported
+    mechanism: one 16-GPU ClusterQueue per tenant in one cohort, preemption.reclaimWithinCohort Any; B's entitlement is its nominalQuota, so B reclaims what A borrowed; the nominal quotas add up to the fleet, so fair sharing (on in the manager configuration) has nothing left to divide and this probe does not exercise it
+  backfill:
+    claim: 'older Workloads that can’t be admitted will not block newer Workloads that fit in the available quota.'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/cluster_queue/
+    expected: partial
+    mechanism: BestEffortFIFO ClusterQueue; no documented reservation for a waiting Workload, so short jobs may pass it and delay it
+  topology:
+    claim: 'requires scheduling all pods on nodes within the same topology domain corresponding to the topology level indicated by the annotation value'
+    citation: https://kueue.sigs.k8s.io/v0.20/docs/concepts/topology_aware_scheduling/
+    expected: supported
+    mechanism: pod template annotation kueue.x-k8s.io/podset-required-topology with the rack label; Topology block, rack, hostname; ResourceFlavor gpu with topologyName
