@@ -432,3 +432,50 @@ func TestSubmitObjTaskExecCanExistContinues(t *testing.T) {
 	require.Equal(t, "training", info.Class)
 	require.Equal(t, "b5a2887c4f7c", info.Trace, "results read the trace digest from the task info")
 }
+
+// A task without a 'params' map must still submit objects whose names come
+// from nameFormat, since generating the names adds _ENUM_ to the params.
+func TestSubmitObjTaskExecWithoutParams(t *testing.T) {
+	const jobJSON = `{"apiVersion":"g/v","kind":"Job","metadata":{"name":"placeholder","namespace":"default"}}`
+	var mu sync.Mutex
+	var created []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			mu.Lock()
+			created = append(created, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+		}
+		fmt.Fprint(w, jobJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &rest.Config{Host: ts.URL, ContentConfig: rest.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "g", Version: "v"}}}
+	client, err := dynamic.NewForConfig(cfg)
+	require.NoError(t, err)
+
+	eng, err := New(nil, nil, true)
+	require.NoError(t, err)
+	tpl := template.Must(template.New("job").Parse("apiVersion: g/v\nkind: Job\nmetadata:\n  name: {{._NAME_}}\n  namespace: default\nspec: {}\n"))
+	eng.objTypeMap["reg"] = &RegisterObjParams{
+		gvr:        []schema.GroupVersionResource{{Group: "g", Version: "v", Resource: "jobs"}},
+		objTpl:     []*template.Template{tpl},
+		NameFormat: "job{{._ENUM_}}",
+	}
+
+	task, err := newSubmitObjTask(client, eng, &config.Task{
+		ID:     "submit",
+		Type:   TaskSubmitObj,
+		Params: map[string]interface{}{"refTaskId": "reg", "count": 2},
+	})
+	require.NoError(t, err)
+	require.NoError(t, task.Exec(context.Background()))
+
+	mu.Lock()
+	require.Len(t, created, 2)
+	mu.Unlock()
+	info, err := eng.GetObjInfo("submit")
+	require.NoError(t, err)
+	require.Len(t, info.Names, 2)
+}
