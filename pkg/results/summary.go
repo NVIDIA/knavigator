@@ -19,8 +19,10 @@ package results
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -286,20 +288,45 @@ func (s *Summary) ScaleTime(speedup float64) {
 	}
 }
 
+// assignJobs sets each pod's Job to the first job whose pattern matches its full name in its
+// namespace. It tries only the jobs whose pattern's literal prefix starts the pod name.
 func assignJobs(pods []Pod, jobs []Job) {
 	res := make([]*regexp.Regexp, len(jobs))
+	byPrefix := map[int]map[string][]int{}
 	for i, j := range jobs {
-		if j.PodRegexp != "" {
-			// A bad pattern leaves the job unmatched; CheckPod tasks report the compile error.
-			res[i], _ = regexp.Compile("^(?:" + j.PodRegexp + ")$")
+		if j.PodRegexp == "" {
+			continue
 		}
+		// A bad pattern leaves the job unmatched; CheckPod tasks report the compile error.
+		re, err := regexp.Compile("^(?:" + j.PodRegexp + ")$")
+		if err != nil {
+			continue
+		}
+		res[i] = re
+		prefix, _ := re.LiteralPrefix()
+		if byPrefix[len(prefix)] == nil {
+			byPrefix[len(prefix)] = map[string][]int{}
+		}
+		byPrefix[len(prefix)][prefix] = append(byPrefix[len(prefix)][prefix], i)
 	}
+	lengths := slices.Sorted(maps.Keys(byPrefix))
 	for i := range pods {
-		for k, re := range res {
-			if re != nil && pods[i].Namespace == jobs[k].Namespace && re.MatchString(pods[i].Name) {
-				pods[i].Job = jobs[k].Name
+		name, best := pods[i].Name, -1
+		for _, n := range lengths {
+			if n > len(name) {
 				break
 			}
+			for _, k := range byPrefix[n][name[:n]] {
+				if best >= 0 && k > best {
+					break
+				}
+				if pods[i].Namespace == jobs[k].Namespace && res[k].MatchString(name) {
+					best = k
+				}
+			}
+		}
+		if best >= 0 {
+			pods[i].Job = jobs[best].Name
 		}
 	}
 }
