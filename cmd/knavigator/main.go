@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -53,6 +54,7 @@ type Args struct {
 	pushRun      string
 	pushEvery    time.Duration
 	resultsStall time.Duration
+	reportEvery  time.Duration
 	bsldFloor    time.Duration
 	aggregate    string
 	restartNS    string
@@ -81,6 +83,7 @@ func mainInternal() error {
 	flag.DurationVar(&args.pushEvery, "results.push-interval", 10*time.Second, "how often to push live metrics")
 	flag.Float64Var(&args.speedup, "speedup", 1, "divide Sleep timeouts and SubmitObj 'ttl' params by this factor and speed up SubmitTrace by it; results report simulated time (requires 'workflow')")
 	flag.DurationVar(&args.resultsStall, "results.stall", 0, "stop waiting when no pod is placed or finishes for this long, in real time; 0 disables")
+	flag.DurationVar(&args.reportEvery, "results.report-interval", 0, "write the run so far to partial-<n>.json in the results directory at this interval; 0 disables")
 	flag.StringVar(&args.aggregate, "aggregate", "", "glob of -results directories from repeated runs; prints each metric's mean, spread and 95% interval as JSON, then exits")
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
 	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
@@ -164,6 +167,10 @@ func mainInternal() error {
 		}
 	}
 
+	if rec != nil && args.reportEvery > 0 {
+		rec.ReportEvery(ctx, args.results, args.reportEvery, func() []results.Job { return submittedJobs(eng) }, args.speedup)
+	}
+
 	var runErr error
 	for _, workflow := range workflows {
 		log.Infof("Starting workflow %s", workflow.Name)
@@ -172,11 +179,25 @@ func mainInternal() error {
 		}
 	}
 
+	// A stopped open-ended SubmitTrace ends the workflow as intended; later tasks do not run.
+	stopped := errors.Is(runErr, engine.ErrStopped)
+	if stopped {
+		runErr = nil
+	}
 	if rec == nil {
 		return runErr
 	}
+	if runErr == nil && !stopped && ctx.Err() != nil {
+		// Ctrl+C during any other task, such as a trailing Sleep that returns nil, aborts the run.
+		runErr = ctx.Err()
+	}
 	if runErr == nil {
-		runErr = rec.Finish(ctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
+		// Only a stopped SubmitTrace still owes results after Ctrl+C, so only it drains on a fresh context.
+		fctx := ctx
+		if stopped {
+			fctx = context.WithoutCancel(ctx)
+		}
+		runErr = rec.Finish(fctx, args.results, args.resultsWait, submittedJobs(eng), args.speedup, args.resultsStall, args.bsldFloor)
 	}
 	if runErr != nil {
 		rec.Abort()
@@ -326,6 +347,9 @@ func validate(args *Args) error {
 		return fmt.Errorf("'speedup' requires 'workflow'")
 	}
 
+	if args.reportEvery > 0 && len(args.results) == 0 {
+		return fmt.Errorf("'results.report-interval' requires 'results'")
+	}
 	if len(args.pushURL) != 0 && len(args.results) == 0 {
 		return fmt.Errorf("'results.pushgateway' requires 'results'")
 	}

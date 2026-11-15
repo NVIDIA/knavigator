@@ -41,13 +41,15 @@ var (
 type testEngine struct {
 	execErr  error
 	resetErr error
+	resetCtx error // ctx.Err() as Reset saw it
 }
 
 func (eng *testEngine) RunTask(context.Context, *config.Task) error {
 	return eng.execErr
 }
 
-func (eng *testEngine) Reset(context.Context) error {
+func (eng *testEngine) Reset(ctx context.Context) error {
+	eng.resetCtx = ctx.Err()
 	return eng.resetErr
 }
 
@@ -91,6 +93,14 @@ func TestRunEngine(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunEngineCleansUpAfterCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	eng := &testEngine{}
+	require.NoError(t, Run(ctx, eng, &config.Workflow{Name: "test", Tasks: []*config.Task{{ID: "task"}}}))
+	require.NoError(t, eng.resetCtx, "an interrupted run still cleans up")
 }
 
 type testRunnable struct {
