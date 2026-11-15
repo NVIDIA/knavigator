@@ -25,6 +25,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -57,6 +58,8 @@ type Recorder struct {
 	// Occurrences an event had before the run, left out of its count during the run.
 	eventsBefore map[types.UID]int32
 	harness      *harnessStart
+	// offset is the API server clock minus the host's, when the two disagree.
+	offset time.Duration
 	// rackLabel is the node label that names each node's rack; empty gives a null
 	// gpu_fragmentation_rack.
 	rackLabel string
@@ -64,16 +67,23 @@ type Recorder struct {
 
 // Start begins watching pods and returns once the watch cache has synced. It refuses to start while
 // GPU pods from before the run are active, unless opts.AllowLeftovers is set. A restart of a
-// control-plane container, or of any container in opts.RestartNamespaces, during the run fails it.
+// control-plane container, or of any container in opts.RestartNamespaces, during the run fails it,
+// and so do start and end clock measurements 2s or more apart.
 func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*Recorder, error) {
 	harness, err := startHarness(ctx, client, opts)
 	if err != nil {
 		return nil, err
 	}
+	// The API server's own stamp; a pod stamped before it is left out, so a clock that moves back
+	// during the run can leave out pods of the run.
+	start := time.Now().Truncate(time.Second)
+	if harness.clock != nil {
+		start = harness.clock.at
+	}
 	r := &Recorder{
 		client: client,
-		// Creation timestamps have one second resolution.
-		start:  time.Now().Truncate(time.Second),
+		start:  start,
+		offset: harness.skew(),
 		stop:   make(chan struct{}),
 		pods:   make(map[types.UID]*Pod),
 		events: make(map[types.UID]*Event),
@@ -130,7 +140,7 @@ func (r *Recorder) PushTo(ctx context.Context, url, run string, interval time.Du
 		if speedup > 1 {
 			floor = time.Duration(float64(floor) / speedup)
 		}
-		s := Summarize(pods, jobs(), capacity, time.Now(), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, NodeRacks: racks, BSLDFloor: floor, Speedup: speedup})
+		s := Summarize(pods, r.onServerClock(jobs()), capacity, latest(r.now(), lastRecorded(pods)), Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, NodeRacks: racks, BSLDFloor: floor, Speedup: speedup})
 		if speedup > 1 {
 			s.ScaleTime(speedup)
 		}
@@ -191,7 +201,7 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 	if gpus == 0 {
 		return
 	}
-	now := time.Now()
+	now := r.now()
 
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -274,6 +284,32 @@ func finishedTime(pod *corev1.Pod, fallback time.Time) time.Time {
 	return t
 }
 
+// now is the time on the API server's clock, which pod and event timestamps use.
+func (r *Recorder) now() time.Time {
+	return time.Now().Add(r.offset)
+}
+
+// onServerClock moves the jobs' submission times, taken on the host, to the API server's clock; an
+// unknown one stays zero.
+func (r *Recorder) onServerClock(jobs []Job) []Job {
+	out := slices.Clone(jobs)
+	for i := range out {
+		if !out[i].Submitted.IsZero() {
+			out[i].Submitted = out[i].Submitted.Add(r.offset)
+		}
+	}
+	return out
+}
+
+// lastRecorded is the latest time a pod was created, placed or finished.
+func lastRecorded(pods []Pod) time.Time {
+	var last time.Time
+	for _, p := range pods {
+		last = latest(latest(latest(last, p.Created), p.Scheduled), p.Finished)
+	}
+	return last
+}
+
 func (r *Recorder) snapshot() []Pod {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -348,11 +384,13 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		case <-time.After(pollInterval):
 		}
 	}
-	end := time.Now()
-
 	harness, err := r.harness.finish(ctx, r.client)
 	if err != nil {
 		return err
+	}
+	end := r.now()
+	if harness.end != nil {
+		end = latest(end, harness.end.at)
 	}
 	nodes, racks, capacity, maxNode, err := r.gpuCapacity(ctx)
 	if err != nil {
@@ -366,12 +404,13 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		log.Warningf("Results: no GPU node has the label %q", r.rackLabel)
 	}
 	pods := r.snapshot()
+	end = latest(end, lastRecorded(pods))
 	events := r.eventList()
 	if speedup > 1 {
 		// Runtimes are measured in real time; the floor is given in simulated time.
 		bsldFloor = time.Duration(float64(bsldFloor) / speedup)
 	}
-	summary := Summarize(pods, jobs, capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, NodeRacks: racks, BSLDFloor: bsldFloor, Speedup: speedup})
+	summary := Summarize(pods, r.onServerClock(jobs), capacity, end, Options{MaxNodeGPUs: maxNode, NodeGPUs: nodes, NodeHeldGPUs: held, NodeRacks: racks, BSLDFloor: bsldFloor, Speedup: speedup})
 	summary.PreemptionEvents = preemptionEvents(events)
 	summary.Stalled = stalled
 	summary.Harness = harness

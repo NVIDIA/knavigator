@@ -187,6 +187,25 @@ func TestObserveRecordsPriority(t *testing.T) {
 	require.Equal(t, map[string]int{"high-0": 1000, "plain-0": 0}, byName, "a pod without a priority reads 0")
 }
 
+func TestObserveFallbacksReadTheAPIServerClock(t *testing.T) {
+	r := &Recorder{pods: map[types.UID]*Pod{}, events: map[types.UID]*Event{}, offset: -1000 * time.Second}
+	// Placed and finished with neither a PodScheduled condition nor a terminated state, and deleted.
+	done := gpuPod("a-0")
+	done.Spec.NodeName = "n1"
+	done.Status.Phase = corev1.PodSucceeded
+	r.observe(done, false)
+	r.observe(gpuPod("b-0"), true)
+
+	want := time.Now().Add(-1000 * time.Second)
+	byName := map[string]Pod{}
+	for _, p := range r.snapshot() {
+		byName[p.Name] = p
+	}
+	require.WithinDuration(t, want, byName["a-0"].Scheduled, time.Second)
+	require.WithinDuration(t, want, byName["a-0"].Finished, time.Second)
+	require.WithinDuration(t, want, byName["b-0"].Finished, time.Second)
+}
+
 func TestObserveFailedVictimIsEvicted(t *testing.T) {
 	r := &Recorder{pods: map[types.UID]*Pod{}, events: map[types.UID]*Event{}}
 	jobs := []Job{{Name: "default/a", Namespace: "default", Pods: 1, PodRegexp: "a-[a-z0-9]+"}}
