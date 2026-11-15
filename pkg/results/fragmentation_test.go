@@ -177,3 +177,127 @@ func TestRackFragmentation(t *testing.T) {
 	require.NotNil(t, f)
 	require.InDelta(t, 200.0/3000, *f, 1e-12)
 }
+
+func TestNodesByFreeGPUs(t *testing.T) {
+	// The golden fleet: n0 stays empty, n1 has 3 free for 10s, n3 none for 10s, over 20s.
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+	nodes := map[string]float64{"n0": 8, "n1": 8, "n2": 4, "n3": 4, "cpu": 0}
+	pods := []Pod{
+		{Node: "n1", GPUs: 5, Scheduled: at(0), Finished: at(10)},
+		{Node: "n3", GPUs: 4, Scheduled: at(0), Finished: at(10)},
+		{Node: "gone", GPUs: 8, Scheduled: at(0), Finished: at(20)},
+	}
+	f := fragmentation(pods, nodes, at(0), at(20))
+
+	byFree := func(s NodeSize) map[int]float64 {
+		out := map[int]float64{}
+		for _, c := range s.ByFree {
+			out[c.FreeGPUs] = c.NodesMean
+		}
+		return out
+	}
+	require.Len(t, f.NodesByFreeGPUs, 2, "the zero-GPU node is left out")
+	eight, four := f.NodesByFreeGPUs[0], f.NodesByFreeGPUs[1]
+	require.Equal(t, 8, eight.NodeGPUs)
+	require.Equal(t, 2, eight.Nodes)
+	require.Len(t, eight.ByFree, 9)
+	require.Equal(t, 8, eight.ByFree[0].FreeGPUs, "all free first")
+	require.Equal(t, 0, eight.ByFree[8].FreeGPUs)
+	require.Equal(t, map[int]float64{8: 1.5, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0.5, 2: 0, 1: 0, 0: 0}, byFree(eight))
+	require.Equal(t, 4, four.NodeGPUs)
+	require.Equal(t, map[int]float64{4: 1.5, 3: 0, 2: 0, 1: 0, 0: 0.5}, byFree(four))
+
+	// The all-free counts give free_nodes_mean, and weighted by free GPUs, gpu_fragmentation.
+	require.InDelta(t, f.FreeNodesMean, byFree(eight)[8]+byFree(four)[4], 1e-12)
+	var free, fragmented float64
+	for _, s := range f.NodesByFreeGPUs {
+		for _, c := range s.ByFree {
+			free += float64(c.FreeGPUs) * c.NodesMean
+			if c.FreeGPUs < s.NodeGPUs {
+				fragmented += float64(c.FreeGPUs) * c.NodesMean
+			}
+		}
+	}
+	require.InDelta(t, *f.GPUFragmentation, fragmented/free, 1e-12)
+
+	// Held GPUs count as in use for the whole window, and a pod past the end stops at the end.
+	held := fragmentationHeld([]Pod{{Node: "n1", GPUs: 8, Scheduled: at(5), Finished: at(30)}},
+		map[string]float64{"n0": 8, "n1": 8}, map[string]float64{"n0": 2}, at(0), at(10))
+	require.Equal(t, map[int]float64{8: 0.5, 7: 0, 6: 1, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0.5},
+		byFree(held.NodesByFreeGPUs[0]))
+
+	// A leftover holding a whole node plus a run pod on it reads 0 free, not below.
+	over := fragmentationHeld([]Pod{{Node: "n0", GPUs: 4, Scheduled: at(0), Finished: at(10)}},
+		map[string]float64{"n0": 8}, map[string]float64{"n0": 8}, at(0), at(10))
+	require.Equal(t, 1.0, byFree(over.NodesByFreeGPUs[0])[0])
+
+	// A placement read before the window start counts from the start, not before it.
+	early := Summarize([]Pod{{Node: "n0", GPUs: 8, Created: at(10), Scheduled: at(5), Finished: at(20)}},
+		nil, 8, at(20), Options{NodeGPUs: map[string]float64{"n0": 8}})
+	require.Equal(t, map[int]float64{8: 0, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 1},
+		byFree(early.NodesByFreeGPUs[0]))
+	require.Equal(t, early.FreeNodesMean, byFree(early.NodesByFreeGPUs[0])[8])
+
+	// Nodes ending at different sub-second times give the same means however the map iterates.
+	end := at(10)
+	ragged := []Pod{
+		{Node: "a", GPUs: 8, Scheduled: at(0), Finished: end.Add(-100 * time.Millisecond)},
+		{Node: "b", GPUs: 8, Scheduled: at(0), Finished: end.Add(-200 * time.Millisecond)},
+		{Node: "c", GPUs: 8, Scheduled: at(0), Finished: end.Add(-300 * time.Millisecond)},
+	}
+	three := map[string]float64{"a": 8, "b": 8, "c": 8}
+	want := fragmentation(ragged, three, at(0), end).NodesByFreeGPUs
+	for range 200 {
+		require.Equal(t, want, fragmentation(ragged, three, at(0), end).NodesByFreeGPUs)
+	}
+
+	// A handover in the same second leaves no time at the in-between count.
+	handover := fragmentation([]Pod{
+		{Node: "n0", GPUs: 8, Scheduled: at(0), Finished: at(5)},
+		{Node: "n0", GPUs: 8, Scheduled: at(5), Finished: at(10)},
+	}, map[string]float64{"n0": 8}, at(0), at(10))
+	require.Equal(t, 1.0, byFree(handover.NodesByFreeGPUs[0])[0])
+
+	// Sizes come largest first however the map iterates.
+	mixed := map[string]float64{"a": 1, "b": 2, "c": 4, "d": 6, "e": 8, "f": 16}
+	for range 20 {
+		var got []int
+		for _, s := range fragmentation(nil, mixed, at(0), at(10)).NodesByFreeGPUs {
+			got = append(got, s.NodeGPUs)
+		}
+		require.Equal(t, []int{16, 8, 6, 4, 2, 1}, got)
+	}
+
+	require.Nil(t, fragmentation(pods, nodes, at(0), at(0)).NodesByFreeGPUs, "no time, no field")
+	require.Nil(t, fragmentation(nil, map[string]float64{"cpu": 0}, at(0), at(10)).NodesByFreeGPUs)
+}
+
+func TestNodesByFreeGPUsOutput(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := t0.Add(10 * time.Second)
+	nodes := map[string]float64{"a": 2, "b": 2, "c": 1}
+	pods := []Pod{{Node: "a", GPUs: 1, Created: t0, Scheduled: t0, Finished: end}}
+	s := Summarize(pods, nil, 5, end, Options{NodeGPUs: nodes})
+	s.ScaleTime(10)
+
+	data, err := json.Marshal(s)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"nodes_by_free_gpus":[{"node_gpus":2,"nodes":2,"by_free":[`+
+		`{"free_gpus":2,"nodes_mean":1},{"free_gpus":1,"nodes_mean":1},{"free_gpus":0,"nodes_mean":0}]},`+
+		`{"node_gpus":1,"nodes":1,"by_free":[{"free_gpus":1,"nodes_mean":1},{"free_gpus":0,"nodes_mean":0}]}]`,
+		"rows are in a stable order, and means are not scaled by -speedup")
+
+	var tree interface{}
+	require.NoError(t, json.Unmarshal(data, &tree))
+	got := values(samples(tree))
+	require.Equal(t, 1.0, got["knavigator_nodes_by_free_gpus_by_free_nodes_mean,node_gpus=2,free_gpus=1"])
+	require.Equal(t, 0.0, got["knavigator_nodes_by_free_gpus_by_free_nodes_mean,node_gpus=1,free_gpus=0"])
+	require.Equal(t, 2.0, got["knavigator_nodes_by_free_gpus_nodes,node_gpus=2"])
+	require.NotContains(t, got, "knavigator_nodes_by_free_gpus_by_free_free_gpus,node_gpus=2,free_gpus=1",
+		"the label field is not pushed as a value")
+
+	data, err = json.Marshal(Summary{})
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "nodes_by_free_gpus")
+}

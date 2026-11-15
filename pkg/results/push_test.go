@@ -38,7 +38,7 @@ func values(ss []sample) map[string]float64 {
 	out := map[string]float64{}
 	for _, s := range ss {
 		key := s.name
-		for _, l := range []string{"bucket", "gang_size", "priority", "class", "stat"} {
+		for _, l := range []string{"bucket", "gang_size", "priority", "class", "node_gpus", "free_gpus", "stat"} {
 			if v, ok := s.labels[l]; ok {
 				key += "," + l + "=" + v
 			}
