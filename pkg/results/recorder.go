@@ -40,8 +40,12 @@ import (
 	log "k8s.io/klog/v2"
 )
 
-// Only pods requesting this resource are recorded; make it a flag if other accelerators matter.
+// Only pods requesting one of these resources are recorded; make it a flag if other accelerators matter.
 const gpuResource corev1.ResourceName = "nvidia.com/gpu"
+
+// draGPUResource requests GPUs from the NVIDIA DRA driver's DeviceClass. Node capacity is still
+// read from gpuResource, which virtual nodes publish next to their GPU ResourceSlices.
+const draGPUResource corev1.ResourceName = "deviceclass.resource.kubernetes.io/gpu.nvidia.com"
 
 // A variable so tests can poll quickly.
 var pollInterval = 5 * time.Second
@@ -242,8 +246,10 @@ func (r *Recorder) observe(obj interface{}, deleted bool) {
 func podGPUs(pod *corev1.Pod) float64 {
 	var n float64
 	for _, c := range pod.Spec.Containers {
-		if q, ok := c.Resources.Requests[gpuResource]; ok {
-			n += q.AsApproximateFloat64()
+		for _, name := range []corev1.ResourceName{gpuResource, draGPUResource} {
+			if q, ok := c.Resources.Requests[name]; ok {
+				n += q.AsApproximateFloat64()
+			}
 		}
 	}
 	return n

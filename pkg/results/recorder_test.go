@@ -237,3 +237,13 @@ func TestObserveFailedVictimIsEvicted(t *testing.T) {
 	r.observe(crashed, false)
 	require.Equal(t, 1, Summarize(r.snapshot(), jobs, 8, time.Now().Add(2*time.Hour), Options{}).PodsFailed)
 }
+
+func TestPodGPUsCountsDRARequests(t *testing.T) {
+	pod := gpuPod("p-0")
+	pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{Name: "dra", Resources: corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			draGPUResource: resource.MustParse("2"),
+			"deviceclass.resource.kubernetes.io/dranet-rdma": resource.MustParse("1"),
+		}}})
+	require.Equal(t, 10.0, podGPUs(pod))
+}
