@@ -46,7 +46,7 @@ For convenience, we have included them in [scripts/install_kwok.sh](../scripts/i
 
 ## Setting up virtual nodes
 
-Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, `racks`, and `address`. The `type` and `count` attributes are mandatory, while the rest are optional.
+Virtual nodes are configured by setting the following node attributes: `type`, `count`, `annotations`, `labels`, `resources`, `conditions`, `taints`, `resourceSlices`, `gpus`, `cpus`, `racks`, and `address`. The `type` and `count` attributes are mandatory, while the rest are optional.
 
 There are three pre-defined node types:
 - [dgxa100.40g](https://docs.nvidia.com/dgx/dgxa100-user-guide/introduction-to-dgxa100.html#hardware-overview)
@@ -81,7 +81,7 @@ For other node types, it is recommended to provide resource capacity. For exampl
     ephemeral-storage: 2537570228Ki
 ```
 
-A cluster can be described by node class. `gpus` sets `nvidia.com/gpu`, the `nvidia.com/gpu.count` and `nvidia.com/gpu.product` labels, and publishes the GPUs through a `gpu.nvidia.com` DRA `ResourceSlice` (Kubernetes 1.34 or later). `racks` spreads the nodes evenly over that many racks; label and annotation values can use `{{ .rack }}`, numbered from 1. For example, 64 H100 nodes in 8 racks and 16 A100 nodes in 2 racks:
+A cluster can be described by node class. `gpus` sets `nvidia.com/gpu`, the `nvidia.com/gpu.count` and `nvidia.com/gpu.product` labels, and publishes the GPUs through a `gpu.nvidia.com` DRA `ResourceSlice` (Kubernetes 1.34 or later). `cpus` (`sockets`, `coresPerSocket`, and optional `smt`) sets `cpu` and publishes the CPUs through a `dra.cpu` `ResourceSlice` with one device per socket, as [dra-driver-cpu](https://github.com/kubernetes-sigs/dra-driver-cpu) does. Socket `s` holds cores `s*coresPerSocket` upward, and with `smt` each core's sibling is that CPU number plus `sockets*coresPerSocket`. `racks` spreads the nodes evenly over that many racks; label and annotation values can use `{{ .rack }}`, numbered from 1. For example, 64 H100 nodes in 8 racks and 16 A100 nodes in 2 racks:
 ```yaml
 - type: h100
   count: 64
