@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/NVIDIA/knavigator/pkg/config"
@@ -372,6 +373,11 @@ func TestNodes2JSON(t *testing.T) {
 			expr:  `nodes=[{"type":"h100","count":2,"cpus":{"sockets":2,"coresPerSocket":48,"smt":true}}]`,
 		},
 		{
+			name:  "Case 4c: gpus without DRA",
+			nodes: []virtualNode{{Type: "h100", Count: 2, GPUs: &nodeGPUs{Count: 8, DRA: new(bool)}}},
+			expr:  `nodes=[{"type":"h100","count":2,"gpus":{"count":8,"dra":false}}]`,
+		},
+		{
 			name:  "Case 5: address",
 			nodes: []virtualNode{{Type: "dgx8", Count: 2, Address: "10.0.0.1"}},
 			expr:  `nodes=[{"type":"dgx8","count":2,"address":"10.0.0.1"}]`,
@@ -447,4 +453,12 @@ func TestUpdateVirtualNodesInSteps(t *testing.T) {
 			require.Zero(t, task.Nodes[0].UpTo, "steps must not change the task's nodes")
 		})
 	}
+}
+
+func TestParseGPUsDRA(t *testing.T) {
+	var nodes []virtualNode
+	require.NoError(t, yaml.Unmarshal([]byte("- {type: h100, count: 2, gpus: {count: 8, dra: false}}\n- {type: a100, count: 1, gpus: {count: 8}}\n"), &nodes))
+	require.NotNil(t, nodes[0].GPUs.DRA)
+	require.False(t, *nodes[0].GPUs.DRA)
+	require.Nil(t, nodes[1].GPUs.DRA)
 }
