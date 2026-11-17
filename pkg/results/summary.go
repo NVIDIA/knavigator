@@ -119,6 +119,7 @@ type Summary struct {
 	Harness Harness `json:"harness"`
 	Sizes
 	Fragmentation
+	Overbooking
 }
 
 // PriorityEvictions counts the evicted pods of one priority.
@@ -243,6 +244,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	s.WaitByClass = byClass(jobs, waitOf, opt.Speedup)
 	s.TraceDigest = traceDigests(jobs)
 	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
+	s.Overbooking = overbooking(pods, opt.NodeGPUs, opt.NodeHeldGPUs, end)
 	return s
 }
 
@@ -258,6 +260,7 @@ func (s *Summary) ScaleTime(speedup float64) {
 	s.WastedGPUHours *= speedup
 	s.FragmentedGPUHours *= speedup
 	s.StrandedGPUHours *= speedup
+	s.OverbookedGPUHours *= speedup
 	for i := range s.EvictionsByPriority {
 		s.EvictionsByPriority[i].GPUHours *= speedup
 	}
