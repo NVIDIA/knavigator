@@ -91,6 +91,55 @@ func TestSummarizeOutstanding(t *testing.T) {
 	require.InDelta(t, 0.1, s.GPUUtilization, 1e-9)
 }
 
+func TestSummarizePlacementSpan(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 4, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{
+		{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0, Scheduled: at(5)},
+		{Namespace: "default", Name: "a-1", GPUs: 1, Created: t0, Scheduled: at(9)},
+		{Namespace: "default", Name: "a-2", GPUs: 1, Created: t0, Scheduled: at(20)},
+		// Never placed, so it adds nothing to either field.
+		{Namespace: "default", Name: "a-3", GPUs: 1, Created: t0},
+	}
+
+	s := Summarize(pods, jobs, 4, at(100), Options{})
+	require.Equal(t, 15.0, s.PlacementSpanSec)
+	require.Equal(t, 20.0, s.LastPlacementSec)
+}
+
+func TestSummarizePlacementSpanNonePlaced(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{
+		{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0},
+		{Namespace: "default", Name: "a-1", GPUs: 1, Created: t0},
+	}
+
+	s := Summarize(pods, jobs, 2, at(100), Options{})
+	require.Equal(t, 0.0, s.PlacementSpanSec)
+	require.Equal(t, 0.0, s.LastPlacementSec)
+}
+
+func TestSummarizePlacementSpanReplacement(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 1, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{
+		// Placed, evicted, and placed again under the same name: both placements count.
+		{Namespace: "default", Name: "a-0", GPUs: 1, Phase: phaseDeleted, Created: t0, Scheduled: at(5), Finished: at(10)},
+		{Namespace: "default", Name: "a-0", GPUs: 1, Created: at(10), Scheduled: at(30)},
+	}
+
+	s := Summarize(pods, jobs, 1, at(100), Options{})
+	require.Equal(t, 25.0, s.PlacementSpanSec)
+	require.Equal(t, 30.0, s.LastPlacementSec)
+}
+
 func TestCheck(t *testing.T) {
 	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1, Stalled: true}.check(false), "run stalled: 1/2 jobs started")
@@ -101,10 +150,12 @@ func TestCheck(t *testing.T) {
 
 func TestScaleTime(t *testing.T) {
 	s := Summary{MakespanSec: 10, GPUHours: 2, GPUUtilization: 0.5, JobWaitSec: Stats{Mean: 1, P95: 2, Max: 3},
-		GangAssemblySec: Stats{Count: 1, Mean: 1, P95: 1, Max: 1}}
+		GangAssemblySec: Stats{Count: 1, Mean: 1, P95: 1, Max: 1}, PlacementSpanSec: 15, LastPlacementSec: 20}
 	s.ScaleTime(60)
 	require.Equal(t, 60.0, s.Speedup)
 	require.Equal(t, 600.0, s.MakespanSec)
+	require.Equal(t, 900.0, s.PlacementSpanSec)
+	require.Equal(t, 1200.0, s.LastPlacementSec)
 	require.Equal(t, 120.0, s.GPUHours)
 	require.Equal(t, 0.5, s.GPUUtilization)
 	require.Equal(t, Stats{Mean: 60, P95: 120, Max: 180}, s.JobWaitSec)
