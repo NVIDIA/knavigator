@@ -86,6 +86,8 @@ const virtualNodeStep = 128
 type nodeGPUs struct {
 	Count   int    `yaml:"count" json:"count"`
 	Product string `yaml:"product,omitempty" json:"product,omitempty"`
+	// DRA false skips the DRA ResourceSlice, for schedulers that would count each GPU twice.
+	DRA *bool `yaml:"dra,omitempty" json:"dra,omitempty"`
 }
 
 // nodeCPUs follows the dra-driver-cpu socket layout: socket s holds cores s*coresPerSocket upward,

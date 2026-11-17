@@ -68,7 +68,8 @@
 {{- end }}
 
 {{/*
-# The gpus shorthand sets the GPU resource and product labels, and publishes the GPUs through DRA.
+# The gpus shorthand sets the GPU resource and product labels, and publishes the GPUs through DRA
+# unless dra is false. A scheduler that reads both may count each GPU twice.
 */}}
 {{- $labels := deepCopy ($node.labels | default dict) }}
 {{- $slices := $node.resourceSlices | default list }}
@@ -80,7 +81,9 @@
     {{- $_ = set $labels "nvidia.com/gpu.product" .product }}
     {{- $_ = set $attributes "productName" (dict "string" .product) }}
   {{- end }}
+  {{- if ne (toString .dra) "false" }}
   {{- $slices = append $slices (dict "driver" "gpu.nvidia.com" "devices" .count "attributes" $attributes) }}
+  {{- end }}
 {{- end }}
 
 {{/*
