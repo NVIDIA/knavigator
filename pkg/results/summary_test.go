@@ -542,6 +542,10 @@ func TestAssignJobs(t *testing.T) {
 			map[string]string{"lit-0": "default/lit", "lit-01": "", "lit-": ""}},
 		{"bad and empty patterns match nothing", []Job{job("bad", "x-["), job("none", ""), job("x", "x-.*")},
 			map[string]string{"x-[": "default/x", "x-0": "default/x", "": ""}},
+		{"a pattern that is not one-pass", []Job{job("w", "w-.*-worker-[0-9]+"), job("w1", "w-1-[0-9]+")},
+			map[string]string{"w-1-worker-0": "default/w", "w-1-0": "default/w1", "w-worker-0": ""}},
+		{"a pattern that compiles only inside the anchors", []Job{job("odd", "a)(b")},
+			map[string]string{"ab": "default/odd", "a": ""}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var pods []Pod
@@ -562,9 +566,23 @@ func TestAssignJobs(t *testing.T) {
 	require.Equal(t, "default/z", pods[1].Job)
 }
 
+func TestPodPrefix(t *testing.T) {
+	for pattern, want := range map[string]string{
+		"job7-[0-9]+":            "job7-",
+		"job7-.*-worker-[0-9]+":  "job7-",
+		"job7-[a-z0-9-]+-[0-9]+": "job7-",
+		"a)(b":                   "a",
+		"a|b)(c":                 "",
+		"(?i)job7-.*":            "",
+	} {
+		re := regexp.MustCompile("^(?:" + pattern + ")$")
+		require.Equal(t, want, podPrefix(re, pattern), pattern)
+	}
+}
+
 func TestAssignJobsMatchesEveryPattern(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 0))
-	forms := []string{"%s-[0-9]+", "%s-.*", "%s", "(?i)%s-[a-z0-9]+", "%s-0|%s-1", ".*-%s"}
+	forms := []string{"%s-[0-9]+", "%s-.*", "%s", "(?i)%s-[a-z0-9]+", "%s-0|%s-1", ".*-%s", "%s-.*-worker-[0-9]+"}
 	var jobs []Job
 	for i := 0; i < 300; i++ {
 		base := fmt.Sprintf("j%d", r.IntN(150))
@@ -578,8 +596,11 @@ func TestAssignJobsMatchesEveryPattern(t *testing.T) {
 	var got, want []Pod
 	for i := 0; i < 3000; i++ {
 		p := Pod{Namespace: fmt.Sprintf("ns%d", r.IntN(2)), Name: fmt.Sprintf("j%d-%d", r.IntN(160), r.IntN(3))}
-		if r.IntN(10) == 0 {
+		switch r.IntN(10) {
+		case 0:
 			p.Name = fmt.Sprintf("x-j%d", r.IntN(160))
+		case 1:
+			p.Name = fmt.Sprintf("j%d-%d-worker-%d", r.IntN(160), r.IntN(3), r.IntN(3))
 		}
 		got, want = append(got, p), append(want, p)
 	}
@@ -595,15 +616,20 @@ func TestAssignJobsMatchesEveryPattern(t *testing.T) {
 	require.Greater(t, matched, 1000, "most pods match some job")
 }
 
-// BenchmarkAssignJobs is 5,000 jobs of 4 pods, as a large trace replay gives.
+// BenchmarkAssignJobs is 5,000 jobs of 4 pods, as a large trace replay gives. Every other job has
+// a pattern that is not one-pass, like job-1-.*-worker-[0-9]+.
 func BenchmarkAssignJobs(b *testing.B) {
 	var pods []Pod
 	var jobs []Job
 	for j := 0; j < 5000; j++ {
 		name := fmt.Sprintf("job-%d", j)
-		jobs = append(jobs, Job{Name: "default/" + name, Namespace: "default", PodRegexp: name + "-[0-9]+"})
+		pattern, pod := name+"-[0-9]+", name+"-%d"
+		if j%2 == 1 {
+			pattern, pod = name+"-.*-worker-[0-9]+", name+"-x-worker-%d"
+		}
+		jobs = append(jobs, Job{Name: "default/" + name, Namespace: "default", PodRegexp: pattern})
 		for p := 0; p < 4; p++ {
-			pods = append(pods, Pod{Namespace: "default", Name: fmt.Sprintf("%s-%d", name, p)})
+			pods = append(pods, Pod{Namespace: "default", Name: fmt.Sprintf(pod, p)})
 		}
 	}
 	b.ResetTimer()

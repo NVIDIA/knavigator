@@ -303,7 +303,7 @@ func assignJobs(pods []Pod, jobs []Job) {
 			continue
 		}
 		res[i] = re
-		prefix, _ := re.LiteralPrefix()
+		prefix := podPrefix(re, j.PodRegexp)
 		byPrefix[prefix] = append(byPrefix[prefix], i)
 		lengths = append(lengths, len(prefix))
 	}
@@ -328,6 +328,20 @@ func assignJobs(pods []Pod, jobs []Job) {
 			pods[i].Job = jobs[best].Name
 		}
 	}
+}
+
+// podPrefix returns the text that every pod name re matches starts with. The anchored re has a
+// literal prefix only if it is one-pass, so otherwise the prefix comes from the pattern alone.
+func podPrefix(re *regexp.Regexp, pattern string) string {
+	if prefix, _ := re.LiteralPrefix(); prefix != "" {
+		return prefix
+	}
+	bare, err := regexp.Compile(pattern)
+	if err != nil {
+		return ""
+	}
+	prefix, _ := bare.LiteralPrefix()
+	return prefix
 }
 
 // stats uses nearest-rank percentiles.
