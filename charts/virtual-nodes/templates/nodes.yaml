@@ -83,6 +83,13 @@
   {{- $slices = append $slices (dict "driver" "gpu.nvidia.com" "devices" .count "attributes" $attributes) }}
 {{- end }}
 
+{{/*
+# The cpus shorthand sets the CPU resource and publishes the CPUs in the dra-driver-cpu socket layout.
+*/}}
+{{- with $node.cpus }}
+  {{- $_ := set $params.resources "cpu" (mul .sockets .coresPerSocket (ternary 2 1 (.smt | default false))) }}
+{{- end }}
+
 {{- $count := ($node.count | int) }}
 {{- $racks := ($node.racks | default 1 | int) }}
 {{/*
@@ -195,6 +202,43 @@ spec:
     attributes:
       {{- toYaml . | nindent 6 }}
     {{- end }}
+  {{- end }}
+{{- end }}
+{{- with $node.cpus }}
+{{- $sockets := .sockets | int }}
+{{- $cores := .coresPerSocket | int }}
+{{- $smt := .smt | default false }}
+{{- $total := mul $sockets $cores }}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: virtual-{{ $node.type }}-{{ $suffix }}-dra-cpu
+spec:
+  driver: dra.cpu
+  nodeName: virtual-{{ $node.type }}-{{ $suffix }}
+  pool:
+    name: virtual-{{ $node.type }}-{{ $suffix }}
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+  {{- range $s := until $sockets }}
+  {{- $first := mul $s $cores }}
+  {{- $ids := printf "%d-%d" $first (sub (add $first $cores) 1) }}
+  {{- if $smt }}
+  {{- $ids = printf "%s,%d-%d" $ids (add $first $total) (sub (add $first $cores $total) 1) }}
+  {{- end }}
+  {{- $n := ternary (mul $cores 2) $cores $smt }}
+  - name: cpudevsocket{{ printf "%03d" $s }}
+    attributes:
+      dra.cpu/cpuIDs: {string: {{ $ids | quote }}}
+      dra.cpu/numCPUs: {int: {{ $n }}}
+      dra.cpu/smtEnabled: {bool: {{ $smt }}}
+      dra.cpu/smtLayout: {string: {{ ternary (printf "0-%d>%d" (sub (mul $total 2) 1) $total) (printf "0-%d" (sub $total 1)) $smt | quote }}}
+      dra.cpu/socketID: {int: {{ $s }}}
+    capacity:
+      dra.cpu/cpu: {value: {{ $n | quote }}}
+    allowMultipleAllocations: true
   {{- end }}
 {{- end }}
 {{- end }}

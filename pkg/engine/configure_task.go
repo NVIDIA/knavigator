@@ -71,6 +71,8 @@ type virtualNode struct {
 	Racks int `yaml:"racks,omitempty" json:"racks,omitempty"`
 	// GPUs sets the GPU resource and product labels, and publishes the GPUs through DRA.
 	GPUs *nodeGPUs `yaml:"gpus,omitempty" json:"gpus,omitempty"`
+	// CPUs sets the CPU resource and publishes the CPUs through DRA, one device per socket.
+	CPUs *nodeCPUs `yaml:"cpus,omitempty" json:"cpus,omitempty"`
 	// Address sets the nodes' InternalIP. The chart marks nodes Ready, so KWOK never assigns one.
 	Address string `yaml:"address,omitempty" json:"address,omitempty"`
 	// UpTo limits the chart to the first nodes while the fleet grows in steps.
@@ -83,6 +85,14 @@ const virtualNodeStep = 128
 type nodeGPUs struct {
 	Count   int    `yaml:"count" json:"count"`
 	Product string `yaml:"product,omitempty" json:"product,omitempty"`
+}
+
+// nodeCPUs follows the dra-driver-cpu socket layout: socket s holds cores s*coresPerSocket upward,
+// and with SMT each core's sibling is that CPU plus sockets*coresPerSocket, as Linux numbers them.
+type nodeCPUs struct {
+	Sockets        int  `yaml:"sockets" json:"sockets"`
+	CoresPerSocket int  `yaml:"coresPerSocket" json:"coresPerSocket"`
+	SMT            bool `yaml:"smt,omitempty" json:"smt,omitempty"`
 }
 
 // resourceSlice publishes DRA devices for each virtual node.
@@ -183,6 +193,9 @@ func (task *ConfigureTask) validate(params map[string]interface{}) error {
 		}
 		if node.GPUs != nil && node.GPUs.Count <= 0 {
 			return fmt.Errorf("%s: gpus for node type %s must have a positive count", task.ID(), node.Type)
+		}
+		if node.CPUs != nil && (node.CPUs.Sockets <= 0 || node.CPUs.CoresPerSocket <= 0) {
+			return fmt.Errorf("%s: cpus for node type %s must have positive sockets and coresPerSocket", task.ID(), node.Type)
 		}
 		if len(node.Address) != 0 {
 			if _, err := netip.ParseAddr(node.Address); err != nil {

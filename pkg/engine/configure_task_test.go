@@ -101,6 +101,16 @@ func TestNewConfigureTask(t *testing.T) {
 			err: "Configure/configure: gpus for node type dgx8 must have a positive count",
 		},
 		{
+			name:       "Case 4d2: CPUs without sockets",
+			simClients: true,
+			params: map[string]interface{}{
+				"timeout": "1m",
+				"nodes": []interface{}{map[string]interface{}{"type": "dgx8", "count": 2,
+					"cpus": map[string]interface{}{"coresPerSocket": 48}}},
+			},
+			err: "Configure/configure: cpus for node type dgx8 must have positive sockets and coresPerSocket",
+		},
+		{
 			name:       "Case 4e: Invalid address",
 			simClients: true,
 			params: map[string]interface{}{
@@ -354,6 +364,11 @@ func TestNodes2JSON(t *testing.T) {
 			name:  "Case 4: racks and gpus",
 			nodes: []virtualNode{{Type: "h100", Count: 64, Racks: 8, GPUs: &nodeGPUs{Count: 8, Product: "H100"}}},
 			expr:  `nodes=[{"type":"h100","count":64,"racks":8,"gpus":{"count":8,"product":"H100"}}]`,
+		},
+		{
+			name:  "Case 4b: cpus",
+			nodes: []virtualNode{{Type: "h100", Count: 2, CPUs: &nodeCPUs{Sockets: 2, CoresPerSocket: 48, SMT: true}}},
+			expr:  `nodes=[{"type":"h100","count":2,"cpus":{"sockets":2,"coresPerSocket":48,"smt":true}}]`,
 		},
 		{
 			name:  "Case 5: address",
