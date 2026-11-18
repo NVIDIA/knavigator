@@ -1,0 +1,38 @@
+# Mirrors the CI gates in .github/workflows/go.yml (govulncheck and the Kind e2e job run only in CI).
+repos:
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.15.0
+    hooks:
+      - id: golangci-lint
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        entry: bash -c 'test -z "$(go fmt ./...)"'
+        language: system
+        types: [go]
+        pass_filenames: false
+      - id: go-vet
+        name: go vet
+        entry: make vet
+        language: system
+        types: [go]
+        pass_filenames: false
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+      - id: go-build
+        name: make build
+        entry: make build
+        language: system
+        types: [go]
+        pass_filenames: false
+      - id: dco
+        name: DCO sign-off
+        entry: >-
+          bash -c 'grep -q "^Signed-off-by" "$1" || { echo "missing Signed-off-by, use git commit -s"; exit 1; }' --
+        language: system
+        stages: [commit-msg]
