@@ -140,6 +140,22 @@ func TestSummarizePlacementSpanReplacement(t *testing.T) {
 	require.Equal(t, 30.0, s.LastPlacementSec)
 }
 
+func TestSummarizeLastPlacementCountsFromSubmission(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+
+	// A suspended job creates its pods only when admitted, after it was submitted.
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: t0, Pods: 2, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{
+		{Namespace: "default", Name: "a-0", GPUs: 1, Created: at(3), Scheduled: at(8)},
+		{Namespace: "default", Name: "a-1", GPUs: 1, Created: at(3), Scheduled: at(8)},
+	}
+
+	s := Summarize(pods, jobs, 2, at(100), Options{})
+	require.Equal(t, 0.0, s.PlacementSpanSec)
+	require.Equal(t, 8.0, s.LastPlacementSec)
+}
+
 func TestCheck(t *testing.T) {
 	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1, Stalled: true}.check(false), "run stalled: 1/2 jobs started")
