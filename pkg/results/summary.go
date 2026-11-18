@@ -19,7 +19,6 @@ package results
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -292,7 +291,8 @@ func (s *Summary) ScaleTime(speedup float64) {
 // namespace. It tries only the jobs whose pattern's literal prefix starts the pod name.
 func assignJobs(pods []Pod, jobs []Job) {
 	res := make([]*regexp.Regexp, len(jobs))
-	byPrefix := map[int]map[string][]int{}
+	byPrefix := map[string][]int{}
+	var lengths []int
 	for i, j := range jobs {
 		if j.PodRegexp == "" {
 			continue
@@ -304,19 +304,18 @@ func assignJobs(pods []Pod, jobs []Job) {
 		}
 		res[i] = re
 		prefix, _ := re.LiteralPrefix()
-		if byPrefix[len(prefix)] == nil {
-			byPrefix[len(prefix)] = map[string][]int{}
-		}
-		byPrefix[len(prefix)][prefix] = append(byPrefix[len(prefix)][prefix], i)
+		byPrefix[prefix] = append(byPrefix[prefix], i)
+		lengths = append(lengths, len(prefix))
 	}
-	lengths := slices.Sorted(maps.Keys(byPrefix))
+	slices.Sort(lengths)
+	lengths = slices.Compact(lengths)
 	for i := range pods {
 		name, best := pods[i].Name, -1
 		for _, n := range lengths {
 			if n > len(name) {
 				break
 			}
-			for _, k := range byPrefix[n][name[:n]] {
+			for _, k := range byPrefix[name[:n]] {
 				if best >= 0 && k > best {
 					break
 				}
