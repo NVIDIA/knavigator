@@ -484,13 +484,13 @@ func TestSubmitObjTaskExecWithoutParams(t *testing.T) {
 // With canExist, -cleanup must delete exactly the objects the run created.
 // An object that was already there belongs to someone else, so the cleanup
 // path leaves it alone. Each name maps to one object per registered template,
-// so the skip is tracked per name and per GVR.
+// so the skip is tracked per name and per GVR. The pre-existing set is not its own
+// transpose, so swapping the name and GVR indexes changes what is deleted.
 func TestSubmitObjTaskCleanupSkipsPreExisting(t *testing.T) {
 	const objJSON = `{"apiVersion":"g/v","kind":"Job","metadata":{"name":"placeholder","namespace":"default"}}`
 	// Paths of the objects that exist before the run.
 	existing := map[string]bool{
-		"/apis/g/v/namespaces/default/jobs/job2":    true,
-		"/apis/g/v/namespaces/default/widgets/job1": true,
+		"/apis/g/v/namespaces/default/jobs/job2": true,
 	}
 	var mu sync.Mutex
 	var deleted []string
@@ -554,6 +554,7 @@ func TestSubmitObjTaskCleanupSkipsPreExisting(t *testing.T) {
 	defer mu.Unlock()
 	require.Equal(t, []string{
 		"/apis/g/v/namespaces/default/jobs/job1",
+		"/apis/g/v/namespaces/default/widgets/job1",
 		"/apis/g/v/namespaces/default/widgets/job2",
 	}, deleted, "cleanup deletes the created objects and only those")
 }
