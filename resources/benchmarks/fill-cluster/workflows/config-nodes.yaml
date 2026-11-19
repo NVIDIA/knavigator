@@ -23,6 +23,12 @@ tasks:
       count: 256
       labels:
         nvidia.com/gpu.count: "8"
+      # Keeps every pod without the toleration off the virtual nodes, such as the KAI scheduler
+      # pod the operator creates again on resume, which KWOK would otherwise fake as Running.
+      taints:
+      - key: kwok.x-k8s.io/node
+        value: fake
+        effect: NoSchedule
       # Empty by default, so the chart sets no InternalIP; run scripts pass NODE_ADDRESS.
       address: "${node_address:-}"
     timeout: 5m

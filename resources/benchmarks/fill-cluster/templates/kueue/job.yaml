@@ -34,6 +34,10 @@ spec:
     spec:
       nodeSelector:
         type: kwok
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: test
         image: ubuntu
