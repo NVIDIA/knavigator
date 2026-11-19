@@ -69,7 +69,7 @@ curl -X DELETE http://localhost:9091/metrics/job/knavigator/run/baseline
 
 `resources/dashboards/GPU-occupancy.json` averages cluster occupancy over the time range as GPUs requested divided by GPUs in the cluster, so nodes that came and went during the range count for the time they existed. It also reports two GPU-hour totals over the time range shown. Wasted GPU-hours counts GPUs that sat idle while pods were waiting for GPUs: at each moment, the smaller of the idle GPUs and the GPUs requested by waiting pods. Idle GPU-hours counts GPUs that no pod requested, whether or not work was waiting. Both come from `node_resource_requests` and kube-state-metrics, so they work without `-results.pushgateway`.
 
-With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
+With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow. It keeps an object that a `SubmitObj` task with `canExist` found already present, since the run did not create it.
 
 Pod timestamps have one second resolution, so each wait carries about a second of error.
 
