@@ -18,7 +18,7 @@ metadata:
   name: "{{._NAME_}}"
   namespace: default
   labels:
-    kueue.x-k8s.io/queue-name: team-queue
+    kueue.x-k8s.io/queue-name: fill-queue
   annotations:
     kueue.x-k8s.io/job-group: group-{{._NAME_}}
 spec:

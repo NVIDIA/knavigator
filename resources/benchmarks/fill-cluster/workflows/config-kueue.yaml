@@ -46,13 +46,15 @@ tasks:
       nodeLabels:
         nvidia.com/gpu.count: "8"
 # Quota for every GPU in the cluster, with room for 2048 pods of 100m CPU and 256M memory.
+# The queue names are this benchmark's own: canExist never updates a ClusterQueue that is already
+# there, so sharing a name with another benchmark would run under that benchmark's quota.
 - id: create-cluster-queue
   type: SubmitObj
   params:
     refTaskId: register-cluster-queue
     canExist: true
     params:
-      name: team
+      name: fill
       flavor: gpu-node
       cpu: 256
       memory: 512Gi
@@ -64,6 +66,6 @@ tasks:
     refTaskId: register-local-queue
     canExist: true
     params:
-      name: team-queue
+      name: fill-queue
       namespace: default
-      clusterQueue: team
+      clusterQueue: fill
