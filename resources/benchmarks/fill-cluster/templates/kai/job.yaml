@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       labels:
-        kai.scheduler/queue: "{{.queue}}"
+        kai.scheduler/queue: "test"
       annotations:
         pod-complete.stage.kwok.x-k8s.io/delay: {{.ttl}}
         pod-complete.stage.kwok.x-k8s.io/jitter-delay: {{.ttl}}

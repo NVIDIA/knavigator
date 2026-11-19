@@ -25,4 +25,3 @@ tasks:
       replicas: 1
       gpu: 1
       ttl: 6m
-      queue: test
