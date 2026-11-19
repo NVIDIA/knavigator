@@ -23,7 +23,7 @@ usage() {
   exit 2
 }
 
-[ $# -ge 2 ] || usage
+[ $# -ge 2 ] && [ -n "$2" ] || usage
 case "$1" in
   paused) WORKFLOWS="config-nodes.yaml,config-kueue.yaml,pause-kueue.yaml,run-submit.yaml,resume-kueue.yaml,run-check.yaml" ;;
   running) WORKFLOWS="config-nodes.yaml,config-kueue.yaml,run-submit.yaml,run-check.yaml" ;;
