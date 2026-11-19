@@ -13,7 +13,7 @@
 # limitations under the License.
 
 name: run-check
-description: check every pod is Running
+description: check every pod reaches Running
 tasks:
 - id: all-running
   type: CheckPod

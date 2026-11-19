@@ -47,7 +47,8 @@ tasks:
     params:
       name: test
       parentQueue: default
-# kai-config exists already; this records its name for pause-kai.yaml and resume-kai.yaml.
+# Records kai-config's name for pause-kai.yaml and resume-kai.yaml. KAI's install creates kai-config,
+# so canExist finds it, and -cleanup leaves it in place because this run did not create it.
 - id: kai-config
   type: SubmitObj
   params:

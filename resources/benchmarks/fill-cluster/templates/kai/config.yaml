@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# KAI's operator creates kai-config at install. This template only gives a SubmitObj task with
-# canExist: true a reference to it, so UpdateObj tasks can patch it.
+# The KAI chart's post-install hook job, kai-config-deployer, creates kai-config. The kai-config
+# SubmitObj task in config-kai.yaml resolves to this template with canExist: true: it finds the
+# existing kai-config and records its name, so UpdateObj tasks can patch it. If kai-config is
+# missing, the task creates this one, with an empty spec.
 apiVersion: kai.scheduler/v1
 kind: Config
 metadata:

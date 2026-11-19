@@ -15,7 +15,8 @@
 name: run-submit
 description: one single-GPU job per GPU in the cluster
 tasks:
-# ttl is longer than a 256-node fill took, so no pod finishes before the last one starts.
+# ttl is longer than a 256-node fill took on a kind test bed. Nothing in the run checks that every
+# pod ran at the same time; compare placement_span_sec from -results with the ttl.
 - id: submit
   type: SubmitObj
   params:

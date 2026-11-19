@@ -15,7 +15,9 @@
 name: resume-kai
 description: check every pod stayed Pending while KAI was stopped, then start KAI
 tasks:
-# Only proves every pod exists: a new pod is Pending before any scheduler sees it.
+# Waits up to 5m until every job's pod exists and has been seen Pending. It proves the pods were
+# created, not that they stayed unplaced: a new pod is Pending before any scheduler sees it, and
+# the check never looks at a pod again once seen. The "paused" step below checks that.
 - id: paused-created
   type: CheckPod
   params:
