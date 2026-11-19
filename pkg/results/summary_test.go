@@ -156,6 +156,33 @@ func TestSummarizeLastPlacementCountsFromSubmission(t *testing.T) {
 	require.Equal(t, 8.0, s.LastPlacementSec)
 }
 
+func TestSummarizeLastPlacementCountsFromPodCreation(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return t0.Add(time.Duration(sec) * time.Second) }
+
+	// The pod exists before its job is recorded as submitted, so the run starts at the pod.
+	jobs := []Job{{Name: "default/a", Namespace: "default", Submitted: at(2), Pods: 1, PodRegexp: "a-[0-9]+"}}
+	pods := []Pod{{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0, Scheduled: at(5)}}
+
+	s := Summarize(pods, jobs, 1, at(100), Options{})
+	require.Equal(t, 5.0, s.LastPlacementSec)
+
+	// Without any submitted job, the first pod created is the start.
+	pods = []Pod{{Namespace: "default", Name: "a-0", GPUs: 1, Created: t0, Scheduled: at(5)}}
+	s = Summarize(pods, nil, 1, at(100), Options{})
+	require.Equal(t, 5.0, s.LastPlacementSec)
+}
+
+// results.json, knavigator compare and the Pushgateway read these fields by their JSON keys.
+func TestSummaryPlacementJSONKeys(t *testing.T) {
+	data, err := json.Marshal(Summary{PlacementSpanSec: 15, LastPlacementSec: 20})
+	require.NoError(t, err)
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &m))
+	require.Equal(t, 15.0, m["placement_span_sec"])
+	require.Equal(t, 20.0, m["last_placement_sec"])
+}
+
 func TestCheck(t *testing.T) {
 	require.NoError(t, Summary{Jobs: 2, JobsStarted: 2}.check(true))
 	require.EqualError(t, Summary{Jobs: 2, JobsStarted: 1, Stalled: true}.check(false), "run stalled: 1/2 jobs started")
