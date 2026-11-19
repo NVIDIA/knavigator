@@ -16,7 +16,7 @@
 
 set -e
 
-REPO_HOME=$(readlink -f $(dirname $(readlink -f "$0"))/../../../)
+REPO_HOME=$(readlink -f "$(dirname "$(readlink -f "$0")")/../../..")
 
 usage() {
   echo "usage: $0 <paused|running> <results-dir> [knavigator flags...]" >&2
@@ -31,8 +31,15 @@ case "$1" in
 esac
 RESULTS=$2
 shift 2
+# The workflows name their templates relative to the repository root, so the run starts there.
+# A relative results dir is taken from the caller's directory first.
+case "$RESULTS" in
+  /*) ;;
+  *) RESULTS="$PWD/${RESULTS#./}" ;;
+esac
+cd "$REPO_HOME"
 
 # NODE_ADDRESS, when set, becomes the virtual nodes' InternalIP. Extra flags, such as -var, pass through.
-$REPO_HOME/bin/knavigator -results "$RESULTS" -results.timeout 20m -results.stall 8m \
+"$REPO_HOME/bin/knavigator" -results "$RESULTS" -results.timeout 20m -results.stall 8m \
   -var "node_address=${NODE_ADDRESS:-}" "$@" \
   -workflow "$REPO_HOME/resources/benchmarks/fill-cluster/workflows/{$WORKFLOWS}"
