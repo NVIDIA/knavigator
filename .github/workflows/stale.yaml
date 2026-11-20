@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Marks issues and pull requests stale after 90 days without activity and
+# closes them 30 days after that, in place of the lifecycle/stale handling
+# that Prow provides in Kubernetes projects. Any update to a stale item, such
+# as a comment, a push or a label change, removes the lifecycle/stale label
+# and restarts the clock. Items labeled lifecycle/frozen or "do not merge" are
+# never marked.
+#
+# The job never checks out or runs repository code. schedule and
+# workflow_dispatch both run the workflow from the default branch, on a
+# GitHub-hosted runner, with a token limited to the permissions below. The
+# repository guard keeps copies of this workflow in forks from running there.
+#
+# A manual run is a dry run unless the dry-run box is cleared: actions/stale
+# then only logs what it would mark or close, and does not save its state.
+# Start with a manual dry run after this file first lands on main.
+
+name: Stale
+
+on:
+  schedule:
+    # Daily at 04:30 UTC. Off the hour, when GitHub delays scheduled runs the
+    # least.
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only log what would be marked or closed; change nothing
+        type: boolean
+        default: true
+
+permissions: {}
+
+# One run at a time, so a manual run and the schedule cannot both comment on
+# the same item. A run that starts while another is in progress waits for it.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  stale:
+    name: stale
+    if: github.repository == 'NVIDIA/knavigator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Label, comment on and close stale issues.
+      issues: write
+      # Label, comment on and close stale pull requests.
+      pull-requests: write
+      # When a run stops at operations-per-run, actions/stale saves the items it
+      # has processed in the Actions cache. It deletes the previous cache entry
+      # before saving a new one, and that delete needs actions: write.
+      actions: write
+
+    steps:
+      - name: Mark and close stale issues and pull requests
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-stale: 90
+          days-before-close: 30
+          stale-issue-label: lifecycle/stale
+          stale-pr-label: lifecycle/stale
+          exempt-issue-labels: lifecycle/frozen,do not merge
+          exempt-pr-labels: lifecycle/frozen,do not merge
+          remove-stale-when-updated: true
+          # The schedule always runs for real. A manual run is a dry run unless
+          # the dry-run input is set to false.
+          debug-only: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          stale-issue-message: >-
+            This issue has had no activity for 90 days, so it is now labeled
+            `lifecycle/stale` and will be closed in 30 days. To keep it open,
+            leave a comment: any activity removes the label. A maintainer can
+            add `lifecycle/frozen` to keep it open for good. Thank you for
+            reporting it.
+          stale-pr-message: >-
+            This pull request has had no activity for 90 days, so it is now
+            labeled `lifecycle/stale` and will be closed in 30 days. To keep it
+            open, push a commit or leave a comment: any activity removes the
+            label. A maintainer can add `lifecycle/frozen` to keep it open for
+            good. Thank you for the contribution.
+          close-issue-message: >-
+            Closing this issue after 30 more days without activity. If it still
+            matters, comment here to ask a maintainer to reopen it, or open a
+            new issue that links to this one.
+          close-pr-message: >-
+            Closing this pull request after 30 more days without activity. To
+            pick it up again, comment here to ask a maintainer to reopen it, or
+            open a new pull request that links to this one.
