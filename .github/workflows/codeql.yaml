@@ -18,8 +18,9 @@
 #
 # golangci-lint, go vet and govulncheck do not do interprocedural taint
 # tracking. CodeQL does, which covers injection, path traversal, SSRF and
-# unsafe deserialization through the API server, the cloud provider clients
-# and the wrappers around local tools such as ibnetdiscover.
+# unsafe deserialization through the workflow HTTP endpoint in pkg/server, the
+# Kubernetes client code, and the external commands, such as helm, that
+# pkg/engine runs.
 #
 # This file replaces GitHub's CodeQL "default setup" on purpose: default setup
 # lives in repository settings rather than reviewed code, and it only triggers
@@ -71,7 +72,7 @@ jobs:
   analyze:
     name: Analyze (go)
     runs-on: linux-amd64-cpu8
-    # make build alone takes about 3 minutes in go.yml on this runner; tracing,
+    # make build alone takes about a minute in go.yml on this runner; tracing,
     # extraction and the security-extended analysis add to that.
     timeout-minutes: 45
     permissions:
@@ -114,10 +115,11 @@ jobs:
           queries: security-extended
 
       # Build every cmd/ target, as the build job in go.yml does. Every package
-      # under pkg/ and internal/ is reached from these entry points except the
-      # pkg/test helpers, which only tests import. The -a flag in make build
-      # recompiles the standard library for each target; that only costs build
-      # time under the CodeQL tracer, it does not change what gets extracted.
+      # under pkg/ is reached from these entry points except pkg/eventlog,
+      # which no command imports yet, so it is not analyzed. The -a flag in
+      # make build recompiles the standard library for each target; that only
+      # costs build time under the CodeQL tracer, it does not change what gets
+      # extracted.
       - name: Build
         run: make build
 
