@@ -88,3 +88,27 @@ jobs:
     - name: Run test scripts
       run: |
         ./tests/ci/test_yunikorn.sh
+
+  conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scheduler: [k8s, volcano, yunikorn]
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+
+    - name: Build
+      run: make build
+
+    - name: Create k8s Kind Cluster
+      uses: helm/kind-action@v1
+
+    - name: Run conformance tests
+      run: |
+        ./tests/ci/test_conformance.sh ${{ matrix.scheduler }}
