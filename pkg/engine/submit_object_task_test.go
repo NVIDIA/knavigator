@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 	"text/template"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -478,4 +479,82 @@ func TestSubmitObjTaskExecWithoutParams(t *testing.T) {
 	info, err := eng.GetObjInfo("submit")
 	require.NoError(t, err)
 	require.Len(t, info.Names, 2)
+}
+
+// With canExist, -cleanup must delete exactly the objects the run created.
+// An object that was already there belongs to someone else, so the cleanup
+// path leaves it alone. Each name maps to one object per registered template,
+// so the skip is tracked per name and per GVR. The pre-existing set is not its own
+// transpose, so swapping the name and GVR indexes changes what is deleted.
+func TestSubmitObjTaskCleanupSkipsPreExisting(t *testing.T) {
+	const objJSON = `{"apiVersion":"g/v","kind":"Job","metadata":{"name":"placeholder","namespace":"default"}}`
+	// Paths of the objects that exist before the run.
+	existing := map[string]bool{
+		"/apis/g/v/namespaces/default/jobs/job2": true,
+	}
+	var mu sync.Mutex
+	var deleted []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			if !existing[r.URL.Path] {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`)
+				return
+			}
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+		case http.MethodDelete:
+			mu.Lock()
+			deleted = append(deleted, r.URL.Path)
+			mu.Unlock()
+			fmt.Fprint(w, `{"kind":"Status","apiVersion":"v1","status":"Success"}`)
+			return
+		}
+		fmt.Fprint(w, objJSON)
+	}))
+	defer ts.Close()
+
+	cfg := &rest.Config{Host: ts.URL, ContentConfig: rest.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "g", Version: "v"}}}
+	client, err := dynamic.NewForConfig(cfg)
+	require.NoError(t, err)
+
+	eng, err := New(nil, &CleanupInfo{Enabled: true, Timeout: 10 * time.Second}, true)
+	require.NoError(t, err)
+	// The cleanup path deletes through the engine's own client.
+	eng.dynamicClient = client
+	jobTpl := template.Must(template.New("job").Parse("apiVersion: g/v\nkind: Job\nmetadata:\n  name: {{._NAME_}}\n  namespace: default\nspec: {}\n"))
+	widgetTpl := template.Must(template.New("widget").Parse("apiVersion: g/v\nkind: Widget\nmetadata:\n  name: {{._NAME_}}\n  namespace: default\nspec: {}\n"))
+	eng.objTypeMap["reg"] = &RegisterObjParams{
+		gvr: []schema.GroupVersionResource{
+			{Group: "g", Version: "v", Resource: "jobs"},
+			{Group: "g", Version: "v", Resource: "widgets"},
+		},
+		objTpl:     []*template.Template{jobTpl, widgetTpl},
+		NameFormat: "job{{._ENUM_}}",
+	}
+
+	utils.SetObjectID(0)
+	task := &SubmitObjTask{
+		BaseTask:            BaseTask{taskType: TaskSubmitObj, taskID: "submit"},
+		submitObjTaskParams: submitObjTaskParams{RefTaskID: "reg", Count: 2, CanExist: true, Params: map[string]interface{}{}},
+		client:              client,
+		accessor:            eng,
+	}
+	require.NoError(t, task.Exec(context.Background()))
+
+	info, err := eng.GetObjInfo("submit")
+	require.NoError(t, err)
+	require.Equal(t, []string{"job1", "job2"}, info.Names, "pre-existing objects stay visible to later tasks")
+
+	require.NoError(t, eng.Reset(context.Background()))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{
+		"/apis/g/v/namespaces/default/jobs/job1",
+		"/apis/g/v/namespaces/default/widgets/job1",
+		"/apis/g/v/namespaces/default/widgets/job2",
+	}, deleted, "cleanup deletes the created objects and only those")
 }

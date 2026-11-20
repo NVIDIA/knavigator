@@ -82,6 +82,11 @@ type Summary struct {
 	GPUUtilization  float64 `json:"gpu_utilization"`
 	PodWaitSec      Stats   `json:"pod_wait_sec"`
 	JobWaitSec      Stats   `json:"job_wait_sec"`
+	// PlacementSpanSec is the time from the first pod placement to the last, counting every placement,
+	// replacements after an eviction included.
+	PlacementSpanSec float64 `json:"placement_span_sec"`
+	// LastPlacementSec is the time from the start of the run to the last pod placement.
+	LastPlacementSec float64 `json:"last_placement_sec"`
 	// GangAssemblySec is the time from a gang's first bind until all its pods are bound.
 	GangAssemblySec Stats `json:"gang_assembly_sec"`
 	// JobsByGangSize counts jobs by pods per job: submitted, waiting, running and complete.
@@ -135,6 +140,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 
 	s := Summary{Pods: len(pods), Jobs: len(jobs), GPUCapacity: gpuCapacity}
 	var first, last time.Time
+	var firstPlaced, lastPlaced time.Time
 	var podWaits []float64
 	// Earliest placement per pod name, so a replacement attempt cannot fill another worker's slot.
 	scheduled := map[string]map[string]time.Time{}
@@ -152,6 +158,8 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 			s.PodsUnscheduled++
 			continue
 		}
+		firstPlaced = earliest(firstPlaced, p.Scheduled)
+		lastPlaced = latest(lastPlaced, p.Scheduled)
 		fin := p.Finished
 		if fin.IsZero() {
 			fin = end
@@ -213,6 +221,10 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 		waitOf[j.Name] = math.Max(0, ts[j.Pods-1].Sub(j.Submitted).Seconds())
 		jobWaits = append(jobWaits, waitOf[j.Name])
 	}
+	if !lastPlaced.IsZero() {
+		s.PlacementSpanSec = lastPlaced.Sub(firstPlaced).Seconds()
+		s.LastPlacementSec = lastPlaced.Sub(first).Seconds()
+	}
 
 	for _, j := range jobs {
 		if e := evictedPods[j.Name]; j.Pods > 0 && e > 0 {
@@ -251,6 +263,8 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 func (s *Summary) ScaleTime(speedup float64) {
 	s.Speedup = speedup
 	s.MakespanSec *= speedup
+	s.PlacementSpanSec *= speedup
+	s.LastPlacementSec *= speedup
 	s.GPUHours *= speedup
 	s.EvictedGPUHours *= speedup
 	s.IdleWaitingGPUHours *= speedup

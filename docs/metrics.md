@@ -30,6 +30,8 @@ A run is only evidence if the cluster under it stayed healthy, so `-results` als
 
 `gang_assembly_sec` gives the count, mean, p95 and max time from a gang's first pod placed until all its pods have been placed, over gangs (jobs of more than one pod) that were ever complete. A pod lost before then keeps the gang open until its replacement is placed. A scheduler that places a gang all at once reads 0. One that places pods as room frees up shows how long its gangs sat half placed, and `binding_gap_gpu_hours` gives the GPU time those pods held meanwhile.
 
+`placement_span_sec` is the time from the first pod placed to the last, and `last_placement_sec` is the time from the start of the run (the first pod created or job submitted) to the last pod placed. Both count every placement, including a replacement placed after an eviction, and read 0 when no pod was placed. In a run where the scheduler was paused while the jobs were submitted, `placement_span_sec` starts at the first placement after the scheduler resumed, so it measures how fast the scheduler placed the backlog, while `last_placement_sec` also includes the submission and the time the scheduler stayed paused, along with any restart it needed to resume. Both follow `-speedup`.
+
 ### Prometheus and Grafana
 
 `-results.pushgateway <url>` also sends the run to a [Prometheus Pushgateway](https://github.com/prometheus/pushgateway), so the run shows up next to the node metrics. Knavigator pushes the pod gauges and the summary of the run so far every `-results.push-interval` (default 10s), and the final summary when the run ends. If the run stops early, the last push marks it aborted. Every series carries a `run` label, set with `-results.run` and defaulting to the start time, so separate runs stay apart. A failed push logs a warning and never fails the run.
@@ -67,7 +69,7 @@ curl -X DELETE http://localhost:9091/metrics/job/knavigator/run/baseline
 
 `resources/dashboards/GPU-occupancy.json` averages cluster occupancy over the time range as GPUs requested divided by GPUs in the cluster, so nodes that came and went during the range count for the time they existed. It also reports two GPU-hour totals over the time range shown. Wasted GPU-hours counts GPUs that sat idle while pods were waiting for GPUs: at each moment, the smaller of the idle GPUs and the GPUs requested by waiting pods. Idle GPU-hours counts GPUs that no pod requested, whether or not work was waiting. Both come from `node_resource_requests` and kube-state-metrics, so they work without `-results.pushgateway`.
 
-With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow.
+With `-cleanup`, Knavigator deletes the submitted objects once after the results are written, not at the end of each workflow. It keeps an object that a `SubmitObj` task with `canExist` found already present, since the run did not create it.
 
 Pod timestamps have one second resolution, so each wait carries about a second of error.
 
