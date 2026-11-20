@@ -95,7 +95,7 @@ The preemption-matrix benchmark runs pairs of single-GPU jobs on 256 virtual nod
 3. `run-second-*.yaml` submits every pair's second job.
 4. [`run-hold.yaml`](preemption-matrix/workflows/run-hold.yaml) waits 60 seconds, then the `check-*.yaml` files look at each pair once.
 
-A pair is (first job, second job), not (low, high): pairs 4 to 6 start the higher-priority job first, and pairs 7 and 8 use two jobs of the same class. The first job runs for 5 minutes and the second for 3, both counted from when the pod starts. At the check the second job has about 2 minutes left, so a pair that preempted still shows the second job Running and not the first one back. The first job has about 3 minutes left, so a pair that did not preempt still shows the first job Running and not the second one in its place.
+A pair is (first job, second job), not (low, high): pairs 4 to 6 start the higher-priority job first, and pairs 7 and 8 use two jobs of the same class. The first job runs for 5 minutes and the second for 3, both counted from when the pod starts. At the check the second job has about 2 minutes left, so a pair that preempted still shows the second job Running and not the first one back. The first job has about 4 minutes left, so a pair that did not preempt still shows the first job Running and not the second one in its place.
 
 | Class | Value | KAI |
 |---|---|---|
@@ -127,7 +127,7 @@ The checks name the object they read, because a scheduler may never create the p
 - KAI ([`check-kai.yaml`](preemption-matrix/workflows/check-kai.yaml)): in a pair that preempts, the first job's pod is Pending. KAI preempts by deleting the pod (`pkg/scheduler/cache/evictor/default_evictor.go:41`), and the Job controller creates a replacement, which waits in the full queue. In a pair that does not, the second job's pod is Pending.
 - Kueue ([`check-kueue.yaml`](preemption-matrix/workflows/check-kueue.yaml)): the first Job of pair 1 and the second Jobs of pairs 4 and 7 have `spec.suspend: true`. Kueue preempts by suspending the Job (`pkg/controller/jobs/job/job_controller.go:170-172`), and creates no pod for a Job it has not admitted.
 
-Every job finishes: a preempted first job runs again once the second is done, and a second job that waited runs once the first is done.
+Every job finishes: a preempted first job runs again once the second is done, and a second job that waited runs once the first is done. With `-results`, a victim's deleted pod counts as evicted (`pods_evicted`), not failed. A KAI run records 18 GPU pods, the 16 jobs plus a replacement pod for each of the two victims; a Kueue run records 7, the 6 jobs plus the pod created when pair 1's first job is admitted again.
 
 #### Example
 

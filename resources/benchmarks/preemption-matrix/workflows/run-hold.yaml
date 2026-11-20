@@ -16,7 +16,7 @@ name: run-hold
 description: give every pair time to preempt, then the checks look once
 tasks:
 # 60 seconds after the last second job is created, which leaves 2 minutes of the second job's 3 and
-# about 3 of the first job's 5 when the checks run.
+# about 4 of the first job's 5 when the checks run.
 - id: hold
   type: Sleep
   params:
