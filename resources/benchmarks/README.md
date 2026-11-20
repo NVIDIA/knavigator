@@ -104,7 +104,7 @@ A pair is (first job, second job), not (low, high): pairs 4 to 6 start the highe
 | `pm-low-np` | 140 | non-preemptible |
 | `pm-high-np` | 141 | non-preemptible |
 
-KAI treats a priority below 100 as preemptible and one of 100 or more as non-preemptible (`NonPreemptiblePriorityThreshold`, `test/e2e/modules/constant/constant.go:14`). Its test picks random values with the same relations, high = low + 1 (`preempt_specs.go:50-75`). The jobs carry no `kai.scheduler/preemptibility` label, which would override the threshold.
+KAI treats a priority below 100 as preemptible and one of 100 or more as non-preemptible: its PodGroup CRD says "When unspecified, preemptibility is determined by the PriorityClass value - values below 100 are considered preemptible" (`deployments/kai-scheduler/crds/scheduling.run.ai_podgroups.yaml:74`), and its tests use the same `NonPreemptiblePriorityThreshold` (`test/e2e/modules/constant/constant.go:14`). Its test picks random values with the same relations, high = low + 1 (`preempt_specs.go:51-73`). The jobs carry no `kai.scheduler/preemptibility` label, which would override the threshold.
 
 | Pair | First -> second | KAI | KAI source (`preempt_specs.go`) | Kueue | Kueue source |
 |---|---|---|---|---|---|
