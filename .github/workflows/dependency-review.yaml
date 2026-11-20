@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Reviews the dependencies a pull request adds or changes, as GitHub's
+# dependency graph reports them for go.mod and for the actions the workflows
+# use. The job fails when an added dependency version has a known advisory of
+# high or critical severity, or a license outside the allow list below.
+#
+# The trigger is pull_request and the job never checks out or runs the
+# contributor's code. The action takes the base and head commits from the
+# event payload and fetches the dependency diff from the REST API
+# (dependency-graph/compare), so a read token is all it needs. Any GitHub user
+# can trigger the job by opening a pull request, so it runs on GitHub-hosted
+# ubuntu-latest and never on, or queued for, the project's own machines. A
+# fork pull request waits for the repository's fork approval policy before its
+# first run, like any pull_request workflow. The repository guard keeps copies
+# of this workflow in forks from running there.
+#
+# Licenses: the allow list is the one in license-scan.yml plus one identifier.
+# GitHub reports some golang.org/x modules (net, sys and time today) as
+# "BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang": the
+# BSD-3-Clause LICENSE plus the Go PATENTS file, an extra patent grant from
+# Google. go-licenses classifies the same modules as BSD-3-Clause. The action
+# requires every term of an AND expression to be on the list, so without the
+# identifier every pull request that bumps one of those modules would fail.
+# A dependency whose license GitHub cannot detect is listed in the job log and
+# summary but does not fail the job; license-scan.yml still checks the Go
+# modules the build uses.
+#
+# The summary goes to the job summary only. A pull request comment
+# (comment-summary-in-pr) would need pull-requests: write, so it stays off.
+
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    # Keep this name stable: branch protection may require it as a check.
+    name: dependency-review
+    if: github.repository == 'NVIDIA/knavigator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Read the dependency graph comparison for this repository.
+      contents: read
+
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          allow-licenses: >-
+            Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MPL-2.0,
+            LicenseRef-scancode-google-patent-license-golang
