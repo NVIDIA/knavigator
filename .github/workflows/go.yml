@@ -9,21 +9,42 @@ on:
       - main
       - "pull-request/[0-9]+"
 
+# A newer push to a pull-request/N branch supersedes the run still going for it,
+# so cancel that run and free the self-hosted runners. Every other run (pushes
+# to main) gets a group of its own, keyed on the run ID, so it neither cancels
+# nor is cancelled. Same key as codeql.yaml; see the comment there for why main
+# pushes cannot share one group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') }}
+
+# No job here writes to the repository or the API: checkout and git log only
+# need read access. The Codecov upload uses its own token.
+permissions:
+  contents: read
+
+# The check, test, build and test-k8s timeouts are about 3x the slowest
+# successful run of that job in the 58 runs from 2026-11-03 to 2026-11-20,
+# rounded up to 5 minutes. Without one, a hung job holds a self-hosted runner
+# for GitHub's 360-minute default.
 jobs:
   check:
     runs-on: linux-amd64-cpu8
+    # Slowest run 1.3 minutes. Set above the golangci-lint --timeout of 5m so
+    # a slow lint fails with the linter's own message, not a job timeout.
+    timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
 
     - name: Lint
-      uses: golangci/golangci-lint-action@v9
+      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       with:
         version: v2.15.0
         args: -v --timeout 5m
@@ -39,13 +60,15 @@ jobs:
 
   test:
     runs-on: linux-amd64-cpu8
+    # Slowest run 1.5 minutes.
+    timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
 
@@ -53,7 +76,7 @@ jobs:
       run: go test -v -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v7
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.out
@@ -62,40 +85,49 @@ jobs:
 
   build:
     runs-on: linux-amd64-cpu8
+    # Slowest run 1.6 minutes.
+    timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
 
     - name: Build
       run: make build
-  
+
   test-k8s:
     needs: [check, test, build]
     runs-on: linux-amd64-cpu8
+    # Slowest run 2.8 minutes.
+    timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
 
     - name: Build
       run: make build
 
+    # v1.14.0 is the release the floating v1 tag pointed at when this was
+    # pinned, so the default kind version (v0.31.0) is unchanged.
     - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
+      uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
 
     - name: Install Helm
-      uses: azure/setup-helm@v5
+      uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+      with:
+        # Same version as helm.yml, so chart CI and this job use one Helm.
+        version: v3.19.0
 
     - name: Run test scripts
       run: ./tests/ci/test_k8s.sh
@@ -104,12 +136,12 @@ jobs:
     runs-on: linux-amd64-cpu8
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
         cache: true
@@ -121,7 +153,7 @@ jobs:
     runs-on: linux-amd64-cpu8
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
         fetch-depth: 0
