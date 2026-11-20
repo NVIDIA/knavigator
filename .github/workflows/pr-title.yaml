@@ -14,9 +14,11 @@
 # limitations under the License.
 
 # Checks that the pull request title follows Conventional Commits, as
-# CONTRIBUTING.md "Commit messages" describes. Pull requests are squash merged
-# and the squash commit takes the pull request title as its subject, so the
-# title, not the contributor's own commits, is what lands on main.
+# CONTRIBUTING.md "Commit messages" describes. The repository settings make the
+# pull request title the subject of the squash commit or merge commit that
+# lands on main. A merge commit also brings the contributor's own commits onto
+# main, and a rebase merge brings only those; this check does not cover their
+# subjects.
 #
 # The trigger is pull_request, not pull_request_target. The check needs no
 # secrets and no write token, and GitHub blocks pull_request_target in public
@@ -34,10 +36,10 @@
 # not change, because a skipped job reports success under this check's name and
 # would replace a failing result with a pass.
 #
-# Runner: GitHub-hosted ubuntu-latest, as assign.yaml uses. Any GitHub user can
-# trigger this job by opening a pull request, and it runs a few lines of shell,
-# so it has no reason to run on, or queue for, the project's own machines. The
-# repository guard keeps copies of this workflow in forks from running there.
+# Runner: GitHub-hosted ubuntu-latest. Any GitHub user can trigger this job by
+# opening a pull request, and it runs a few lines of shell, so it has no reason
+# to run on, or queue for, the project's own machines. The repository guard
+# keeps copies of this workflow in forks from running there.
 
 name: PR Title
 

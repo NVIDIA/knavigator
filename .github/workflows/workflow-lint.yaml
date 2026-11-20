@@ -24,23 +24,24 @@
 # zizmor audits workflows and dependabot.yml for security problems such as
 # template injection, excessive permissions, persisted credentials, and
 # unpinned actions. Its findings go to the code scanning dashboard as SARIF and
-# do not fail the job, because these accepted findings remain:
-#   - dependabot-cooldown (x3): no cooldown on the gomod, github-actions, and
-#     docker ecosystems in dependabot.yml
-#   - adhoc-packages (x3): `npm install -g fern-api` in fern-docs-ci.yml,
-#     fern-docs-preview-comment.yml, and publish-fern-docs.yml
-#   - dangerous-triggers: the workflow_run trigger in
-#     fern-docs-preview-comment.yml, part of the two-workflow docs preview
-#   - superfluous-actions: softprops/action-gh-release in release.yml
-# Make the job blocking once these are resolved or explicitly ignored.
+# do not fail the job, because main still has open findings. On 2026-11-20
+# code scanning listed 55 open zizmor alerts:
+#   - go.yml: unpinned-uses (x15), excessive-permissions (x7)
+#   - nightly.yml: unpinned-uses (x12), excessive-permissions (x5),
+#     artipacked (x4)
+#   - docker.yml: unpinned-uses (x2), artipacked, cache-poisoning,
+#     excessive-permissions
+#   - release.yml: unpinned-uses (x3), artipacked
+#   - dependabot.yml: dependabot-cooldown (x3), one per ecosystem
+# Code scanning (filter tool:zizmor) has the current list. Make the job
+# blocking once these are fixed or explicitly ignored.
 #
 # Both tools are release binaries pinned by version and by the SHA-256 of the
 # downloaded archive, recorded here rather than read from a checksums file in
 # the same release. Dependabot does not track these pins: bump each version
-# and its checksum together by hand. Automated tracking is proposed in #591.
+# and its checksum together by hand.
 #
-# The jobs are light, so they run on GitHub-hosted runners, as scorecard.yaml
-# does.
+# The jobs are light, so they run on GitHub-hosted runners.
 
 name: Workflow Lint
 
@@ -52,7 +53,7 @@ on:
     paths:
       - '.github/**'
   schedule:
-    # Mondays at 07:30 UTC, clear of the Scorecard run at 06:00.
+    # Mondays at 07:30 UTC.
     - cron: '30 7 * * 1'
   workflow_dispatch:
 
@@ -77,7 +78,7 @@ jobs:
       - name: Install actionlint
         env:
           # Bumped by hand together with ACTIONLINT_SHA256 (linux x86_64 archive);
-          # not tracked by Dependabot, see #591.
+          # not tracked by Dependabot.
           ACTIONLINT_VERSION: '1.7.12'
           ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
         run: |
@@ -92,7 +93,8 @@ jobs:
       - name: Run actionlint
         # The shellcheck and pyflakes integrations are turned off so the result
         # does not depend on which of those happen to be installed on the
-        # runner image. DEVELOPMENT.md gives the same flags for local runs.
+        # runner image. Pass the same flags to a local run from the repository
+        # root.
         run: '"${RUNNER_TEMP}/actionlint" -color -shellcheck= -pyflakes='
 
   zizmor:
@@ -117,7 +119,7 @@ jobs:
       - name: Install zizmor
         env:
           # Bumped by hand together with ZIZMOR_SHA256 (linux x86_64 archive);
-          # not tracked by Dependabot, see #591.
+          # not tracked by Dependabot.
           ZIZMOR_VERSION: '1.31.1'
           ZIZMOR_SHA256: 'd185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99'
         run: |
