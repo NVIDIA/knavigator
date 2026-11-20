@@ -7,9 +7,16 @@
 # Kubernetes schemas in strict mode, and helm unittest runs the suites in each
 # chart's tests/ directory.
 #
-# kubeconform is a release binary pinned by version and by the SHA-256 of the
-# downloaded archive. Bump the version and its checksum together by hand;
-# Dependabot does not track them.
+# The workflow has no paths filter, so the helm job reports on every push to
+# main and pull-request/N and can be a required status check: a workflow that
+# a paths filter skips never reports, and a required check that never reports
+# blocks the pull request. Instead, the job's first step works out whether
+# charts/, .github/ct.yaml or this file changed. If none did, the later steps
+# are skipped and the job passes with a notice.
+#
+# kubeconform and helm-unittest are release archives pinned by version and by
+# the SHA-256 of the downloaded archive. Bump each version and its checksum
+# together by hand; Dependabot does not track them.
 
 name: Helm
 
@@ -18,11 +25,17 @@ on:
     branches:
       - main
       - "pull-request/[0-9]+"
-    paths:
-      - 'charts/**'
-      - '.github/ct.yaml'
-      - '.github/workflows/helm.yml'
   workflow_dispatch:
+
+# A newer push to a pull-request/N branch supersedes the run still going for
+# it, so cancel that run. Every other run (pushes to main and manual runs) gets
+# a group of its own, keyed on the run ID, so it neither cancels nor is
+# cancelled by another run. A shared group would not be enough even with
+# cancel-in-progress off: GitHub keeps one pending run per group and cancels
+# the older pending one, so a burst of main pushes could skip commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') }}
 
 permissions:
   contents: read
@@ -36,19 +49,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # ct lint compares against the target branch to find changed charts.
+          # ct lint and the change check below compare against main, and the
+          # change check on main compares against the commit before the push.
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check for chart changes
+        id: changes
+        env:
+          # The tip of the pushed branch before this push.
+          BEFORE: ${{ github.event.before }}
+        # The paths are the ones the workflow used to filter on. A
+        # pull-request/N push is compared with its merge base on main, so only
+        # the pull request's own changes count. A push to main is compared with
+        # main before the push, which covers every commit the push added. A
+        # manual run, or a push with no usable base, runs every check.
+        run: |
+          set -euo pipefail
+          pattern='^(charts/|\.github/ct\.yaml$|\.github/workflows/helm\.yml$)'
+          base=''
+          case "${GITHUB_EVENT_NAME}:${GITHUB_REF}" in
+            push:refs/heads/pull-request/*)
+              base=$(git merge-base origin/main HEAD) || base=''
+              ;;
+            push:refs/heads/main)
+              if [[ "${BEFORE}" =~ ^[0-9a-f]{40}$ && "${BEFORE}" != 0000000000000000000000000000000000000000 ]] \
+                && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+                base="${BEFORE}"
+              fi
+              ;;
+          esac
+          if [[ -z "${base}" ]]; then
+            echo "No base commit to compare with for ${GITHUB_EVENT_NAME} on ${GITHUB_REF}; running every check."
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # --no-renames lists both paths of a rename, so moving a file out of
+          # charts/ still counts as a chart change.
+          changed=$(git diff --name-only --no-renames "${base}" HEAD)
+          matched=$(grep -E "${pattern}" <<< "${changed}" || true)
+          if [[ -n "${matched}" ]]; then
+            echo "Changed since ${base}:"
+            echo "${matched}"
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice title=Helm checks skipped::Nothing under charts/, .github/ct.yaml or .github/workflows/helm.yml changed since ${base}, so the Helm checks did not run."
+            echo "run=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Set up Helm
+        if: steps.changes.outputs.run == 'true'
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
 
       - name: Set up chart-testing
+        if: steps.changes.outputs.run == 'true'
         uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
 
       - name: Install kubeconform
+        if: steps.changes.outputs.run == 'true'
         env:
           # Bumped by hand together with KUBECONFORM_SHA256 (linux amd64 archive).
           KUBECONFORM_VERSION: '0.8.0'
@@ -63,12 +123,34 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" kubeconform
 
       - name: Install helm-unittest
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.2.1
+        if: steps.changes.outputs.run == 'true'
+        env:
+          # Bumped by hand together with HELM_UNITTEST_SHA256 (linux amd64 archive).
+          HELM_UNITTEST_VERSION: '1.2.1'
+          HELM_UNITTEST_SHA256: '48e86ecc1467b009630e5954375e5d8494139f73b466df5fe8c04fa45b634939'
+        # The archive holds the plugin manifest and the binary, so unpacking it
+        # into Helm's plugin directory installs the plugin. `helm plugin install`
+        # with the repository URL would instead clone the repository and have
+        # its install hook download the binary, checked only against a checksum
+        # file from the same release.
+        run: |
+          set -euo pipefail
+          archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
+          curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
+          echo "${HELM_UNITTEST_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check -
+          plugin_dir="$(helm env HELM_PLUGINS)/unittest"
+          mkdir -p "${plugin_dir}"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${plugin_dir}" plugin.yaml untt-linux-amd64
+          helm plugin list
 
       - name: Run ct lint
+        if: steps.changes.outputs.run == 'true'
         run: ct lint --config .github/ct.yaml
 
       - name: Validate rendered charts with kubeconform
+        if: steps.changes.outputs.run == 'true'
         # Resources whose CRD schema is not in the default catalog, such as
         # ServiceMonitor, are skipped. ingress and autoscaling are off by
         # default, so enable them to validate those templates too. A chart that
@@ -96,4 +178,5 @@ jobs:
           done
 
       - name: Run helm unittest
+        if: steps.changes.outputs.run == 'true'
         run: helm unittest charts/node-resource-exporter
