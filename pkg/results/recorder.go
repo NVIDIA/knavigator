@@ -450,7 +450,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 	if err := writeEvents(filepath.Join(dir, "events.csv"), events); err != nil {
 		return err
 	}
-	return errors.Join(harness.check(), summary.check(drained))
+	return errors.Join(harness.check(), summary.check(drained), summary.Overbooking.check())
 }
 
 // progress counts placements and completions; a run that stops changing it is not advancing.
