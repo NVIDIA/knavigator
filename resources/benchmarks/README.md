@@ -86,6 +86,61 @@ Kueue:
 kubectl patch clusterqueues.kueue.x-k8s.io fill --type merge -p '{"spec":{"stopPolicy":"None"}}'
 ```
 
+## Priority Preemption Matrix Benchmark Test
+
+The preemption-matrix benchmark runs pairs of single-GPU jobs on 256 virtual nodes of 8 GPUs and checks, per pair, whether the second job preempted the first. The pairs are the eight cases of KAI's preempt test (`test/e2e/suites/preempt/preempt_specs.go` in KAI v0.19.0). Each pair has its own queue whose quota admits exactly one 1-GPU job, with no cohort and no borrowing, so a pair's second job runs only if it preempts the first, and no pair can take another pair's GPU. Every pair runs at once:
+
+1. [`config-priorities.yaml`](preemption-matrix/workflows/config-priorities.yaml) creates four PriorityClasses before any job exists. KAI gives a pod whose PriorityClass is missing its default class instead.
+2. `run-first-*.yaml` submits every pair's first job and waits until each is Running.
+3. `run-second-*.yaml` submits every pair's second job.
+4. [`run-hold.yaml`](preemption-matrix/workflows/run-hold.yaml) waits 60 seconds, then the `check-*.yaml` files look at each pair once.
+
+A pair is (first job, second job), not (low, high): pairs 4 to 6 start the higher-priority job first, and pairs 7 and 8 use two jobs of the same class. The first job runs for 5 minutes and the second for 3, both counted from when the pod starts. At the check the second job has about 2 minutes left, so a pair that preempted still shows the second job Running and not the first one back. The first job has about 3 minutes left, so a pair that did not preempt still shows the first job Running and not the second one in its place.
+
+| Class | Value | KAI |
+|---|---|---|
+| `pm-low-p` | 40 | preemptible |
+| `pm-high-p` | 41 | preemptible |
+| `pm-low-np` | 140 | non-preemptible |
+| `pm-high-np` | 141 | non-preemptible |
+
+KAI treats a priority below 100 as preemptible and one of 100 or more as non-preemptible (`NonPreemptiblePriorityThreshold`, `test/e2e/modules/constant/constant.go:14`). Its test picks random values with the same relations, high = low + 1 (`preempt_specs.go:50-75`). The jobs carry no `kai.scheduler/preemptibility` label, which would override the threshold.
+
+| Pair | First -> second | KAI | KAI source (`preempt_specs.go`) | Kueue | Kueue source |
+|---|---|---|---|---|---|
+| 1 | `pm-low-p` -> `pm-high-p` | preempts | `It` :88, `ForPodScheduled(highPod)` :107 | preempts | `pkg/scheduler/preemption/policy/preemption_policy.go:31-33`: 41 > 40 |
+| 2 | `pm-low-p` -> `pm-high-np` | preempts | :110, `ForPodScheduled(highPod)` :129 | not applicable | |
+| 3 | `pm-low-np` -> `pm-high-np` | does not | :132, `ForPodUnschedulable(highPod)` :151 | not applicable | |
+| 4 | `pm-high-p` -> `pm-low-p` | does not | :154, `ForPodUnschedulable(lowPod)` :173 | does not | `preemption_policy.go:31-33`: 40 > 41 is false |
+| 5 | `pm-high-np` -> `pm-low-np` | does not | :176, `ForPodUnschedulable(lowPod)` :195 | not applicable | |
+| 6 | `pm-high-np` -> `pm-low-p` | does not | :198, `ForPodUnschedulable(lowPod)` :217 | not applicable | |
+| 7 | `pm-low-p` -> `pm-low-p` | does not | :220, `ForPodUnschedulable(pod2)` :239 | does not | `preemption_policy.go:31`: strictly greater, 40 > 40 is false |
+| 8 | `pm-low-np` -> `pm-low-np` | does not | :242, `ForPodUnschedulable(pod2)` :261 | not applicable | |
+
+Kueue line numbers are Kueue v0.20.2. Kueue runs pairs 1, 4 and 7 only, the pairs where both jobs are preemptible. Kueue has no per-job preemptibility: `withinClusterQueue: LowerPriority` lets a job preempt any job of strictly lower priority in its ClusterQueue (`preemption_policy.go:27-33`). The pairs with a non-preemptible job test something Kueue cannot express as it installs; its alpha `ConfigurablePreemptions` feature is off by default and not used here.
+
+KAI's test runs CPU pods in a queue with a CPU quota and limit of 500m (`preempt_specs.go:44-48`). This benchmark asks for GPUs instead: each pair's queue has a GPU quota and limit of 1, and each job asks for 1 GPU. For KAI the pair queues are children of a parent queue with no GPU quota or limit, because KAI checks quota and limit on every ancestor; CPU and memory stay unlimited. For Kueue each pair has a ClusterQueue with a nominal quota of 1 GPU and CPU and memory to spare.
+
+The checks name the object they read, because a scheduler may never create the pod a check would look for:
+
+- Both schedulers ([`check-p.yaml`](preemption-matrix/workflows/check-p.yaml), [`check-np.yaml`](preemption-matrix/workflows/check-np.yaml)): in a pair that preempts, the second job's pod is Running; in a pair that does not, the first job's pod is Running.
+- KAI ([`check-kai.yaml`](preemption-matrix/workflows/check-kai.yaml)): in a pair that preempts, the first job's pod is Pending. KAI preempts by deleting the pod (`pkg/scheduler/cache/evictor/default_evictor.go:41`), and the Job controller creates a replacement, which waits in the full queue. In a pair that does not, the second job's pod is Pending.
+- Kueue ([`check-kueue.yaml`](preemption-matrix/workflows/check-kueue.yaml)): the first Job of pair 1 and the second Jobs of pairs 4 and 7 have `spec.suspend: true`. Kueue preempts by suspending the Job (`pkg/controller/jobs/job/job_controller.go:170-172`), and creates no pod for a Job it has not admitted.
+
+Every job finishes: a preempted first job runs again once the second is done, and a second job that waited runs once the first is done.
+
+#### Example
+
+The run scripts take the case, `matrix`, and a results directory, and pass extra flags through to Knavigator, as the fill-cluster scripts do. KAI must be v0.19.0:
+
+```bash
+KAI_VERSION=v0.19.0 ./scripts/schedulers/kai.sh
+./scripts/benchmarks/preemption-matrix/run-kai.sh matrix ./results-kai-matrix
+./scripts/benchmarks/preemption-matrix/run-kueue.sh matrix ./results-kueue-matrix
+```
+
+Each check takes its expected value from a `-var`, so a run with a wrong value can show that the check fails: `pair<N>_first_status` and `pair<N>_second_status` for a pod phase, `pair<N>_first_suspend` and `pair<N>_second_suspend` for a Kueue Job, each defaulting to the value in the table. `-var priority_low_p=<n>`, and likewise `priority_high_p`, `priority_low_np` and `priority_high_np`, set a class's value, and `-var within_cluster_queue=Never` turns off Kueue's preemption. A PriorityClass value cannot change once created, so run each on a fresh cluster.
+
 ## Mixed Trace Benchmark Test
 
 The mixed trace benchmarks replay a day of inference and training on 64 virtual GPU nodes with a [`SubmitTrace`](../../docs/task_management.md#submittrace) task. The classes compete for the same GPUs, so a run shows how a scheduler trades inference latency against gang progress. With `-results`, `wait_by_class` reports each class's wait separately.
