@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Area labels for pull requests, applied by .github/workflows/pr-labels.yaml
+# with actions/labeler. A pull request gets every label whose globs match at
+# least one file it changes. Labels are only added, never removed, so a label
+# a maintainer sets or keeps by hand stays.
+#
+# Every label here must already exist in the repository: the workflow's token
+# can add labels to a pull request but cannot create them.
+
+area/engine:
+  - changed-files:
+      - any-glob-to-any-file: 'pkg/engine/**'
+
+area/results:
+  - changed-files:
+      - any-glob-to-any-file: 'pkg/results/**'
+
+area/charts:
+  - changed-files:
+      - any-glob-to-any-file: 'charts/**'
+
+area/ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/actionlint.yaml'
+          - '.github/copy-pr-bot.yaml'
+          - '.github/ct.yaml'
+          - '.github/dependabot.yml'
+          - '.github/labeler.yml'
+          - '.golangci.yml'
+          - '.pre-commit-config.yaml'
+          - 'tests/ci/**'
+
+area/docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+
+# Benchmark definitions, task templates, example workflows, traces and
+# dashboards.
+area/benchmarks:
+  - changed-files:
+      - any-glob-to-any-file: 'resources/**'
+
+area/scripts:
+  - changed-files:
+      - any-glob-to-any-file: 'scripts/**'
+
+area/cmd:
+  - changed-files:
+      - any-glob-to-any-file: 'cmd/**'

@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Adds area labels to a pull request from the paths it changes, using the
+# rules in .github/labeler.yml.
+#
+# The trigger is the push that copy-pr-bot makes to pull-request/N once a pull
+# request is vetted, the same event the rest of CI uses, so labels appear after
+# that sync. pull_request is not used because a fork pull request gets a
+# read-only token there and could not be labeled. pull_request_target is not
+# used because it runs with a write token for pull requests that nobody has
+# vetted.
+#
+# The job never checks out or runs repository code: actions/labeler reads the
+# changed files and .github/labeler.yml through the GitHub API, the latter at
+# the pushed commit. It runs on a GitHub-hosted runner, never the project's own
+# machines, with a token that can only read contents and edit pull requests.
+# The repository guard keeps copies of this workflow in forks from running.
+
+name: PR Labels
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  area-labels:
+    name: area labels
+    if: github.repository == 'NVIDIA/knavigator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Read .github/labeler.yml through the API.
+      contents: read
+      # Add labels to the pull request.
+      pull-requests: write
+
+    steps:
+      - name: Read the pull request number from the branch name
+        id: pr
+        run: |
+          set -euo pipefail
+          number="${GITHUB_REF_NAME#pull-request/}"
+          if [[ ! "${number}" =~ ^[0-9]+$ ]]; then
+            echo "::error::${GITHUB_REF_NAME} is not a pull-request/N branch"
+            exit 1
+          fi
+          echo "number=${number}" >> "${GITHUB_OUTPUT}"
+
+      - name: Add area labels
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          pr-number: ${{ steps.pr.outputs.number }}
