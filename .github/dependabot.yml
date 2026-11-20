@@ -3,6 +3,12 @@
 # Grouping policy: minor and patch bumps arrive as a single PR per ecosystem per
 # week so the maintainers' merge train stays short. Major bumps are deliberately
 # left out of the groups, so each one lands as its own PR and gets a real review.
+#
+# Cooldown policy: a new release is proposed only once it is 7 days old, which
+# gives upstream time to catch a broken or compromised release before a PR
+# offers it here. The cooldown applies to version updates only; Dependabot
+# security updates are not delayed. 7 days is the shortest cooldown that
+# zizmor's dependabot-cooldown audit accepts by default.
 
 version: 2
 
@@ -15,6 +21,8 @@ updates:
       day: "monday"
       time: "07:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
@@ -36,6 +44,8 @@ updates:
       day: "monday"
       time: "07:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci(deps)"
@@ -49,9 +59,11 @@ updates:
           - "minor"
           - "patch"
 
-  # Base images in the root Dockerfile. This entry is what keeps the sha256
-  # digest pins current: without it, a digest pin freezes the base image
-  # permanently, CVEs included.
+  # Base images in the root Dockerfile. Its only base image, `FROM ubuntu`, has
+  # no tag or digest, so it resolves to whatever ubuntu:latest is at build
+  # time. Once the base image is pinned by tag and sha256 digest, this entry
+  # keeps the pin current; without it, a digest pin would freeze the base image,
+  # CVEs included.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -59,6 +71,8 @@ updates:
       day: "monday"
       time: "07:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     commit-message:
       prefix: "build(deps)"
