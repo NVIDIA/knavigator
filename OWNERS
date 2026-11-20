@@ -1,0 +1,16 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+#
+# This repository does not run Prow, so this file is documentation only.
+# GitHub enforces review through .github/CODEOWNERS. Keep both lists in sync.
+
+approvers:
+- ArangoGutierrez
+- catblade
+- dmitsh
+- fagni
+
+reviewers:
+- ArangoGutierrez
+- catblade
+- dmitsh
+- fagni
