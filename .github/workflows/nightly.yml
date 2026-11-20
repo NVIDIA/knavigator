@@ -8,83 +8,43 @@ on:
 #  schedule:
 #    - cron: "05 07 * * *" # Everyday 07:05 AM UTC
 
+# Checkout is the only step that touches the repository, and it only reads.
+permissions:
+  contents: read
+
 jobs:
-  test-volcano:
+  test-scheduler:
+    # Keeps the check names of the four jobs this matrix replaced.
+    name: test-${{ matrix.scheduler }}
     runs-on: ubuntu-latest
+    # The one recorded run (2026-10-20) took 3.0 to 3.9 minutes per scheduler.
+    # The scheduler scripts wait up to 600s for their pods, so this leaves room
+    # for one such wait to fail with its own message first.
+    timeout-minutes: 20
+    strategy:
+      # One scheduler failing should not hide the results of the others.
+      fail-fast: false
+      matrix:
+        scheduler: [volcano, jobset, kueue, yunikorn]
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
 
     - name: Build
       run: make build
 
+    # v1.14.0 is the release the floating v1 tag pointed at when this was
+    # pinned, so the default kind version (v0.31.0) is unchanged.
     - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
+      uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
 
     - name: Run test scripts
-      run: |
-        ./tests/ci/test_volcano.sh
-
-  test-jobset:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Set up Go
-      uses: actions/setup-go@v7
-      with:
-        go-version-file: go.mod
-
-    - name: Build
-      run: make build
-
-    - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
-
-    - name: Run test scripts
-      run: |
-        ./tests/ci/test_jobset.sh
-
-  test-kueue:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Set up Go
-      uses: actions/setup-go@v7
-      with:
-        go-version-file: go.mod
-
-    - name: Build
-      run: make build
-
-    - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
-
-    - name: Run test scripts
-      run: |
-        ./tests/ci/test_kueue.sh
-
-  test-yunikorn:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Set up Go
-      uses: actions/setup-go@v7
-      with:
-        go-version-file: go.mod
-
-    - name: Build
-      run: make build
-
-    - name: Create k8s Kind Cluster
-      uses: helm/kind-action@v1
-
-    - name: Run test scripts
-      run: |
-        ./tests/ci/test_yunikorn.sh
+      env:
+        SCHEDULER: ${{ matrix.scheduler }}
+      run: ./tests/ci/test_"${SCHEDULER}".sh
