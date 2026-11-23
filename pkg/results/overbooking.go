@@ -35,9 +35,10 @@ type Overbooking struct {
 	OverbookedGPUHours float64 `json:"overbooked_gpu_hours"`
 }
 
-// overbooking sweeps each node's bound GPUs, counting GPUs that pods from before the run hold there,
-// against its allocatable count. Pods still running at the end count until end.
-func overbooking(pods []Pod, nodes, held map[string]float64, end time.Time) Overbooking {
+// overbooking sweeps each node's bound GPUs against its allocatable count. Pods still running at the
+// end count until end. GPUs that pods from before the run hold are left out: their finish is not
+// tracked, so counting them could fail a valid run.
+func overbooking(pods []Pod, nodes map[string]float64, end time.Time) Overbooking {
 	type change struct {
 		t    time.Time
 		gpus float64
@@ -54,21 +55,23 @@ func overbooking(pods []Pod, nodes, held map[string]float64, end time.Time) Over
 		if fin.IsZero() {
 			fin = end
 		}
-		if fin.After(p.Scheduled) {
-			byNode[p.Node] = append(byNode[p.Node], change{p.Scheduled, p.GPUs}, change{fin, -p.GPUs})
+		// Scheduled has one second resolution but Finished can be finer, so align both to the second
+		// to keep a handover from reading as an overlap.
+		start, fin := p.Scheduled.Truncate(time.Second), fin.Truncate(time.Second)
+		if fin.After(start) {
+			byNode[p.Node] = append(byNode[p.Node], change{start, p.GPUs}, change{fin, -p.GPUs})
 		}
 	}
 	var out Overbooking
 	for node, changes := range byNode {
-		// Times are whole seconds, so a pod that ends and one that starts in the same second are a
-		// handover, not an overlap: apply releases first.
+		// A pod that ends and one that starts in the same second are a handover: apply releases first.
 		sort.Slice(changes, func(a, b int) bool {
 			if !changes[a].t.Equal(changes[b].t) {
 				return changes[a].t.Before(changes[b].t)
 			}
 			return changes[a].gpus < changes[b].gpus
 		})
-		used, over := held[node], false
+		used, over := 0.0, false
 		for i, c := range changes {
 			used += c.gpus
 			excess := used - nodes[node]

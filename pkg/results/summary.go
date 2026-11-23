@@ -245,7 +245,7 @@ func Summarize(pods []Pod, jobs []Job, gpuCapacity float64, end time.Time, opt O
 	s.WaitByClass = byClass(jobs, waitOf, opt.Speedup)
 	s.TraceDigest = traceDigests(jobs)
 	s.Sizes = sizeMetrics(pods, jobs, scheduled, end, opt)
-	s.Overbooking = overbooking(pods, opt.NodeGPUs, opt.NodeHeldGPUs, end)
+	s.Overbooking = overbooking(pods, opt.NodeGPUs, end)
 	return s
 }
 

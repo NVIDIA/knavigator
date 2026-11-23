@@ -33,8 +33,8 @@ func TestOverbooking(t *testing.T) {
 		{Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(10)},
 		{Node: "n1", GPUs: 8, Scheduled: at(10), Finished: at(20)},
 	}
-	require.Equal(t, Overbooking{}, overbooking(handover, nodes, nil, at(20)))
-	require.NoError(t, overbooking(handover, nodes, nil, at(20)).check())
+	require.Equal(t, Overbooking{}, overbooking(handover, nodes, at(20)))
+	require.NoError(t, overbooking(handover, nodes, at(20)).check())
 
 	// Two 8-GPU pods share an 8-GPU node for 3600s, as when a scheduler counts each GPU twice.
 	double := []Pod{
@@ -42,13 +42,16 @@ func TestOverbooking(t *testing.T) {
 		{Node: "n1", GPUs: 8, Scheduled: at(3600), Finished: at(7200)},
 		{Node: "n2", GPUs: 8, Scheduled: at(0), Finished: at(7200)},
 	}
-	o := overbooking(double, nodes, nil, at(7200))
+	o := overbooking(double, nodes, at(7200))
 	require.Equal(t, Overbooking{OverbookedNodes: 1, OverbookedPeakGPUs: 8, OverbookedGPUHours: 8}, o)
 	require.ErrorContains(t, o.check(), "1 nodes held more GPUs than they have")
 
-	// GPUs that pods from before the run hold count against the node.
-	o = overbooking([]Pod{{Node: "n2", GPUs: 6, Scheduled: at(0), Finished: at(3600)}}, nodes, map[string]float64{"n2": 4}, at(3600))
-	require.Equal(t, Overbooking{OverbookedNodes: 1, OverbookedPeakGPUs: 2, OverbookedGPUHours: 2}, o)
+	// A pod seen finishing partway into the second the next one is scheduled is still a handover.
+	subsecond := []Pod{
+		{Node: "n1", GPUs: 8, Scheduled: at(0), Finished: at(10).Add(700 * time.Millisecond)},
+		{Node: "n1", GPUs: 8, Scheduled: at(10), Finished: at(20)},
+	}
+	require.Equal(t, Overbooking{}, overbooking(subsecond, nodes, at(20)))
 
 	// A pod still running at the end counts until the end; unknown nodes and unplaced pods are skipped.
 	running := []Pod{
@@ -57,7 +60,7 @@ func TestOverbooking(t *testing.T) {
 		{Node: "other", GPUs: 64, Scheduled: at(0), Finished: at(3600)},
 		{GPUs: 8, Created: at(0)},
 	}
-	o = overbooking(running, nodes, nil, at(7200))
+	o = overbooking(running, nodes, at(7200))
 	require.Equal(t, Overbooking{OverbookedNodes: 1, OverbookedPeakGPUs: 4, OverbookedGPUHours: 2}, o)
 }
 
