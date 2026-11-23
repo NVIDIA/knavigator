@@ -91,6 +91,11 @@ function deploy_kwok() {
       kubectl -n kube-system patch ds $ds --type merge -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"type","operator":"NotIn","values":["kwok"]}]}]}}}}}}}'
     fi
   done
+
+  # Pods on virtual nodes stay Pending until the KWOK controller is up. Without this wait, a
+  # workflow started right after this function spends its CheckPod timeout on KWOK's image pull
+  # and startup. Waiting last lets the stage setup above overlap with that startup.
+  kubectl -n kube-system rollout status deployment/kwok-controller --timeout=300s
 }
 
 # Prometheus
