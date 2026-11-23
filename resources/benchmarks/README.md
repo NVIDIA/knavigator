@@ -93,7 +93,7 @@ The preemption-matrix benchmark runs pairs of single-GPU jobs on 256 virtual nod
 1. [`config-priorities.yaml`](preemption-matrix/workflows/config-priorities.yaml) creates four PriorityClasses before any job exists. KAI gives a pod whose PriorityClass is missing its default class instead.
 2. `run-first-*.yaml` submits every pair's first job and waits until each is Running.
 3. `run-second-*.yaml` submits every pair's second job.
-4. [`run-hold.yaml`](preemption-matrix/workflows/run-hold.yaml) waits 60 seconds, then the `check-*.yaml` files look at each pair once.
+4. [`run-hold.yaml`](preemption-matrix/workflows/run-hold.yaml) waits 60 seconds, then the `check-*.yaml` files look at each pair once, in pair order. Knavigator stops at the first check that fails, so a red run names one pair that differs from the table and says nothing about the pairs after it.
 
 A pair is (first job, second job), not (low, high): pairs 4 to 6 start the higher-priority job first, and pairs 7 and 8 use two jobs of the same class. The first job runs for 5 minutes and the second for 3, both counted from when the pod starts. At the check the second job has about 2 minutes left, so a pair that preempted still shows the second job Running and not the first one back. The first job has about 4 minutes left, so a pair that did not preempt still shows the first job Running and not the second one in its place.
 
@@ -131,11 +131,17 @@ Every job finishes: a preempted first job runs again once the second is done, an
 
 #### Example
 
-The run scripts take the case, `matrix`, and a results directory, and pass extra flags through to Knavigator, as the fill-cluster scripts do. KAI must be v0.19.0:
+The run scripts take the case, `matrix`, and a results directory, and pass extra flags through to Knavigator, as the fill-cluster scripts do. Each run needs a fresh cluster with one scheduler: the jobs keep their names after a run, so a second run on the same cluster fails to create them. KAI must be v0.19.0:
 
 ```bash
 KAI_VERSION=v0.19.0 ./scripts/schedulers/kai.sh
 ./scripts/benchmarks/preemption-matrix/run-kai.sh matrix ./results-kai-matrix
+```
+
+On another fresh cluster, with Kueue:
+
+```bash
+./scripts/schedulers/kueue.sh
 ./scripts/benchmarks/preemption-matrix/run-kueue.sh matrix ./results-kueue-matrix
 ```
 
