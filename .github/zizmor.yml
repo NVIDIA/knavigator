@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# zizmor configuration, read by the zizmor job in workflows/workflow-lint.yaml.
+#
+# Every entry below ignores one rule in one file. Each covers a finding that
+# was open in code scanning on main on 2026-11-23 and is deferred on purpose:
+# docker.yml and release.yml publish the container image and the Helm charts,
+# and their hardening waits for the maintainers' decision on how artifacts are
+# built and released. Both files run only through workflow_dispatch.
+#
+# Any finding not listed here fails the zizmor job. Remove an entry when the
+# file it names is fixed, so the same rule is enforced there again.
+
+rules:
+  artipacked:
+    ignore:
+      # actions/checkout leaves the job token in .git/config for later steps.
+      # chart-releaser in release.yml pushes gh-pages with git, so check that
+      # it still can before setting persist-credentials: false there.
+      - docker.yml
+      - release.yml
+
+  cache-poisoning:
+    ignore:
+      # setup-go restores the Go module cache in a job that publishes an
+      # image. Deferred with the rest of docker.yml.
+      - docker.yml
+
+  excessive-permissions:
+    ignore:
+      # No permissions block, so the job gets the default token. It needs
+      # packages: write to push to GHCR; the exact set is part of the
+      # artifacts discussion.
+      - docker.yml
+
+  unpinned-uses:
+    ignore:
+      # Actions referenced by tag (docker.yml 2, release.yml 3). Pinning them
+      # by SHA is part of the same deferred change.
+      - docker.yml
+      - release.yml
