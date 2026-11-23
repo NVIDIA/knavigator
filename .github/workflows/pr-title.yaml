@@ -80,7 +80,7 @@ jobs:
             echo "The title follows Conventional Commits."
             exit 0
           fi
-          echo "::error title=PR title::The pull request title does not follow Conventional Commits. Edit the title to the form type(scope): description, for example 'fix(engine/slurm): handle empty fabric tiers'. See ${CONTRIBUTING}"
+          echo "::error title=PR title::The pull request title does not follow Conventional Commits. Edit the title to the form type(scope): description, for example 'fix(engine): submit objects when SubmitObj has no params'. See ${CONTRIBUTING}"
           {
             echo "### The pull request title does not follow Conventional Commits"
             echo
