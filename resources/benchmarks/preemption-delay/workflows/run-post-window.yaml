@@ -16,10 +16,10 @@ name: run-post-window
 description: wait until after the delayed pair's window, then the post-window checks look once
 tasks:
 # 90 seconds more, so 150 s after the last second job is created and about 60 s after the 90 s window
-# ends; the window counts from the PodGroup's creation, less than 1 s after submission. On the test bed the
-# delayed second job started 1 s after the window ended and the first job's replacement pod appeared
-# 10 s after it, so the check leaves about 50 s for the replacement. The second job's 3 minutes, about
-# 2 of them left, and the replacement's wait reach past the check.
+# ends; the window counts from the PodGroup's creation, less than 1 s after submission. Over three runs
+# on the test bed, the delayed second job had been scheduled 59.0 to 59.4 s and the first job's
+# replacement pod had existed 50.0 to 50.4 s at this check. The second job's 3 minutes, about 2 of them
+# left, and the replacement's wait reach past the check.
 - id: post-window
   type: Sleep
   params:
