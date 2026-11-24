@@ -1,0 +1,42 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: check-window
+description: check both pairs once, inside the delayed pair's window
+tasks:
+# No timeout, so each check reads the pods once. Inside the window KAI does not let the delayed
+# second job trigger an eviction (pkg/scheduler/actions/utils/input_jobs.go:70-78): it waits Pending
+# and the first job still runs. The control pair has no delay: its second job runs and its first
+# job's pod is the replacement for the preempted one, waiting Pending in the full queue (KAI deletes
+# the victim's pod, pkg/scheduler/cache/evictor/default_evictor.go:41).
+- id: window-delayed-second
+  type: CheckPod
+  params:
+    refTaskId: second-delayed
+    status: ${window_delayed_second_status:-Pending}
+- id: window-delayed-first
+  type: CheckPod
+  params:
+    refTaskId: first-delayed
+    status: ${window_delayed_first_status:-Running}
+- id: window-control-second
+  type: CheckPod
+  params:
+    refTaskId: second-control
+    status: ${window_control_second_status:-Running}
+- id: window-control-first
+  type: CheckPod
+  params:
+    refTaskId: first-control
+    status: ${window_control_first_status:-Pending}

@@ -1,0 +1,45 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-second
+description: submit the second job of both pairs; only the delayed pair's carries a preemption delay
+tasks:
+# The second job runs for 3 minutes from when its pod starts. The delayed one starts about 90 s after
+# submission, when its window ends, so it is still Running at the post-window check 120 s after
+# submission. KAI's window counts from the PodGroup's creationTimestamp, which the podgrouper sets
+# when it first sees the Job's pod (pkg/scheduler/api/podgroup_info/job_info.go:211-221), not from
+# the Job's creation. -var preemption_delay=0s turns the delay off (job_info.go:212-214).
+- id: second-delayed
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: delayed
+      role: second
+      priorityClassName: pd-high
+      replicas: 1
+      gpu: 1
+      ttl: ${second_ttl:-3m}
+      preemptionDelay: ${preemption_delay:-90s}
+- id: second-control
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: control
+      role: second
+      priorityClassName: pd-high
+      replicas: 1
+      gpu: 1
+      ttl: ${second_ttl:-3m}

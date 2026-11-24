@@ -147,6 +147,41 @@ On another fresh cluster, with Kueue:
 
 Each check takes its expected value from a `-var`, so a run with a wrong value can show that the check fails: `pair<N>_first_status` and `pair<N>_second_status` for a pod phase, `pair<N>_first_suspend` and `pair<N>_second_suspend` for a Kueue Job, each defaulting to the value in the table. `-var priority_low_p=<n>`, and likewise `priority_high_p`, `priority_low_np` and `priority_high_np`, set a class's value, and `-var within_cluster_queue=Never` turns off Kueue's preemption. A PriorityClass value cannot change once created, so run each on a fresh cluster.
 
+## Preemption Delay Benchmark Test
+
+The preemption-delay benchmark checks KAI's `kai.scheduler/preemption-delay` annotation on 256 virtual nodes of 8 GPUs. It follows KAI v0.19.0's preemption-delay test (`test/e2e/suites/preempt/preempt_delay_specs.go:75-108`): a preemptible job runs, a job one priority above it arrives with a 90-second delay (`:35`, `:92`), the new job stays unschedulable and the running pod is not deleted for the first half of the window (`:97-103`), then the new job is scheduled (`:106`). Two pairs of single-GPU jobs run at once, each in its own queue whose quota and limit admit one 1-GPU job, as in the preemption matrix: the delayed pair, whose second job carries the delay, and a control pair without it, which shows in the same run that the second job preempts at once when there is no delay. Both pairs use `pd-low` (40) for the first job and `pd-high` (41) for the second: both below KAI's preemptible threshold of 100, high = low + 1, as in KAI's test (`:51-62`).
+
+1. [`config-priorities.yaml`](preemption-delay/workflows/config-priorities.yaml) creates the two PriorityClasses before any job exists.
+2. [`run-first.yaml`](preemption-delay/workflows/run-first.yaml) submits both first jobs and waits until each is Running.
+3. [`run-second.yaml`](preemption-delay/workflows/run-second.yaml) submits both second jobs. Only the delayed one has `kai.scheduler/preemption-delay: "90s"`.
+4. [`run-window.yaml`](preemption-delay/workflows/run-window.yaml) waits 30 seconds, then [`check-window.yaml`](preemption-delay/workflows/check-window.yaml) looks once: the delayed second job is Pending and the delayed first job Running; the control second job is Running and the control first job Pending.
+5. [`run-post-window.yaml`](preemption-delay/workflows/run-post-window.yaml) waits 90 seconds more, 120 seconds after the second jobs, then [`check-post-window.yaml`](preemption-delay/workflows/check-post-window.yaml) looks once: the delayed second job is Running and the delayed first job Pending.
+
+A first job that shows Pending is the replacement for its preempted pod: KAI preempts by deleting the pod (`pkg/scheduler/cache/evictor/default_evictor.go:41`), and the Job controller creates a new one, which waits in the full queue. Knavigator stops at the first check that fails.
+
+Where KAI reads the delay: the podgrouper reads the annotation from the Job and then from the pod, and the first valid value wins (`pkg/podgrouper/podgrouper/plugins/defaultgrouper/default_grouper.go:278-298`). It copies the value into the PodGroup's `spec.preemptionDelay` when it creates the PodGroup (`pkg/podgrouper/podgroup/handler.go:109`), and the scheduler reads only that field (`pkg/scheduler/api/podgroup_info/job_info.go:211-227`). The job template puts the annotation on the delayed second job's pod template, as KAI's test annotates the pod, and the Job controller copies it onto the pod. The value is a Go duration; the PodGroup shows `90s` as `1m30s`.
+
+When the window starts: at the PodGroup's `creationTimestamp`, or at the PodGroup's last eviction when that is later (`job_info.go:216-220`). KAI's doc says the window "is measured from the workload's creation" (`docs/preemption-delay/README.md:35`); in the code the workload is the PodGroup, which the podgrouper creates when it first sees the Job's pod, slightly after the Job. `creationTimestamp` has whole-second precision, so the window can end up to 1 second before creation + delay. The scheduler checks the window once per scheduling cycle, every second by default.
+
+KAI delays preempt, reclaim and consolidation (`FilterWithinPreemptionDelay` at `pkg/scheduler/actions/preempt/preempt.go:61`, `actions/reclaim/reclaim.go:61`, `actions/consolidation/consolidation.go:52`), but not plain allocation (`actions/allocate/allocate.go:50-54`), so a delayed job that fits free capacity starts at once. Here the queue limit keeps the delayed second job off the free GPUs, and both pairs preempt inside their own queue, so this benchmark exercises the preempt path only.
+
+The check times come from the window. The delayed window cannot end before about 89 seconds after submission (90 seconds less the 1 second of truncation), so the window check at 30 seconds has 59 seconds of margin and sits inside the half of the window that KAI's test checks; the control pair preempts within about 2 seconds of submission. The post-window check at 120 seconds leaves about 25 seconds after the window ends for the next cycle, the preemption and the bind. Pod creation, PodGroup creation and the first scheduling attempt all fall within about 1 second of submission, so the check holds whichever of them KAI counted from; a window held about 30 seconds too long goes red there. The second job runs for 3 minutes and the first for 5, both counted from when the pod starts: the delayed second job, which starts when its window ends, still runs at the post-window check, and each first job's replacement still waits.
+
+Every job finishes: each replacement runs once its pair's second job is done. With `-results`, a victim's deleted pod counts as evicted (`pods_evicted`), not failed. A run records 6 GPU pods: the 4 jobs plus a replacement pod for each of the two victims.
+
+KAI only. Kueue v0.20.2 has no preemption delay: `git grep -i -E 'delay|grace|minruntime' v0.20.2 -- apis/kueue/v1beta2 pkg/scheduler/preemption` hits only workload-slice gating, ProvisioningRequest and admission-check retry delays, the topology scheduling gate and `delayedTopologyRequest`, while the same search over KAI v0.19.0's `pkg/scheduler` hits its delay code in `actions/utils/input_jobs.go`. slurm-bridge does not apply either: its Slurm preempts by partition tier, and neither a pod's PriorityClass nor KAI's annotation reaches Slurm.
+
+#### Example
+
+The run script takes the case, `delay`, and a results directory, and passes extra flags through to Knavigator. Each run needs a fresh cluster: the jobs keep their names after a run, so a second run on the same cluster fails to create them. KAI must be v0.19.0:
+
+```bash
+KAI_VERSION=v0.19.0 ./scripts/schedulers/kai.sh
+./scripts/benchmarks/preemption-delay/run-kai.sh delay ./results-kai-delay
+```
+
+Every value comes from a `-var` with the value above as its default: `preemption_delay` (`90s`; `0s` turns the delay off, as KAI ignores a delay of zero, `job_info.go:212-214`), `window_sleep` (`30s`), `post_window_sleep` (`90s`), `first_ttl` (`5m`), `second_ttl` (`3m`), `priority_low` (`40`) and `priority_high` (`41`). The checks' expected phases are `window_delayed_second_status` (`Pending`), `window_delayed_first_status` (`Running`), `window_control_second_status` (`Running`), `window_control_first_status` (`Pending`), `post_delayed_second_status` (`Running`) and `post_delayed_first_status` (`Pending`), so a run with a wrong value can show that a check fails.
+
 ## Mixed Trace Benchmark Test
 
 The mixed trace benchmarks replay a day of inference and training on 64 virtual GPU nodes with a [`SubmitTrace`](../../docs/task_management.md#submittrace) task. The classes compete for the same GPUs, so a run shows how a scheduler trades inference latency against gang progress. With `-results`, `wait_by_class` reports each class's wait separately.
