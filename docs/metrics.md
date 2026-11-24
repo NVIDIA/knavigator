@@ -5,11 +5,12 @@ Moreover, Knavigator's functionality relies on a Prometheus server  to execute t
 
 ## Run Results
 
-The `-results <dir>` flag records every pod that requests `nvidia.com/gpu`, or GPUs through the `gpu.nvidia.com` DRA DeviceClass (`deviceclass.resource.kubernetes.io/gpu.nvidia.com`), while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes three files:
+The `-results <dir>` flag records every pod that requests `nvidia.com/gpu`, or GPUs through the `gpu.nvidia.com` DRA DeviceClass (`deviceclass.resource.kubernetes.io/gpu.nvidia.com`), while the workflows run. After the last workflow, Knavigator waits for the submitted jobs to finish (up to `-results.timeout`, default 1h) and writes four files:
 
 - `timeline.csv`: one row per pod with its job, node, GPUs, phase, and created, scheduled and finished times.
 - `results.json`: failed pods, makespan, GPU-hours, GPU utilization against allocatable GPUs, pods never scheduled, jobs started, and mean, p95 and max wait for pods and jobs.
 - `events.csv`: warning events and every eviction or preemption event (`Preempted`, `Preempting`, `Evict`, `Evicted`) since the run started, up to 10000. It shows why a scheduler left work waiting or removed pods.
+- `manifest.json`: what ran and where, so that you can keep runs that differ out of one pool. See [Run Manifest](#run-manifest).
 
 `results.json` also reports preemption. `pods_evicted` counts pods deleted after they were placed and before they finished. Schedulers preempt by deleting pods, and job controllers and cleanup delete pods too, so compare it with `preemption_events`, the number of `Preempted` and `Evict` events (one per removed pod). `jobs_evicted` counts jobs that lost a pod this way, and `evicted_gpu_hours` is the GPU time those pods had already used. `evictions_by_priority` groups the evicted pods by the victim's pod priority (`priority`, `pods`, `jobs`, `gpu_hours`), so you can see who a scheduler evicts. `jobs_evicted_again` counts jobs that lost more pods than they have, meaning at least one pod was evicted twice, and `max_evictions_per_job` is the most evictions any one job suffered, with a whole gang evicted at once counting once. `timeline.csv` gains a `priority` column. `binding_gap_gpu_hours` is GPU time that gang pods held while the rest of their gang had not yet been bound, so the gang could not start. `wasted_gpu_hours` is `evicted_gpu_hours` plus `binding_gap_gpu_hours`. `idle_waiting_gpu_hours` is a separate measure of unused capacity: GPU time that sat idle while pods were waiting for GPUs (at each moment, the smaller of the idle GPUs and the GPUs the waiting pods request). All three follow `-speedup`.
 
@@ -30,6 +31,30 @@ A run is only evidence if the cluster under it stayed healthy, so `-results` als
 `results.json` also has `jobs_by_gang_size`, one row per pods-per-job count with `submitted`, `waiting` (a pod not yet placed), `running` (all pods placed, some still running), `complete` and `wait_sec` for the jobs that have started. A pod that was preempted and replaced keeps its job running until the replacement ends.
 
 `gang_assembly_sec` gives the count, mean, p95 and max time from a gang's first pod placed until all its pods have been placed, over gangs (jobs of more than one pod) that were ever complete. A pod lost before then keeps the gang open until its replacement is placed. A scheduler that places a gang all at once reads 0. One that places pods as room frees up shows how long its gangs sat half placed, and `binding_gap_gpu_hours` gives the GPU time those pods held meanwhile.
+
+### Run Manifest
+
+`manifest.json` follows the manifest format of the Scheduling Capabilities Suite. Knavigator removes an old `manifest.json` first, and writes the new one after the other three files. As a result, a directory that has a `manifest.json` holds a complete set. `run_id` is the name of the directory, so give each run its own directory.
+
+- `schema`: 1.
+- `run_id`: the name of the `-results` directory.
+- `git_commit` and `git_dirty`: the Git commit that the Knavigator binary was built from, and whether the working tree had uncommitted changes. Knavigator leaves out both when the binary has no version control stamp, as with `go run`.
+- `tools.kubernetes`: the API server's version. If the API server does not give its version, Knavigator logs a warning and leaves out the field.
+- `fleet`: the nodes that have more than 0 allocatable `nvidia.com/gpu` at the end of the run. `nodes` is their number, and `gpus_per_node` counts them by size, rounded as in `nodes_by_free_gpus`. For example, `{"8": 16}` is 16 nodes of 8 GPUs. `mode` is `kwok` when all of them are KWOK nodes, `real` when none is, and `mixed` otherwise. Knavigator leaves out `mode` when there is no GPU node. `labels` gives the number of distinct values of each key in `-results.rack-label` and `-results.topology-labels` over these nodes. A key that no GPU node has counts 0. The Suite writes a list of nodes in `fleet` instead, and its readers do not parse `fleet`.
+- `profiles`: one entry, named by `-results.profile`, or `unknown` without it.
+- `workload`: `workflows`, `vars`, `speedup`, `bsld_floor_sec` and `allow_leftovers`. `workflows` lists the workflows in the order that they ran, and a workflow given twice appears twice. Each entry has `path`, the file that Knavigator read, `digest`, the `sha256:` digest of its text after `-var` substitution, and `templates`. `templates` gives the `sha256:` digest of each template file that the workflow's `RegisterObj` tasks read, by path. Knavigator reads the template files for the digests when the run starts. `vars` has the `-var` values, and `speedup` has `-speedup`. `bsld_floor_sec` is `-results.bsld-floor` in seconds of simulated time, and `allow_leftovers` is `-results.allow-leftovers`. Runs with different values of these settings are not comparable. A trace that `SubmitTrace` replays has its fingerprint in `trace_digest` in `results.json`. The Suite's format has no `workload`, so its readers skip it.
+
+The entry in `profiles` has these fields:
+
+- `start` and `end`: when the recorder started and stopped, in UTC. `start` is on the API server's clock, or on the host's clock if Knavigator cannot measure the API server's clock at the start. `end` is no earlier than the last time that the recorder recorded, and pod times are on the API server's clock. So when the clock is not measured, `end` can be on a different clock than `start`. `results.json` measures its times from the first pod or job, which can be later than `start`.
+- `cluster`: the provider in the nodes' `spec.providerID`, such as `kind`. Knavigator leaves it out unless all nodes that have a `spec.providerID` name the same provider.
+- `images`: the image ID of each image reference that the watched pods run at the end of the run. A watched pod that is replaced during the run, for example by a rollout, appears only with its new image. The watched pods are the control-plane pods and the pods in `-results.restart-namespaces`. When pods run one reference under different IDs, the value lists the IDs, sorted and joined with `,`. An image with no known ID, such as an image that is not pulled yet, has the value `""`. `images` leaves out init containers.
+- `clock_offset_start_s` and `clock_offset_end_s`: the same values as in `harness`. Knavigator leaves them out when it cannot measure the clock.
+- `watch_errors`: the number of times that the recorder may have missed a pod or event change. After the run starts, it counts each failure that stops the pod or event watch, and each relist. A watch that fails because the API server refuses the connection or replies 429 does not count, because client-go retries it from the same point and misses nothing. A relist that the server serves in pages counts once. Some relists count 2, such as a relist whose first attempt fails, so the value can be higher than the number of relists. When `watch_errors` is above 0, Knavigator logs a warning.
+
+`-results.profile` names the scheduler setup under test. It must be a lowercase DNS label, so that the same setup never appears under two names that differ only in case. When you set `-results.profile`, also set `-results.restart-namespaces` to the scheduler's namespaces, so that `images` includes the scheduler. Container restarts in those namespaces then also fail the run. `-results.topology-labels` takes comma-separated node label keys of topology levels, such as `example.com/block`.
+
+Knavigator writes the `-var` values to `manifest.json` in clear text. Do not pass secrets with `-var` if other people can read the results directory.
 
 ### Prometheus and Grafana
 

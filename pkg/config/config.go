@@ -18,6 +18,7 @@
 package config
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,6 +40,11 @@ type Workflow struct {
 	Name        string  `yaml:"name"`
 	Description string  `yaml:"description,omitempty"`
 	Tasks       []*Task `yaml:"tasks"`
+	// Path is the file the workflow was read from, cleaned, and Digest is "sha256:<hex>" of its text
+	// after -var substitution, so a run's results can name the workflow that ran. Both are empty for a
+	// workflow parsed by New. Neither is YAML: klient posts a Workflow to the server as YAML.
+	Path   string `yaml:"-"`
+	Digest string `yaml:"-"`
 }
 
 type Task struct {
@@ -155,7 +161,17 @@ func newFromFile(path string, vars Vars, used map[string]bool) (*Workflow, error
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	return New(data)
+	cfg, err := New(data)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Path, cfg.Digest = path, Digest(data)
+	return cfg, nil
+}
+
+// Digest is "sha256:<hex>" of data, in the form of an OCI image digest.
+func Digest(data []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 }
 
 // NewFromPaths populates workflow configs from files and dirs, after expanding vars

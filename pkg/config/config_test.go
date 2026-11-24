@@ -18,11 +18,14 @@
 package config
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestWorkflow(t *testing.T) {
@@ -280,4 +283,39 @@ func TestVarsSet(t *testing.T) {
 	require.Equal(t, "racks=a=b", vars.String())
 	require.Error(t, vars.Set("racks"))
 	require.Error(t, vars.Set("1racks=8"))
+}
+
+func TestWorkflowDigest(t *testing.T) {
+	const text = "name: ${name}\ntasks:\n  - id: t1\n    type: Sleep\n"
+	sum := func(s string) string { return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(s))) }
+	dir := t.TempDir()
+	path := filepath.Join(dir, "w.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
+
+	got, err := NewFromPaths(path, Vars{"name": "a"})
+	require.NoError(t, err)
+	require.Equal(t, path, got[0].Path)
+	require.Equal(t, sum("name: a\ntasks:\n  - id: t1\n    type: Sleep\n"), got[0].Digest, "the digest is of the expanded text")
+	require.NotEqual(t, sum(text), got[0].Digest)
+
+	other, err := NewFromPaths(path, Vars{"name": "b"})
+	require.NoError(t, err)
+	require.NotEqual(t, got[0].Digest, other[0].Digest)
+
+	// A directory gives each file as dir/name, and the path is cleaned.
+	unclean := dir + "/./"
+	got, err = NewFromPaths(unclean, Vars{"name": "a"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, filepath.Join(dir, "w.yaml"), got[0].Path)
+
+	parsed, err := New([]byte("name: a\ntasks:\n  - id: t1\n    type: Sleep\n"))
+	require.NoError(t, err)
+	require.Empty(t, parsed.Path)
+	require.Empty(t, parsed.Digest)
+
+	out, err := yaml.Marshal(got[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(out), "path")
+	require.NotContains(t, string(out), "digest")
 }

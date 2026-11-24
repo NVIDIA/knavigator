@@ -348,12 +348,7 @@ func rackFragmentation(pods []Pod, nodes, held map[string]float64, racks map[str
 // nodeSizes turns the seconds each node size spent at each free count into rows, largest size and
 // most free first, with every count from all free down to none.
 func nodeSizes(nodes map[string]float64, sizeSec map[int][]float64, window float64) []NodeSize {
-	count := map[int]int{}
-	for _, g := range nodes {
-		if g > 0 {
-			count[int(math.Round(g))]++
-		}
-	}
+	count := sizeCounts(nodes)
 	sizes := make([]int, 0, len(count))
 	for size := range count {
 		sizes = append(sizes, size)
@@ -371,4 +366,16 @@ func nodeSizes(nodes map[string]float64, sizeSec map[int][]float64, window float
 		return nil
 	}
 	return out
+}
+
+// sizeCounts counts the nodes with GPUs by size, rounded to whole GPUs. nodes_by_free_gpus in
+// results.json and fleet.gpus_per_node in manifest.json both use it, so the two agree.
+func sizeCounts(nodes map[string]float64) map[int]int {
+	count := map[int]int{}
+	for _, g := range nodes {
+		if g > 0 {
+			count[int(math.Round(g))]++
+		}
+	}
+	return count
 }

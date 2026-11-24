@@ -21,7 +21,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -103,11 +105,11 @@ func startHarness(ctx context.Context, client kubernetes.Interface, opts Harness
 	if err != nil {
 		return nil, err
 	}
-	restarts, err := restartCounts(ctx, client, opts.RestartNamespaces)
+	pods, err := watchedPods(ctx, client, opts.RestartNamespaces)
 	if err != nil {
 		return nil, err
 	}
-	h := &harnessStart{namespaces: opts.RestartNamespaces, restarts: restarts, clock: readClock(ctx, client)}
+	h := &harnessStart{namespaces: opts.RestartNamespaces, restarts: restartCounts(pods), clock: readClock(ctx, client)}
 	if opts.AllowLeftovers {
 		h.leftoverGPUs = &gpus
 		h.leftoverByNode = byNode
@@ -135,12 +137,15 @@ func (h *harnessStart) skew() time.Duration {
 	return time.Duration(c.mid() * float64(time.Second))
 }
 
-// finish reads the restart counts and the clock offset again.
-func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) (Harness, error) {
-	after, err := restartCounts(ctx, client, h.namespaces)
+// finish reads the restart counts and the clock offset again, and returns the images the watched
+// pods run, for manifest.json. The images come from the same pod list as the restart counts, so
+// manifest.json pins the containers whose restarts the run checked.
+func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) (Harness, map[string]string, error) {
+	pods, err := watchedPods(ctx, client, h.namespaces)
 	if err != nil {
-		return Harness{}, err
+		return Harness{}, nil, err
 	}
+	after := restartCounts(pods)
 	end := readClock(ctx, client)
 	out := Harness{ClockOffsetStartSec: h.clock.seconds(), ClockOffsetEndSec: end.seconds(), LeftoverGPUs: h.leftoverGPUs,
 		ControlPlaneRestarts: []Restart{}, start: h.clock, end: end}
@@ -152,7 +157,7 @@ func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) 
 	sort.Slice(out.ControlPlaneRestarts, func(i, j int) bool {
 		return out.ControlPlaneRestarts[i].Container < out.ControlPlaneRestarts[j].Container
 	})
-	return out, nil
+	return out, imagesOf(pods), nil
 }
 
 // check fails a run during which a watched container restarted or the API server clock moved
@@ -207,20 +212,16 @@ func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool
 	return gpus, byNode, nil
 }
 
-// restartCounts maps namespace/pod/container to its restart count, for the control-plane pods and
-// every pod in namespaces.
-func restartCounts(ctx context.Context, client kubernetes.Interface, namespaces []string) (map[string]int32, error) {
-	out := map[string]int32{}
+// watchedPods lists the control-plane pods and every pod in namespaces. These are the pods whose
+// container restarts fail the run, and whose images manifest.json records.
+func watchedPods(ctx context.Context, client kubernetes.Interface, namespaces []string) ([]corev1.Pod, error) {
+	var out []corev1.Pod
 	add := func(namespace, selector string) error {
 		pods, err := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 		if err != nil {
 			return fmt.Errorf("failed to list pods in %s: %w", namespace, err)
 		}
-		for _, p := range pods.Items {
-			for _, c := range p.Status.ContainerStatuses {
-				out[p.Namespace+"/"+p.Name+"/"+c.Name] = c.RestartCount
-			}
-		}
+		out = append(out, pods.Items...)
 		return nil
 	}
 	if err := add(metav1.NamespaceSystem, controlPlaneSelector); err != nil {
@@ -232,6 +233,43 @@ func restartCounts(ctx context.Context, client kubernetes.Interface, namespaces 
 		}
 	}
 	return out, nil
+}
+
+// restartCounts maps namespace/pod/container to its restart count.
+func restartCounts(pods []corev1.Pod) map[string]int32 {
+	out := map[string]int32{}
+	for _, p := range pods {
+		for _, c := range p.Status.ContainerStatuses {
+			out[p.Namespace+"/"+p.Name+"/"+c.Name] = c.RestartCount
+		}
+	}
+	return out
+}
+
+// imagesOf maps the image of each container of pods to the image ID it resolved to, keyed and
+// valued as the Scheduling Capabilities Suite records them (ContainerStatus.Image to ImageID). Init
+// containers are left out, as there. A container that has not pulled its image yet has an empty ID.
+//
+// Two pods can run one image reference under different IDs, such as a tag that moved. The value is
+// then the sorted, unique, non-empty IDs joined by ",", so no ID is lost and the result does not
+// depend on list order.
+func imagesOf(pods []corev1.Pod) map[string]string {
+	ids := map[string]map[string]bool{}
+	for _, p := range pods {
+		for _, c := range p.Status.ContainerStatuses {
+			if ids[c.Image] == nil {
+				ids[c.Image] = map[string]bool{}
+			}
+			if c.ImageID != "" {
+				ids[c.Image][c.ImageID] = true
+			}
+		}
+	}
+	out := make(map[string]string, len(ids))
+	for image, set := range ids {
+		out[image] = strings.Join(slices.Sorted(maps.Keys(set)), ",")
+	}
+	return out
 }
 
 // readClock times a ConfigMap create against the host clock, or returns nil when it cannot.
