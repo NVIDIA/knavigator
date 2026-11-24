@@ -18,6 +18,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -180,7 +181,7 @@ func TestCheckPodParams(t *testing.T) {
 const rackLabel = "cloud.provider.com/topology-rack"
 
 // domainNodes are the nodes of the nodeLabelDomains tests: n1 and n2 share rack1,
-// n3 is in rack2, n4 in rack5, and n5 has no rack label at all.
+// n3 is in rack2, n4 in rack5, and n5 and n6 have no rack label at all.
 func domainNodes() []runtime.Object {
 	node := func(name string, labels map[string]string) *v1.Node {
 		return &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}}
@@ -191,6 +192,7 @@ func domainNodes() []runtime.Object {
 		node("n3", map[string]string{rackLabel: "rack2"}),
 		node("n4", map[string]string{rackLabel: "rack5"}),
 		node("n5", map[string]string{"cloud.provider.com/topology-block": "block1"}),
+		node("n6", nil),
 	}
 }
 
@@ -200,6 +202,20 @@ func domainPod(name, node string, phase v1.PodPhase) *v1.Pod {
 		Spec:       v1.PodSpec{NodeName: node},
 		Status:     v1.PodStatus{Phase: phase},
 	}
+}
+
+// unlabelledPods returns n running pods job-0 to job-<n-1>, the even ones on n6
+// and the odd ones on n5, both nodes without the rack label.
+func unlabelledPods(n int) []*v1.Pod {
+	pods := make([]*v1.Pod, 0, n)
+	for i := 0; i < n; i++ {
+		node := "n6"
+		if i%2 == 1 {
+			node = "n5"
+		}
+		pods = append(pods, domainPod(fmt.Sprintf("job-%d", i), node, v1.PodRunning))
+	}
+	return pods
 }
 
 // newDomainCheck builds a CheckPod task through the engine, as a workflow would,
@@ -326,6 +342,51 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 			},
 			errCheck: "CheckPod/check: pod job-1, status Pending, expected Running",
 			errWatch: "context deadline exceeded",
+		},
+		{
+			// Pods walked in map order would name any of the 16 (job-0 to job-15,
+			// alternating n6 and n5); sorted, job-0 comes first.
+			name:     "the no-label message names the first pod in sorted order",
+			params:   map[string]interface{}{"status": "Running", "nodeLabelDomains": maxRacks(1)},
+			pods:     unlabelledPods(16),
+			errCheck: "CheckPod/check: node 'n6' of pod 'job-0' has no label 'cloud.provider.com/topology-rack'",
+			errWatch: "CheckPod/check: node 'n6' of pod 'job-0' has no label 'cloud.provider.com/topology-rack'",
+		},
+		{
+			name: "nodeLabels and nodeLabelDomains pass together",
+			params: map[string]interface{}{
+				"status":           "Running",
+				"nodeLabels":       map[string]string{rackLabel: "rack1"},
+				"nodeLabelDomains": maxRacks(1),
+			},
+			pods: []*v1.Pod{
+				domainPod("job-0", "n1", v1.PodRunning),
+				domainPod("job-1", "n2", v1.PodRunning),
+			},
+		},
+		{
+			name: "nodeLabels still applies with nodeLabelDomains",
+			params: map[string]interface{}{
+				"status":           "Running",
+				"nodeLabels":       map[string]string{rackLabel: "rack1"},
+				"nodeLabelDomains": maxRacks(2),
+			},
+			pods: []*v1.Pod{
+				domainPod("job-0", "n1", v1.PodRunning),
+				domainPod("job-1", "n3", v1.PodRunning),
+			},
+			errCheck: "CheckPod/check: pod 'job-1' was scheduled on node 'n3' without label 'cloud.provider.com/topology-rack=rack1'",
+			errWatch: "CheckPod/check: pod 'job-1' was scheduled on node 'n3' without label 'cloud.provider.com/topology-rack=rack1'",
+		},
+		{
+			// Without nodeLabelDomains, pods with no node are checked on status
+			// alone, as before the parameter existed.
+			name:   "status Pending without nodeLabelDomains passes pods with no node",
+			params: map[string]interface{}{"status": "Pending"},
+			pods: []*v1.Pod{
+				domainPod("job-0", "", v1.PodPending),
+				domainPod("job-1", "", v1.PodPending),
+			},
 		},
 	}
 
