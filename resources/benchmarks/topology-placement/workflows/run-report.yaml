@@ -1,0 +1,58 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-report
+description: on the emptied cluster, run an unconstrained job and an oversized one, recorded but not checked
+tasks:
+# Nothing here checks where a job lands: -results records every pod's node, and the README says how to
+# read the spread. Both jobs run once the occupier has finished, on an empty cluster as in KAI v0.19.0's
+# scale test, the unconstrained one first.
+- id: occupier-done
+  type: CheckPod
+  params:
+    refTaskId: occupier
+    status: Succeeded
+    timeout: 8m
+- id: unconstrained
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: u-unconstrained
+      replicas: 20
+      gpu: 2
+      ttl: 30s
+- id: unconstrained-done
+  type: CheckPod
+  params:
+    refTaskId: unconstrained
+    status: Succeeded
+    timeout: 2m
+- id: unconstrained-settle
+  type: Sleep
+  params:
+    timeout: 10s
+# KAI's scale test job, 512 pods of 2 GPUs preferring a rack (test/e2e/scale/kwok_test.go:225-232,
+# kwok_workload_scenarios.go:45). Here it is 1024 GPUs, exactly one zone: it fits no rack or block,
+# so a scheduler that honours the preference by falling back a level at a time fills one zone.
+- id: oversized
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: o-oversized
+      replicas: 512
+      gpu: 2
+      ttl: 60s
+      preferred: cloud.provider.com/topology-rack

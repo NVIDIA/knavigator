@@ -1,0 +1,29 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Kueue's Topology. The zone, block and rack levels are KAI's; kubernetes.io/hostname is a fourth level
+# so that a job without a topology annotation, which Kueue places as unconstrained at the lowest level
+# (Kueue v0.20.2 pkg/cache/scheduler/tas_flavor_snapshot.go:1749-1756), is placed host by host and
+# drawn to the occupier's hosts, which have the least room. With rack as the lowest level it would take
+# one empty rack.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: Topology
+metadata:
+  name: "{{.name}}"
+spec:
+  levels:
+  - nodeLabel: cloud.provider.com/topology-zone
+  - nodeLabel: cloud.provider.com/topology-block
+  - nodeLabel: cloud.provider.com/topology-rack
+  - nodeLabel: kubernetes.io/hostname
