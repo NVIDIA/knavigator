@@ -15,10 +15,11 @@
 name: run-window
 description: wait until well inside the delayed pair's window, then the window checks look once
 tasks:
-# 30 seconds after the last second job is created: inside the first half of the 90 s window, the half
-# KAI's test checks (preempt_delay_specs.go:97-103), and long after the control pair preempts (about
-# 2 s on the test bed).
+# 60 seconds after the last second job is created: two thirds into the 90 s window, about 30 s before
+# it ends, so a delay that KAI cut short to under about 61 s goes red here. KAI's test checks only the
+# first half (preempt_delay_specs.go:97-103). The control pair has long since preempted (about 1 s on
+# the test bed) and its first job's replacement appeared (about 10 s).
 - id: window
   type: Sleep
   params:
-    timeout: ${window_sleep:-30s}
+    timeout: ${window_sleep:-60s}
