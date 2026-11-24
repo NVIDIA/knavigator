@@ -24,7 +24,7 @@ usage() {
 }
 
 [ $# -ge 2 ] && [ -n "$2" ] || usage
-# A delayed pair and an undelayed control pair, as in KAI v0.19.0's preemption-delay test.
+# A delayed pair, as in KAI v0.19.0's preemption-delay test, and an undelayed control pair of this benchmark's own.
 case "$1" in
   delay) WORKFLOWS="config-nodes.yaml,config-priorities.yaml,config-kai.yaml,run-first.yaml,run-second.yaml,run-window.yaml,check-window.yaml,run-post-window.yaml,check-post-window.yaml" ;;
   *) usage ;;
