@@ -46,7 +46,6 @@ on:
     # docs-only PRs would wait forever on a check that never runs.
     paths-ignore:
       - "docs/**"
-      - "fern/**"
       - "**.md"
   schedule:
     # Mondays at 07:00 UTC, so new queries shipped with CodeQL bundle updates
