@@ -23,18 +23,13 @@
 #
 # zizmor audits workflows and dependabot.yml for security problems such as
 # template injection, excessive permissions, persisted credentials, and
-# unpinned actions. Its findings go to the code scanning dashboard as SARIF and
-# do not fail the job, because main still has open findings. On 2026-11-20
-# code scanning listed 55 open zizmor alerts:
-#   - go.yml: unpinned-uses (x15), excessive-permissions (x7)
-#   - nightly.yml: unpinned-uses (x12), excessive-permissions (x5),
-#     artipacked (x4)
-#   - docker.yml: unpinned-uses (x2), artipacked, cache-poisoning,
-#     excessive-permissions
-#   - release.yml: unpinned-uses (x3), artipacked
-#   - dependabot.yml: dependabot-cooldown (x3), one per ecosystem
-# Code scanning (filter tool:zizmor) has the current list. Make the job
-# blocking once these are fixed or explicitly ignored.
+# unpinned actions. It runs twice:
+#   - The first run uploads every finding to code scanning as SARIF, including
+#     the ones .github/zizmor.yml ignores, so those deferred findings stay
+#     listed there as open alerts. It never fails on findings, and it comes
+#     first so that a failing job has already uploaded its results.
+#   - The second run applies .github/zizmor.yml and fails the job on any
+#     finding that file does not ignore.
 #
 # Both tools are release binaries pinned by version and by the SHA-256 of the
 # downloaded archive, recorded here rather than read from a checksums file in
@@ -131,20 +126,27 @@ jobs:
           echo "${ZIZMOR_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check -
           tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" zizmor
 
-      - name: Run zizmor
+      - name: Run zizmor for code scanning
         env:
           # Enables the online audits, which resolve action refs through the
           # GitHub API (impostor commits, ref confusion, known-vulnerable
           # actions). The token carries only this job's permissions.
           GH_TOKEN: ${{ github.token }}
-        # --no-exit-codes keeps the job green with findings present; they are
-        # reported through code scanning instead. See the header comment.
+        # --no-ignores also reports what .github/zizmor.yml ignores, and
+        # --no-exit-codes keeps this run from failing on those findings. The
+        # last step is the one that fails the job. See the header comment.
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/zizmor" --format sarif --no-exit-codes . > zizmor.sarif
+          "${RUNNER_TEMP}/zizmor" --format sarif --no-ignores --no-exit-codes . > zizmor.sarif
 
       - name: Upload results to code scanning
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: zizmor.sarif
           category: zizmor
+
+      - name: Fail on findings not ignored in .github/zizmor.yml
+        env:
+          # The same online audits as the code scanning run.
+          GH_TOKEN: ${{ github.token }}
+        run: '"${RUNNER_TEMP}/zizmor" .'
