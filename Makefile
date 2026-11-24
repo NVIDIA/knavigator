@@ -53,9 +53,12 @@ fmt:
 vet:
 	go vet ./...
 
+# Lints the whole tree with .golangci.yml, the same scope as the Lint step of
+# the check job in .github/workflows/go.yml, so a clean local run means a
+# clean CI run.
 .PHONY: lint
 lint:
-	$(LINTER_BIN) run --new-from-rev "HEAD~$(git rev-list master.. --count)" ./...
+	$(LINTER_BIN) run ./...
 
 .PHONY: mod
 mod:
