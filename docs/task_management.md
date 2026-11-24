@@ -93,14 +93,14 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 
 `CheckPod` verifies the pods of a previous `SubmitObj` task, named by `refTaskId`. `status` is the expected pod phase and `nodeLabels` the labels every running pod's node must carry. Without `timeout` the task checks the pods once; with it, the task waits until every pod matches, and fails at the timeout.
 
-`nodeLabelDomains` limits the pods to at most `max` distinct values of the node label `key`, so `max: 1` means all pods run in one domain, such as one rack. It works alone or with `status` and `nodeLabels`. `key` must be set and `max` must be at least 1. When the pods' nodes take more values, the task fails with the count and the values in sorted order:
+`nodeLabelDomains` limits the pods to at most `max` distinct values of the node label `key`, so `max: 1` means all pods run in one domain, such as one rack. It works alone or with `status` and `nodeLabels`. `key` must be set and `max` must be at least 1. When the pods' nodes take more values, the task fails with the count and the values, quoted, in sorted order:
 
 ```text
-CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: [rack1 rack2 rack5]
+CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2" "rack5"]
 ```
 
-- A pod counts once it has a node, whatever its phase, unless `status` also asks for one. Without `timeout`, a pod with no node fails the task (`pod 'job-1' has no node, so nodeLabelDomains cannot place it`); with `timeout`, the task waits for the pod to get a node, and the spread is judged over all the pods once every one is accounted for.
-- A node without the label fails the task (`node 'n5' of pod 'job-1' has no label 'cloud.provider.com/topology-rack'`). It is neither counted as one more value nor skipped.
+- A pod counts once it has a node, whatever its phase, unless `status` also asks for one. Without `timeout`, a pod with no node fails the task (`pod 'job-1' has no node, so nodeLabelDomains cannot place it`); with `timeout`, the task waits for the pod to get a node, and the spread is judged over all the pods once every one is accounted for. The watch judges each pod as it was when first counted and does not forget a pod deleted after that, so evictions and replacements during the watch are not reflected.
+- A node without the label fails the task (`node 'n5' of pod 'job-1' has no label 'cloud.provider.com/topology-rack'`). It is neither counted as one more value nor skipped. A label with an empty value is a value, shown as `""`.
 
 ```yaml
 - id: check

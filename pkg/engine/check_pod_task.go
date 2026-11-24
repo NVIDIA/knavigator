@@ -226,7 +226,7 @@ func (task *CheckPodTask) verifyDomains(ctx context.Context, podNodes map[string
 			values = append(values, val)
 		}
 		sort.Strings(values)
-		return fmt.Errorf("%s: pods on %d distinct values of %s, at most %d allowed: %v", task.ID(), len(domains), d.Key, d.Max, values)
+		return fmt.Errorf("%s: pods on %d distinct values of %s, at most %d allowed: %q", task.ID(), len(domains), d.Key, d.Max, values)
 	}
 
 	log.V(4).Infof("Verified %d pods on %d distinct values of %s", len(pods), len(domains), d.Key)
