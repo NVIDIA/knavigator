@@ -16,7 +16,7 @@ name: run-second
 description: submit the second job of both pairs; only the delayed pair's carries a preemption delay
 tasks:
 # The second job runs for 3 minutes from when its pod starts. The delayed one starts about 90 s after
-# submission, when its window ends, so it is still Running at the post-window check 120 s after
+# submission, when its window ends, so it is still Running at the post-window check 150 s after
 # submission. KAI's window counts from the PodGroup's creationTimestamp, which the podgrouper sets
 # when it first sees the Job's pod (pkg/scheduler/api/podgroup_info/job_info.go:211-221), not from
 # the Job's creation. -var preemption_delay=0s turns the delay off (job_info.go:212-214).
