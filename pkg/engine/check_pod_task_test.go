@@ -181,7 +181,8 @@ func TestCheckPodParams(t *testing.T) {
 const rackLabel = "cloud.provider.com/topology-rack"
 
 // domainNodes are the nodes of the nodeLabelDomains tests: n1 and n2 share rack1,
-// n3 is in rack2, n4 in rack5, and n5 and n6 have no rack label at all.
+// n3 is in rack2, n4 in rack5, n5 and n6 have no rack label at all, and n7
+// carries the rack label with an empty value.
 func domainNodes() []runtime.Object {
 	node := func(name string, labels map[string]string) *v1.Node {
 		return &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}}
@@ -193,6 +194,7 @@ func domainNodes() []runtime.Object {
 		node("n4", map[string]string{rackLabel: "rack5"}),
 		node("n5", map[string]string{"cloud.provider.com/topology-block": "block1"}),
 		node("n6", nil),
+		node("n7", map[string]string{rackLabel: ""}),
 	}
 }
 
@@ -288,8 +290,8 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 				domainPod("job-2", "n1", v1.PodRunning),
 				domainPod("job-3", "n2", v1.PodRunning),
 			},
-			errCheck: "CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 2 allowed: [rack1 rack2 rack5]",
-			errWatch: "CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 2 allowed: [rack1 rack2 rack5]",
+			errCheck: `CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 2 allowed: ["rack1" "rack2" "rack5"]`,
+			errWatch: `CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 2 allowed: ["rack1" "rack2" "rack5"]`,
 		},
 		{
 			name:   "2 racks fail max=1",
@@ -298,8 +300,8 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 				domainPod("job-0", "n3", v1.PodRunning),
 				domainPod("job-1", "n1", v1.PodRunning),
 			},
-			errCheck: "CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: [rack1 rack2]",
-			errWatch: "CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: [rack1 rack2]",
+			errCheck: `CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2"]`,
+			errWatch: `CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2"]`,
 		},
 		{
 			// Ignoring n5 would pass (one rack) and counting it as a value would
@@ -342,6 +344,18 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 			},
 			errCheck: "CheckPod/check: pod job-1, status Pending, expected Running",
 			errWatch: "context deadline exceeded",
+		},
+		{
+			// An empty value is a value: n7 counts, and quoting shows it in the list.
+			name:   "an empty label value counts as a value",
+			params: map[string]interface{}{"status": "Running", "nodeLabelDomains": maxRacks(1)},
+			pods: []*v1.Pod{
+				domainPod("job-0", "n3", v1.PodRunning),
+				domainPod("job-1", "n7", v1.PodRunning),
+				domainPod("job-2", "n1", v1.PodRunning),
+			},
+			errCheck: `CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["" "rack1" "rack2"]`,
+			errWatch: `CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["" "rack1" "rack2"]`,
 		},
 		{
 			// Pods walked in map order would name any of the 16 (job-0 to job-15,
@@ -439,5 +453,5 @@ func TestCheckPodNodeLabelDomainsWatchJudgesAllPods(t *testing.T) {
 	_, err := client.CoreV1().Pods("default").Update(context.Background(), late, metav1.UpdateOptions{})
 	require.NoError(t, err)
 
-	require.EqualError(t, <-done, "CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: [rack1 rack2]")
+	require.EqualError(t, <-done, `CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2"]`)
 }
