@@ -99,7 +99,7 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2" "rack5"]
 ```
 
-- A pod counts once it has a node, whatever its phase, unless `status` also asks for one. Without `timeout`, a pod with no node fails the task (`pod 'job-1' has no node, so nodeLabelDomains cannot place it`); with `timeout`, the task waits for the pod to get a node, and the spread is judged over all the pods once every one is accounted for. The watch judges each pod as it was when first counted and does not forget a pod deleted after that, so evictions and replacements during the watch are not reflected.
+- A pod counts once it has a node, whatever its phase, unless `status` also asks for one. Without `timeout`, a pod with no node fails the task (`pod 'job-1' has no node, so nodeLabelDomains cannot place it`); with `timeout`, the task waits for the pod to get a node, and the spread is judged over all the pods once every one is accounted for. The watch judges each pod as it was when first counted: a pod deleted after it was counted stays counted, and its replacement counts as one more pod, so the watch can finish before every live pod is placed. Check a set of pods that no eviction touches during the watch.
 - A node without the label fails the task (`node 'n5' of pod 'job-1' has no label 'cloud.provider.com/topology-rack'`). It is neither counted as one more value nor skipped. A label with an empty value is a value, shown as `""`.
 
 ```yaml
