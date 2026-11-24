@@ -24,6 +24,13 @@ tasks:
     refTaskId: occupier
     status: Succeeded
     timeout: 8m
+# As between the checked jobs, the sleep lets the scheduler release the finished occupier. Without
+# it, a Kueue run's unconstrained job, submitted as the occupier's last pod finished, went to the
+# occupier's nodes, one pod each, as if the occupier still held them.
+- id: occupier-settle
+  type: Sleep
+  params:
+    timeout: 10s
 - id: unconstrained
   type: SubmitObj
   params:
