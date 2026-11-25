@@ -101,6 +101,8 @@
 */}}
 {{- range $index := until (min $count ($node.upTo | default $count) | int) }}
 {{- $suffix := (printf "%d-%s-%d" $position $node.type $index | sha256sum | trunc 10) }}
+{{- /* Slurm reads a name's trailing digits as a hostlist number; ten digits can drop a node from its partition. */}}
+{{- if regexMatch "^[0-9]+$" $suffix }}{{- $suffix = printf "%sn" $suffix }}{{- end }}
 {{/*
 # Racks are numbered from 1 and hold contiguous nodes; label and annotation values can use {{ .rack }}.
 */}}
