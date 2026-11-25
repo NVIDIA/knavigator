@@ -182,6 +182,80 @@ KAI_VERSION=v0.19.0 ./scripts/schedulers/kai.sh
 
 Every value comes from a `-var` with the value above as its default: `preemption_delay` (`90s`; `0s` turns the delay off, as KAI ignores a delay of zero, `job_info.go:212-214`), `window_sleep` (`60s`), `post_window_sleep` (`90s`), `first_ttl` (`5m`), `second_ttl` (`3m`), `priority_low` (`40`) and `priority_high` (`41`). The checks' expected phases are `window_delayed_second_status` (`Pending`), `window_delayed_first_status` (`Running`), `window_control_second_status` (`Running`), `window_control_first_status` (`Pending`), `post_delayed_second_status` (`Running`) and `post_delayed_first_status` (`Pending`), so a run with a wrong value can show that a check fails.
 
+## Topology Placement Benchmark Test
+
+The topology-placement benchmark checks that a job asking for one topology domain, preferred or required, lands in one when one has room. It runs on 256 virtual nodes of 8 GPUs in 2 zones of 8 blocks of 8 racks of 2 nodes, labelled with the three levels of KAI v0.19.0's scale test, `cloud.provider.com/topology-zone`, `-block` and `-rack` (`test/e2e/scale/kwok_workload_scenarios.go:36-38`), in its shape of 2 zones, 8 blocks per zone and 2 nodes per rack (`:87-102`). KAI's test needs at least 512 nodes (`:40`), so it has more racks per block. [`config-nodes.yaml`](topology-placement/workflows/config-nodes.yaml) derives the labels from the chart's rack number, so racks 1 to 8 form `block1` and racks 1 to 64 `zone1`. Every value is unique in the cluster (`rack1` to `rack128`, `block1` to `block16`), unlike KAI's test, which repeats `rack1` in every block: a check that counts distinct values of one label then counts domains.
+
+Each scheduler gets its own topology objects ([`config-kai.yaml`](topology-placement/workflows/config-kai.yaml), [`config-kueue.yaml`](topology-placement/workflows/config-kueue.yaml)). KAI has a `Topology` with the three levels, and the jobs carry `kai.scheduler/topology` with `kai.scheduler/topology-preferred-placement` or `-required-placement` on the Job (`pkg/podgrouper/podgrouper/plugins/defaultgrouper/default_grouper.go:86-89`). Kueue has a `Topology` with a fourth level, `kubernetes.io/hostname`, a ResourceFlavor whose `topologyName` names it, and one ClusterQueue with that flavor only; the jobs carry `kueue.x-k8s.io/podset-preferred-topology` or `podset-required-topology` on the pod template (`site/content/en/docs/tasks/run/topology_aware_scheduling.md:70-71`). Each job asks for one level only, because Kueue rejects two (`pkg/controller/jobframework/tas_validation.go:43-58`).
+
+On an empty cluster a scheduler blind to topology can put a small job in one rack by chance, so a check there proves nothing. Here an occupier job runs first ([`run-occupier.yaml`](topology-placement/workflows/run-occupier.yaml)): 32 pods of 6 GPUs, pinned by the label `knavigator.nvidia.com/occupier=true` to both nodes of the first rack of every block. Each of those nodes keeps 2 GPUs free. A blind placement takes those nodes first, one 2-GPU pod each, across racks and blocks: KAI bin-packs, filling the nodes with the fewest free GPUs first (`pkg/scheduler/plugins/nodeplacement/pack.go:47-66`), and Kueue places a job without a topology annotation as unconstrained at its Topology's lowest level, the host, taking the hosts with the least free room first (`pkg/cache/scheduler/tas_flavor_snapshot.go:1749-1756`, `:2071-2079`). The run checks that all 32 occupier pods run on labelled nodes before the first checked job, and again right after the last one is placed.
+
+[`run-checked.yaml`](topology-placement/workflows/run-checked.yaml) then runs four jobs of 2-GPU pods, one at a time: each is submitted once the one before has finished, plus 10 seconds, so every job finds the same free room. An empty rack holds 8 of these pods and every block 58, so each job fits one domain at its level. Nothing preempts, so no checked pod is replaced during its check. Each job is checked with CheckPod `nodeLabelDomains` ([task management](../../docs/task_management.md#checkpod)): every pod Running, and on at most one value of the level's label. Knavigator stops at the first check that fails.
+
+| Job | Asks for | Pods x GPUs | KAI v0.19.0 | KAI source | Kueue v0.20.2 | Kueue source |
+|---|---|---|---|---|---|---|
+| `c1-preferred-rack` | preferred rack | 8 x 2 | 1 rack | `docs/topology/README.md:29-34`; `pkg/scheduler/plugins/topology/job_filtering.go:427-470`, `:511-538` | 1 rack | tasks doc `:89-95`; `tas_flavor_snapshot.go:1917-1926` |
+| `c2-required-rack` | required rack | 8 x 2 | 1 rack | `docs/topology/README.md:22-27`; `job_filtering.go:447-461` | 1 rack | tasks doc `:73-77`; `tas_flavor_snapshot.go:1955-1973` |
+| `c3-preferred-block` | preferred block | 20 x 2 | 1 block | as `c1` | 1 block | as `c1` |
+| `c4-required-block` | required block | 20 x 2 | 1 block | as `c2` | 1 block | as `c2` |
+
+KAI's line numbers are KAI v0.19.0 and Kueue's are Kueue v0.20.2; "tasks doc" is Kueue's `site/content/en/docs/tasks/run/topology_aware_scheduling.md`. KAI's background-pods design (`docs/developer/designs/background-pods/examples/topology/README.md:19-20`) says what should happen (line 19) and what KAI does (line 20) when the only rack with room needs a reclaim first: KAI places a preferred-rack job across two racks with free nodes and never reclaims. A one-domain result therefore needs a domain with free room, and this benchmark always leaves one, so no checked job needs a reclaim.
+
+KAI's fix for required levels, `f348ba24`, is in no release. It changes where KAI stops looking for a common domain when all candidate nodes share a domain below the required level (`pkg/scheduler/plugins/topology/common.go:55` at `f348ba24`). Here the allocate action offers a job every node in the cluster (`pkg/scheduler/actions/allocate/allocate.go:88`), which spans both zones, so v0.19.0 places `c2` and `c4` as KAI with the fix would: in one domain at the required level. There is no v0.19.0 finding.
+
+On the test bed, in one run per scheduler, every check passed. Both schedulers put `c1` and `c2` on the two nodes of `rack2`, and `c3` and `c4` in `block1`: KAI over 5 racks, 2 of its pods on the occupier's nodes in `rack1`, and Kueue over 3 empty racks. Each check fails when its job is not asked for topology. With only that job's annotations dropped, one run per job and scheduler:
+
+| Job | KAI, topology dropped | Kueue, topology dropped |
+|---|---|---|
+| `c1-preferred-rack` | 7 racks, 7 blocks, 2 zones | 4 racks, 4 blocks, 1 zone |
+| `c2-required-rack` | 7 racks, 7 blocks, 2 zones | 4 racks, 4 blocks, 1 zone |
+| `c3-preferred-block` | 12 blocks, 2 zones | 10 blocks, 2 zones |
+| `c4-required-block` | 12 blocks, 2 zones | 10 blocks, 2 zones |
+
+Every one of those pods ran on an occupier node, as the setup intends. KAI's `c1` check, for example, failed with:
+
+```text
+CheckPod/c1-one-rack: pods on 7 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack113" "rack17" "rack49" "rack73" "rack89" "rack9"]
+```
+
+[`run-report.yaml`](topology-placement/workflows/run-report.yaml) then waits for the occupier to finish and runs two jobs on the empty cluster, recorded but never checked:
+
+- `u-unconstrained`, 20 x 2 GPUs, without a topology annotation. On KAI it is placed blind. On Kueue it is still placed by TAS: a job without an annotation in a ClusterQueue whose flavors are all TAS flavors gets an implied, unconstrained topology request (`pkg/scheduler/flavorassigner/tas_flavorassigner.go:256-265`), which Kueue's own test expects to scatter pods over the fullest hosts even when they would fit one rack (`pkg/cache/scheduler/tas_cache_test.go:1520`). On an empty cluster every host has the same room, and the ties fall in topology order.
+- `o-oversized`, 512 x 2 GPUs preferring a rack, KAI's scale test job (`test/e2e/scale/kwok_test.go:225-232`, `kwok_workload_scenarios.go:45`). It is 1024 GPUs, exactly one zone: it fits no rack or block, so a scheduler that falls back one level at a time fills one zone.
+
+In one smoke run per scheduler, KAI placed `u-unconstrained` on 5 nodes, 4 pods each, in 5 racks of 5 blocks across both zones, and Kueue on 5 nodes in 3 racks of `block1`. Both placed `o-oversized` on all 128 nodes of `zone1`, 4 pods each.
+
+Their spread is read from the cluster after the run, or from `timeline.csv`'s `node` column with each node's labels. For example, the zone, block and rack of each `u-unconstrained` pod, with a pod count per triple:
+
+```bash
+kubectl get pods -l job-name=u-unconstrained -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' \
+  | xargs -n1 kubectl get node --no-headers -o \
+      'custom-columns=ZONE:.metadata.labels.cloud\.provider\.com/topology-zone,BLOCK:.metadata.labels.cloud\.provider\.com/topology-block,RACK:.metadata.labels.cloud\.provider\.com/topology-rack' \
+  | sort | uniq -c
+```
+
+Every job finishes. A run records 620 GPU pods: 32 occupier, 8 + 8 + 20 + 20 checked, 20 unconstrained and 512 oversized.
+
+slurm-bridge does not apply. The test bed's Slurm topology puts every virtual node under one leaf switch, so zone, block and rack have no Slurm counterpart, and slurm-bridge submits each pod as its own Slurm job, so no Slurm request covers a Kubernetes Job's pods together.
+
+#### Example
+
+The run scripts take the case, `placement`, and a results directory, and pass extra flags through to Knavigator, as the fill-cluster scripts do. Each run needs a fresh cluster with one scheduler: the jobs keep their names after a run, so a second run on the same cluster fails to create them, and a ResourceFlavor's `topologyName` cannot change. KAI must be v0.19.0:
+
+```bash
+KAI_VERSION=v0.19.0 ./scripts/schedulers/kai.sh
+./scripts/benchmarks/topology-placement/run-kai.sh placement ./results-kai-topology
+```
+
+On another fresh cluster, with Kueue:
+
+```bash
+./scripts/schedulers/kueue.sh
+./scripts/benchmarks/topology-placement/run-kueue.sh placement ./results-kueue-topology
+```
+
+Each check's bound comes from a `-var` defaulting to 1: `c1_max`, `c2_max`, `c3_max` and `c4_max`. Each checked job's level comes from a `-var` too: `c1_preferred` and `c2_required` (default `cloud.provider.com/topology-rack`), `c3_preferred` and `c4_required` (default `cloud.provider.com/topology-block`). An empty value, such as `-var c1_preferred=`, drops that job's topology annotations, all three for KAI, so a run can show that a check fails when the scheduler is not asked for topology.
+
 ## Mixed Trace Benchmark Test
 
 The mixed trace benchmarks replay a day of inference and training on 64 virtual GPU nodes with a [`SubmitTrace`](../../docs/task_management.md#submittrace) task. The classes compete for the same GPUs, so a run shows how a scheduler trades inference latency against gang progress. With `-results`, `wait_by_class` reports each class's wait separately.
