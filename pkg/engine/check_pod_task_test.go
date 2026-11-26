@@ -97,6 +97,38 @@ func TestCheckPodParams(t *testing.T) {
 			err: "CheckPod/check: parameter 'nodeLabelDomains.max' must be at least 1, got -1",
 		},
 		{
+			// nodeLabels checks only running pods, and without status a watch
+			// counts a pod bound but still Pending, so the labels would go unchecked.
+			name:       "Case 3e: nodeLabels with nodeLabelDomains needs status",
+			simClients: true,
+			params: map[string]interface{}{
+				"refTaskId":        "step1",
+				"nodeLabels":       map[string]string{rackLabel: "rack1"},
+				"nodeLabelDomains": map[string]interface{}{"key": rackLabel, "max": 1},
+			},
+			err: "CheckPod/check: parameters 'nodeLabels' and 'nodeLabelDomains' together need 'status', such as Running: nodeLabels checks only running pods",
+		},
+		{
+			// The rule is for the pair only: nodeLabels alone without status still
+			// validates, so the task reaches the task reference check.
+			name:       "Case 3f: nodeLabels without status still validates",
+			simClients: true,
+			params: map[string]interface{}{
+				"refTaskId":  "step1",
+				"nodeLabels": map[string]string{rackLabel: "rack1"},
+			},
+			err: "CheckPod/check: unreferenced task ID step1",
+		},
+		{
+			name:       "Case 3g: nodeLabelDomains without status still validates",
+			simClients: true,
+			params: map[string]interface{}{
+				"refTaskId":        "step1",
+				"nodeLabelDomains": map[string]interface{}{"key": rackLabel, "max": 1},
+			},
+			err: "CheckPod/check: unreferenced task ID step1",
+		},
+		{
 			name:       "Case 4: missing task reference",
 			simClients: true,
 			params: map[string]interface{}{
