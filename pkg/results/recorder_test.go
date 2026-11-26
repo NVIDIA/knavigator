@@ -120,19 +120,19 @@ func TestGPUCapacityRacks(t *testing.T) {
 	r, err := Start(context.Background(), client, HarnessOptions{})
 	require.NoError(t, err)
 	r.SetRackLabel("example.com/rack")
-	_, racks, _, _, err := r.gpuCapacity(context.Background())
+	list, err := r.listNodes(context.Background())
 	require.NoError(t, err)
+	_, racks, _, _ := r.gpuCapacity(list)
 	require.Equal(t, map[string]string{"n0": "a"}, racks, "n1 has no label and cpu has no GPUs")
 
 	r.SetRackLabel("")
-	_, racks, _, _, err = r.gpuCapacity(context.Background())
-	require.NoError(t, err)
+	_, racks, _, _ = r.gpuCapacity(list)
 	require.Empty(t, racks)
 
 	client.PrependReactor("list", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("connection refused")
 	})
-	_, _, _, _, err = r.gpuCapacity(context.Background())
+	_, err = r.listNodes(context.Background())
 	require.EqualError(t, err, "failed to list nodes: connection refused")
 }
 

@@ -23,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -60,6 +61,9 @@ type Args struct {
 	leftovers    bool
 	rackLabel    string
 	baseline     string
+	profile      string
+	topologyKeys string
+	imageNS      string
 }
 
 func mainInternal() error {
@@ -86,6 +90,9 @@ func mainInternal() error {
 	flag.StringVar(&args.restartNS, "results.restart-namespaces", "", "comma-separated namespaces whose container restarts fail the run, besides the control-plane pods")
 	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
 	flag.StringVar(&args.rackLabel, "results.rack-label", "", "node label that names each node's rack; fills gpu_fragmentation_rack in the results (requires 'results')")
+	flag.StringVar(&args.profile, "results.profile", "", fmt.Sprintf("scheduler setup the run measures, as a lowercase DNS label; names the run's entry in manifest.json, which reads %q without it (requires 'results')", results.UnknownProfile))
+	flag.StringVar(&args.imageNS, "results.image-namespaces", "", "comma-separated namespaces, such as the scheduler's, whose pods' images manifest.json records, besides the control-plane pods (requires 'results')")
+	flag.StringVar(&args.topologyKeys, "results.topology-labels", "", "comma-separated node label keys of topology levels, such as example.com/block; manifest.json counts the distinct values of each, and of 'results.rack-label', over the GPU nodes (requires 'results')")
 	flag.StringVar(&args.baseline, "aggregate.baseline", "", "glob of -results directories to compare against; adds each metric's difference from them and its 95% interval (requires 'aggregate')")
 
 	log.InitFlags(nil)
@@ -150,13 +157,20 @@ func mainInternal() error {
 			return err
 		}
 		opts := results.HarnessOptions{
-			RestartNamespaces: strings.FieldsFunc(args.restartNS, func(c rune) bool { return c == ',' || c == ' ' }),
+			RestartNamespaces: splitList(args.restartNS),
 			AllowLeftovers:    args.leftovers,
 		}
 		if rec, err = results.Start(ctx, client, opts); err != nil {
 			return err
 		}
 		rec.SetRackLabel(args.rackLabel)
+		rec.SetRunInfo(results.RunInfo{
+			Profile:         args.profile,
+			TopologyLabels:  splitList(args.topologyKeys),
+			ImageNamespaces: splitList(args.imageNS),
+			Workflows:       workflowsOf(workflows),
+			Vars:            args.vars,
+		})
 		if len(args.pushURL) != 0 {
 			if len(args.pushRun) == 0 {
 				args.pushRun = time.Now().UTC().Format("20060102T150405")
@@ -239,6 +253,32 @@ func scaleDuration(m map[string]interface{}, key string, speedup float64) {
 	}
 }
 
+// splitList splits a flag value on commas and spaces, dropping empty items.
+func splitList(s string) []string {
+	return strings.FieldsFunc(s, func(c rune) bool { return c == ',' || c == ' ' })
+}
+
+// workflowsOf lists the workflows in run order for manifest.json, each with the digests of the
+// templates its RegisterObj tasks read. A template that cannot be read is left out, since its task
+// then fails the run before the results are written.
+func workflowsOf(workflows []*config.Workflow) []results.Workflow {
+	out := make([]results.Workflow, 0, len(workflows))
+	for _, w := range workflows {
+		templates := map[string]string{}
+		for _, t := range w.Tasks {
+			path, ok := t.Params["template"].(string)
+			if t.Type != engine.TaskRegisterObj || !ok {
+				continue
+			}
+			if data, err := os.ReadFile(path); err == nil {
+				templates[path] = config.Digest(data)
+			}
+		}
+		out = append(out, results.Workflow{Path: w.Path, Digest: w.Digest, Templates: templates})
+	}
+	return out
+}
+
 // submittedJobs lists one job per submitted object that declares a pod name format.
 func submittedJobs(eng *engine.Eng) []results.Job {
 	var jobs []results.Job
@@ -319,8 +359,10 @@ func validate(args *Args) error {
 		return fmt.Errorf("'var' requires 'workflow'")
 	}
 
-	if args.speedup < 1 {
-		return fmt.Errorf("'speedup' must be at least 1")
+	// Written as a negation so that NaN, which compares false with everything, is rejected too.
+	// +Inf is rejected because results.json and manifest.json cannot encode it.
+	if !(args.speedup >= 1) || math.IsInf(args.speedup, 1) {
+		return fmt.Errorf("'speedup' must be a finite number, at least 1")
 	}
 
 	if args.speedup > 1 && len(args.workflow) == 0 {
@@ -341,6 +383,39 @@ func validate(args *Args) error {
 		}
 		if errs := validation.IsQualifiedName(args.rackLabel); len(errs) != 0 {
 			return fmt.Errorf("'results.rack-label' must be a label key such as example.com/rack: %s", errs[0])
+		}
+	}
+
+	// A lowercase DNS label, as the Suite's profile names are, so that one setup is never filed
+	// under two names that differ only in case.
+	if len(args.profile) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.profile' requires 'results'")
+		}
+		if errs := validation.IsDNS1123Label(args.profile); len(errs) != 0 {
+			return fmt.Errorf("'results.profile' must be a lowercase DNS label: %s", errs[0])
+		}
+	}
+
+	if len(args.topologyKeys) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.topology-labels' requires 'results'")
+		}
+		for _, key := range splitList(args.topologyKeys) {
+			if errs := validation.IsQualifiedName(key); len(errs) != 0 {
+				return fmt.Errorf("'results.topology-labels' must list label keys such as example.com/block: %q: %s", key, errs[0])
+			}
+		}
+	}
+
+	if len(args.imageNS) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.image-namespaces' requires 'results'")
+		}
+		for _, ns := range splitList(args.imageNS) {
+			if errs := validation.IsDNS1123Label(ns); len(errs) != 0 {
+				return fmt.Errorf("'results.image-namespaces' must list namespace names: %q: %s", ns, errs[0])
+			}
 		}
 	}
 

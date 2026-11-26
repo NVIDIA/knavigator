@@ -25,6 +25,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -227,8 +228,9 @@ func TestAllowLeftoversSubtractsTheirGPUs(t *testing.T) {
 	rec, err := Start(context.Background(), leftoverCluster(), HarnessOptions{AllowLeftovers: true})
 	require.NoError(t, err)
 	// The biggest node is a node size for the size-bias metrics, not free capacity.
-	_, _, _, maxNode, err := rec.gpuCapacity(context.Background())
+	list, err := rec.listNodes(context.Background())
 	require.NoError(t, err)
+	_, _, _, maxNode := rec.gpuCapacity(list)
 	require.Equal(t, 8.0, maxNode)
 
 	dir := t.TempDir()
@@ -413,8 +415,9 @@ func TestAllowLeftoversHoldGPUsOnTheirNode(t *testing.T) {
 			}
 			rec, err := Start(context.Background(), twoNodeCluster(pods...), tc.opts)
 			require.NoError(t, err)
-			nodes, _, capacity, maxNode, err := rec.gpuCapacity(context.Background())
+			list, err := rec.listNodes(context.Background())
 			require.NoError(t, err)
+			nodes, _, capacity, maxNode := rec.gpuCapacity(list)
 			require.Equal(t, tc.nodes, nodes)
 			require.Equal(t, tc.capacity, capacity)
 			require.Equal(t, 8.0, maxNode, "the biggest node's size, whatever pods hold on it")
@@ -594,7 +597,7 @@ func TestFinishFailsOnRestart(t *testing.T) {
 		"kube-system/kube-scheduler-n1/kube-scheduler (0 to 1), "+
 		"kueue-system/kueue-controller-manager-a1/manager (1 to 2)")
 	// The files are written before the run fails.
-	for _, f := range []string{"results.json", "timeline.csv", "events.csv"} {
+	for _, f := range []string{"results.json", "timeline.csv", "events.csv", "manifest.json"} {
 		require.FileExists(t, filepath.Join(dir, f))
 	}
 	var restarts []Restart
@@ -624,7 +627,7 @@ func TestFinishReportsRestartAndFailedPods(t *testing.T) {
 	// Neither error hides the other.
 	require.EqualError(t, err, "containers restarted during the run: kube-system/kube-scheduler-n1/kube-scheduler (0 to 1)\n"+
 		"1 pods failed")
-	for _, f := range []string{"results.json", "timeline.csv", "events.csv"} {
+	for _, f := range []string{"results.json", "timeline.csv", "events.csv", "manifest.json"} {
 		require.FileExists(t, filepath.Join(dir, f))
 	}
 }
@@ -1236,4 +1239,61 @@ func TestFinishFailsWhenTheClockMoves(t *testing.T) {
 	require.Error(t, err)
 	require.Regexp(t, `^the API server clock moved by \+(999|1000)\.\ds during the run, so its times are not on one clock$`, err.Error())
 	require.Equal(t, 1, readSummary(t, dir).Pods, "the files are written first")
+}
+
+// imagePod is a pod with one container status per image/ID pair, and one init container status.
+func imagePod(namespace, name string, labels map[string]string, images ...[2]string) *corev1.Pod {
+	p := containerPod(namespace, name, "c", 0, labels)
+	p.Status.ContainerStatuses = nil
+	for i, im := range images {
+		p.Status.ContainerStatuses = append(p.Status.ContainerStatuses,
+			corev1.ContainerStatus{Name: fmt.Sprintf("c%d", i), Image: im[0], ImageID: im[1]})
+	}
+	p.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "init", Image: "init:1", ImageID: "sha256:init"}}
+	return p
+}
+
+func TestImagesOf(t *testing.T) {
+	pods := []corev1.Pod{
+		*imagePod("ns", "a", nil, [2]string{"app:1", "sha256:bb"}, [2]string{"side:1", "sha256:ss"}),
+		// The same image reference under two IDs, such as a tag that moved, lists both, sorted.
+		*imagePod("ns", "b", nil, [2]string{"app:1", "sha256:aa"}),
+		*imagePod("ns", "c", nil, [2]string{"app:1", "sha256:bb"}),
+		// An empty ID, as for an image not pulled yet, adds no ID and does not hide the others.
+		*imagePod("ns", "d", nil, [2]string{"app:1", ""}, [2]string{"pending:1", ""}),
+	}
+	require.Equal(t, map[string]string{
+		"app:1":     "sha256:aa,sha256:bb",
+		"side:1":    "sha256:ss",
+		"pending:1": "",
+	}, imagesOf(pods), "init containers are left out")
+	require.Equal(t, map[string]string{}, imagesOf(nil))
+	slices.Reverse(pods)
+	require.Equal(t, "sha256:aa,sha256:bb", imagesOf(pods)["app:1"])
+}
+
+// manifest.json lists the images of the control-plane pods and of the pods in
+// RunInfo.ImageNamespaces, and of no pod in another namespace, whatever the restart check watches.
+func TestManifestImagesCoverImageNamespaces(t *testing.T) {
+	fastPoll(t)
+	client := fake.NewSimpleClientset(
+		imagePod("kube-system", "kube-scheduler-n1", controlPlane(), [2]string{"scheduler:1", "sha256:11"}),
+		imagePod("kube-system", "kube-proxy-x1", nil, [2]string{"proxy:1", "sha256:22"}),
+		imagePod("kueue-system", "manager", nil, [2]string{"kueue:1", "sha256:33"}),
+		imagePod("other", "app-0", nil, [2]string{"app:1", "sha256:44"}),
+		imagePod("restarts", "agent", nil, [2]string{"agent:1", "sha256:55"}),
+	)
+	rec, err := Start(context.Background(), client, HarnessOptions{RestartNamespaces: []string{"restarts"}})
+	require.NoError(t, err)
+	rec.SetRunInfo(RunInfo{ImageNamespaces: []string{"kueue-system"}})
+	// The scheduler restarts in place, as in a recovery test; outside the restart check, that does
+	// not fail the run.
+	setRestarts(t, client, "kueue-system", "manager", 1)
+
+	dir := t.TempDir()
+	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))
+
+	var m manifest
+	readJSON(t, filepath.Join(dir, "manifest.json"), &m)
+	require.Equal(t, map[string]string{"scheduler:1": "sha256:11", "kueue:1": "sha256:33"}, m.Profiles[UnknownProfile].Images)
 }

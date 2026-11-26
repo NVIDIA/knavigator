@@ -20,8 +20,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -130,4 +132,76 @@ func TestAggregateBaseline(t *testing.T) {
 	require.EqualError(t, aggregate(&out, filepath.Join(root, "*"), b), filepath.Join(root, "b-1")+" is both a run and a baseline run")
 	require.NoError(t, os.Remove(filepath.Join(root, "b-2", "results.json")))
 	require.ErrorIs(t, aggregate(&out, a, b), os.ErrNotExist)
+}
+
+func TestValidateProfile(t *testing.T) {
+	args := func(profile, results string) *Args {
+		return &Args{workflow: "w.yml", speedup: 1, results: results, profile: profile}
+	}
+	require.NoError(t, validate(args("", "")))
+	require.NoError(t, validate(args("kueue", "out")))
+	require.NoError(t, validate(args("slurm-bridge", "out")))
+	require.EqualError(t, validate(args("kueue", "")), "'results.profile' requires 'results'")
+	for _, bad := range []string{"Kueue", "kueue v0.20", strings.Repeat("a", 64)} {
+		require.ErrorContains(t, validate(args(bad, "out")), "'results.profile' must be a lowercase DNS label", bad)
+	}
+}
+
+func TestValidateTopologyLabels(t *testing.T) {
+	args := func(keys, results string) *Args {
+		return &Args{workflow: "w.yml", speedup: 1, results: results, topologyKeys: keys}
+	}
+	require.NoError(t, validate(args("example.com/block, example.com/zone,rack", "out")))
+	require.EqualError(t, validate(args("example.com/block", "")), "'results.topology-labels' requires 'results'")
+	require.ErrorContains(t, validate(args("example.com/block,example.com/a=b,-bad", "out")),
+		`'results.topology-labels' must list label keys such as example.com/block: "example.com/a=b"`)
+}
+
+func TestValidateImageNamespaces(t *testing.T) {
+	args := func(namespaces, results string) *Args {
+		return &Args{workflow: "w.yml", speedup: 1, results: results, imageNS: namespaces}
+	}
+	require.NoError(t, validate(args("kueue-system, kai-scheduler", "out")))
+	require.EqualError(t, validate(args("kueue-system", "")), "'results.image-namespaces' requires 'results'")
+	require.ErrorContains(t, validate(args("kueue-system,Kueue", "out")),
+		`'results.image-namespaces' must list namespace names: "Kueue"`)
+}
+
+// The manifest lists the workflows in run order, a repeated one again, each with the digest of
+// every template its RegisterObj tasks read, so a changed template changes the manifest.
+func TestWorkflowsOf(t *testing.T) {
+	dir := t.TempDir()
+	tpl := filepath.Join(dir, "job.yaml")
+	write := func(path, text string) { require.NoError(t, os.WriteFile(path, []byte(text), 0o644)) }
+	write(tpl, "kind: Job\n")
+	a, b := filepath.Join(dir, "a.yaml"), filepath.Join(dir, "b.yaml")
+	write(a, "name: a\ntasks:\n  - id: job\n    type: RegisterObj\n    params:\n      template: "+tpl+
+		"\n  - id: missing\n    type: RegisterObj\n    params:\n      template: "+filepath.Join(dir, "missing.yaml")+
+		"\n  - id: wait\n    type: Sleep\n    params:\n      template: "+tpl+"\n")
+	write(b, "name: b\ntasks:\n  - id: wait\n    type: Sleep\n")
+	load := func(paths string) []results.Workflow {
+		workflows, err := config.NewFromPaths(paths, nil)
+		require.NoError(t, err)
+		return workflowsOf(workflows)
+	}
+
+	got := load(a + "," + b + "," + a)
+	require.Len(t, got, 3)
+	require.Equal(t, []string{a, b, a}, []string{got[0].Path, got[1].Path, got[2].Path})
+	require.Equal(t, map[string]string{tpl: config.Digest([]byte("kind: Job\n"))}, got[0].Templates,
+		"only RegisterObj templates, and not one that cannot be read")
+	require.Equal(t, map[string]string{}, got[1].Templates)
+	require.NotEqual(t, load(a+","+b), load(b+","+a))
+
+	write(tpl, "kind: JobSet\n")
+	require.NotEqual(t, got[0].Templates, load(a)[0].Templates)
+	require.Equal(t, got[0].Digest, load(a)[0].Digest, "the workflow text did not change")
+	require.Empty(t, workflowsOf(nil))
+}
+
+func TestValidateSpeedup(t *testing.T) {
+	require.NoError(t, validate(&Args{workflow: "w.yml", speedup: 1}))
+	for _, bad := range []float64{0.5, math.NaN(), math.Inf(1)} {
+		require.EqualError(t, validate(&Args{workflow: "w.yml", speedup: bad}), "'speedup' must be a finite number, at least 1")
+	}
 }
