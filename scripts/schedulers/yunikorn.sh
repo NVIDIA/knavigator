@@ -20,7 +20,7 @@ set -e
 REPO_HOME=$(readlink -f "$(dirname "$(readlink -f "$0")")/../..")
 source "$REPO_HOME/scripts/env.sh"
 
-YUNIKORN_VERSION=v1.6.2
+YUNIKORN_VERSION=1.6.3
 printGreen Deploying yunikorn $YUNIKORN_VERSION
 
 helm repo add --force-update yunikorn https://apache.github.io/yunikorn-release
