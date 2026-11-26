@@ -1,0 +1,69 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copied from the Scheduling Capabilities Suite at e5968b1
+# (https://github.com/ArangoGutierrez/scheduler-capabilities-suite/tree/e5968b1/claims).
+# Documented claims for slurm-bridge v1.2.3. Slurm text is quoted
+# from SchedMD/slurm at tag slurm-26-05-4-1 (commit 85014568d413), the Slurm in
+# the pinned slurmctld image; slurm-bridge text from SlinkyProject/slurm-bridge
+# at tag v1.2.3 (commit 6fe3f57b20af). HTML and man-page markup is removed.
+# Read and checked on 2026-10-14. mechanism is how the Suite's probe
+# exercised the capability. expected is the verdict the documentation implies
+# under the rules in pkg/verdict, for that probe's configuration.
+#
+# Four caveats hold for every claim. Slurm sees nodes, not GPUs: every job
+# drops its GPU request (annotation slurmjob.slinky.slurm.net/gres ""), and
+# each probe pod takes a whole exclusive 8-GPU node, so node placement equals
+# GPU placement here and nothing else. Preemption reaches Kubernetes as a
+# plain pod deletion by slurm-bridge, with no DisruptionTarget condition.
+# Topology is Slurm's default switch-aware placement, since slurm-bridge
+# v1.2.3 cannot ask Slurm for one switch. And slurm-bridge v1.2.3 submits a
+# job to Slurm only for nodes Kubernetes' own filters already accept
+# (PostFilter, internal/scheduler/plugins/slurmbridge/slurmbridge.go:403-439),
+# so a pod Kubernetes sees no room for never reaches Slurm. That last caveat
+# comes from the code; the v1.2.3 documentation does not describe it, so no
+# expected outcome below reflects it.
+scheduler: slurm-bridge
+version: slurm-bridge v1.2.3 and slurm-operator v1.2.3 with Slurm 26.05.4 on Kubernetes v1.37.0
+claims:
+  gang:
+    claim: 'Slurm-bridge turns each group of Kubernetes Pods into one Slurm external job'
+    citation: https://github.com/SlinkyProject/slurm-bridge/blob/v1.2.3/docs/workload.md#L183
+    expected: supported
+    mechanism: one scheduler-plugins PodGroup (scheduling.x-k8s.io/v1alpha1, minMember equal to the gang's pods, named pg-<namespace>-<job>) per gang, the Job's pods labelled scheduling.x-k8s.io/pod-group; the group is one Slurm external job asking for that many whole nodes, which slurmctld allocates at once; the built-in PodGroup is not usable, because slurm-bridge v1.2.3 reads scheduling.k8s.io/v1alpha2, which Kubernetes v1.37.0 does not serve; no coscheduling controller runs, and Kubernetes binds the pods one scheduling cycle at a time after Slurm has allocated
+  priority:
+    claim: 'jobs are evaluated in a strict priority order and once any job or job array task in a partition is left pending, no other jobs in that partition will be scheduled to avoid taking resources from the higher-priority pending job.'
+    citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/html/sched_config.shtml#L16
+    expected: supported
+    mechanism: annotation slurmjob.slinky.slurm.net/priority on the Job, 1000 for high and 100 for low (the PriorityClass values, scs-high and scs-low, which also order slurm-bridge's own pod queue); every job without Preempting stays in partition slurm-bridge, so the high job cannot preempt the fillers
+  preemption:
+    claim: 'preempt/partition_prio: Job preemption is based upon partition PriorityTier. Jobs in higher PriorityTier partitions may preempt jobs from lower PriorityTier partitions.'
+    citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/html/preempt.shtml#L179
+    expected: supported
+    mechanism: PreemptType preempt/partition_prio with PreemptMode CANCEL; a Preempting job goes to partition slurm-bridge-preempt (PriorityTier 2) over the same nodes as slurm-bridge (Slurm's default PriorityTier, 1); the victim gang is one Slurm job, so cancelling it ends every pod; slurm-bridge deletes the pods of a job that stopped running, a plain delete with no DisruptionTarget condition, and a kwok Stage moves each deleted pod to Failed; slurm-bridge notices within its 30 s pod resync, which the probe's 5 s grace counts as much as Slurm
+  fair-share:
+    claim: 'Computing the fair-share factor requires the installation and operation of the Slurm Accounting Database to provide the assigned shares and the consumed, computing resources described below.'
+    citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/html/priority_multifactor.shtml#L253
+    expected: not_supported
+    mechanism: two causes, either enough. The profile installs no accounting database (the slurm chart's default, AccountingStorageType accounting_storage/none), so Slurm computes no fair-share factor. And every job carries an explicit priority (annotation slurmjob.slinky.slurm.net/priority, 100 for every job of this probe), which makes slurmctld set direct_set_prio (src/slurmctld/job_mgr.c lines 7682-7690) and priority/multifactor return that priority with every factor skipped (src/plugins/priority/multifactor/priority_multifactor.c lines 560-568), so accounting alone would not bring fair share either. Tenants are namespaces with no Slurm account; pending jobs run in submission order and tenant A's queued jobs run before B's
+  backfill:
+    claim: 'Backfill scheduling will initiate lower-priority jobs if doing so does not delay the expected initiation time of any higher priority job. Effectiveness of backfill scheduling is dependent upon users specifying job time limits, otherwise all jobs will have the same time limit and backfilling is impossible.'
+    citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/man/man5/slurm.conf.5#L4976
+    expected: not_supported
+    mechanism: sched/backfill, Slurm's default, at its default bf_interval (30 s) and bf_resolution (60 s); time limits are annotation slurmjob.slinky.slurm.net/timelimit in whole minutes, the run time rounded up plus one, so the 60 s blockers and the 25 s short jobs both carry 2 minutes. Derivation - Slurm expects each job to run to its limit, so the blockers, started before the gang arrives, are expected to end 2 minutes after they started, and the big gang (one Slurm job for 4 nodes, queued before the short jobs) is planned to start then on all 4 nodes; a short job started on the free node would be expected to end 2 minutes after it starts, later than that, so backfill does not start it (the documented rule above), and the main scheduler holds every later job of the partition behind the pending gang (sched_config.shtml line 16); no short job runs before the gang, which the rule reads as not_supported. The probe's seconds-long jobs sit below Slurm's whole-minute limits, so this measures the time scale as much as the backfill algorithm; if the gang's Slurm job were queued after a short job's, that short job would start first in plain priority order, not by backfill
+  topology:
+    claim: 'The basic algorithm is to identify the lowest level switch in the hierarchy that can satisfy a job''s request and then allocate resources on its underlying leaf switches using a best-fit algorithm.'
+    citation: https://github.com/SchedMD/slurm/blob/slurm-26-05-4-1/doc/html/topology.shtml#L38
+    expected: supported
+    mechanism: topology.yaml tree topo-switch with leaf switch s1 for rack-a (n1, n2) and s2 for rack-b (n3, n4), given per node through annotation topology.slinky.slurm.net/spec; a gang is one Slurm job; no one-rack constraint is sent, because slurm-bridge v1.2.3 sets no --switches, so the verdict is Slurm's default best-fit and the probe's same-rack request has no effect; slurm-bridge's scheduler runs no NodeAffinity filter, so the filler's node pin is ignored and Slurm picks its node, which still leaves one rack with two free nodes
