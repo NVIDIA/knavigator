@@ -1,6 +1,6 @@
 # Task Management
 
-Tasks are defined in a YAML format or received via HTTP/gRPC protocols. The Task Manager parses these tasks and executes them using the Kubernetes API. Supported tasks include:
+Tasks are defined in a YAML format, in workflow files or in HTTP requests to the Knavigator server. The Task Manager parses these tasks and executes them using the Kubernetes API. Supported tasks include:
 
 - Create/configure/modify virtual nodes
 - Create/modify/delete custom resource objects

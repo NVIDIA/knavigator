@@ -31,7 +31,7 @@ To facilitate large-scale experiments without the overhead of running actual use
 
 ### Workflow
 
-Knavigator offers versatile configuration options, allowing it to function independently, serve as an HTTP/gRPC server, or seamlessly integrate as a package or library within other systems.
+Knavigator runs as a command that executes workflow files, as an HTTP server that accepts workflows, or as Go packages inside other programs. `knavigator -port <port>` starts the server: it takes a workflow in YAML as the body of a `POST /workflow` request, runs its tasks, and replies `200 OK` when they all succeed, or with an error status and message when one fails. `klient -address <url> -workflow <files>` sends workflow files to a running server.
 
 In its standalone mode, Knavigator can be set up using a descriptive YAML file, where users specify the sequence of tasks to be executed. This mode is ideal for isolated testing scenarios where Knavigator operates independently.
 
@@ -47,3 +47,23 @@ Regardless of the configuration mode, Knavigator executes tasks sequentially. Ea
 - [Metrics and Dashboards](docs/metrics.md)
 - [Benchmarking](resources/benchmarks/README.md)
 - [Changelog](CHANGELOG.md)
+
+## Install
+
+Knavigator builds from source with Go, at the version `go.mod` names. In a clone of this repository, run:
+
+```shell
+make build
+```
+
+This builds `knavigator`, `klient` and `node-resource-exporter` into `bin/`. `make image-build` also builds a container image that holds those binaries and the workflows under `resources/`.
+
+Two Helm charts under [`charts/`](charts) install the parts that run in the cluster: `virtual-nodes` creates KWOK virtual nodes, and `node-resource-exporter` deploys the exporter that publishes each node's resource requests, limits and occupancy as Prometheus metrics.
+
+[Deployment](docs/deployment.md) covers Prometheus, KWOK, the virtual nodes, and running Knavigator outside or inside the cluster. [Getting started](docs/getting_started.md) links the workflows tested with each scheduler.
+
+## Support
+
+- Bugs, feature requests and questions: [open an issue](https://github.com/NVIDIA/knavigator/issues).
+- Security vulnerabilities: do not open an issue; report them as [SECURITY.md](SECURITY.md) describes.
+- Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
