@@ -110,6 +110,11 @@ func (task *CheckPodTask) validate(params map[string]interface{}) error {
 		if d.Max < 1 {
 			return fmt.Errorf("%s: parameter 'nodeLabelDomains.max' must be at least 1, got %d", task.ID(), d.Max)
 		}
+		// Without status, nodeLabelDomains counts a pod that is bound but not yet
+		// running, and nodeLabels skips such a pod, so its labels would go unchecked.
+		if len(task.Status) == 0 && len(task.NodeLabels) != 0 {
+			return fmt.Errorf("%s: parameters 'nodeLabels' and 'nodeLabelDomains' together need 'status', such as Running: nodeLabels checks only running pods", task.ID())
+		}
 	}
 
 	return nil
