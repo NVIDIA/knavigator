@@ -93,7 +93,7 @@ To replay a recorded trace, set `file` to a CSV file instead of `classes`. The h
 
 `CheckPod` verifies the pods of a previous `SubmitObj` task, named by `refTaskId`. `status` is the expected pod phase and `nodeLabels` the labels every running pod's node must carry. Without `timeout` the task checks the pods once; with it, the task waits until every pod matches, and fails at the timeout.
 
-`nodeLabelDomains` limits the pods to at most `max` distinct values of the node label `key`, so `max: 1` means all pods run in one domain, such as one rack. It works alone or with `status` and `nodeLabels`. `key` must be set and `max` must be at least 1. When the pods' nodes take more values, the task fails with the count and the values, quoted, in sorted order:
+`nodeLabelDomains` limits the pods to at most `max` distinct values of the node label `key`, so `max: 1` means all pods run in one domain, such as one rack. It works alone or with `status` and `nodeLabels`; with `nodeLabels` it also needs `status`, such as `Running`, since `nodeLabels` checks only running pods and a pod counts for `nodeLabelDomains` as soon as it is bound. `key` must be set and `max` must be at least 1. When the pods' nodes take more values, the task fails with the count and the values, quoted, in sorted order:
 
 ```text
 CheckPod/check: pods on 3 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2" "rack5"]
