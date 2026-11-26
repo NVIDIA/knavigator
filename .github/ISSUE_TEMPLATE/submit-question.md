@@ -1,8 +1,8 @@
 ---
-name: Submit question
+name: Question
 about: Ask a general question about knavigator
-title: "[QST]"
-labels: "? - Needs Triage, question"
+title: "[QST]: "
+labels: question
 assignees: ''
 
 ---
@@ -11,4 +11,4 @@ assignees: ''
 
 
 -----
-By submitting this issue, you agree to follow our [code of conduct](https://docs.rapids.ai/resources/conduct/) and our [contributing guidelines](https://github.com/jarmak-nv/rapids-repo-template/blob/main/CONTRIBUTING.md).
+By submitting this issue, you agree to follow our [code of conduct](https://github.com/NVIDIA/knavigator/blob/main/CODE_OF_CONDUCT.md) and our [contributing guidelines](https://github.com/NVIDIA/knavigator/blob/main/CONTRIBUTING.md).
