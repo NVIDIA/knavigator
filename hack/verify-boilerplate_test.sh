@@ -73,10 +73,10 @@ go_header() {
 EOF
 }
 
-# new_repo NAME creates an empty git repository under $work and prints its path.
+# new_repo creates an empty git repository under $work and prints its path.
 new_repo() {
-	local dir="$work/$1"
-	mkdir -p "$dir"
+	local dir
+	dir=$(mktemp -d "$work/repo.XXXXXX")
 	git -C "$dir" init -q
 	echo "$dir"
 }
@@ -115,9 +115,20 @@ expect() {
 	echo "$got_out" | indent
 }
 
+# bad NAME PATH STYLE CONTENT expects a repository holding only PATH, with
+# CONTENT, to fail against the STYLE template. CONTENT is an argument, not
+# stdin, so expect runs in this shell and its failure count is kept.
+bad() {
+	local dir
+	dir=$(new_repo)
+	printf '%s\n' "$4" | put "$dir" "$2"
+	expect "$1" 1 "$2: header differs from the $3 template
+$(fail_summary 1 1 0)" "$dir"
+}
+
 # Canonical headers pass, including after a shebang, with a single year and
 # with a year range. Excluded files need no header and are counted apart.
-dir=$(new_repo pass)
+dir=$(new_repo)
 { go_header 2024; echo; echo 'package main'; } | put "$dir" cmd/main.go
 { echo '#!/usr/bin/env bash'; hash_header 2024-2026; echo 'echo hi'; } | put "$dir" run.sh
 { hash_header 2026; echo 'key: value'; } | put "$dir" config.yaml
@@ -126,72 +137,37 @@ echo '# Title' | put "$dir" README.md
 echo 'kind: {{ .Values.kind }}' | put "$dir" charts/demo/templates/deployment.yaml
 expect "canonical headers pass" 0 "OK: 4 files checked, 2 excluded." "$dir"
 
-# A covered file without the header fails.
-dir=$(new_repo missing)
-echo 'key: value' | put "$dir" config.yaml
-expect "missing header fails" 1 "config.yaml: missing SPDX header
-$(fail_summary 1 1 0)" "$dir"
-
-# A Go file without the block header fails.
-dir=$(new_repo go-missing)
-printf 'package main\n' | put "$dir" main.go
-expect "Go file without header fails" 1 "main.go: missing SPDX header
-$(fail_summary 1 1 0)" "$dir"
+# Files without the header fail.
+bad "missing header fails" config.yaml '#' 'key: value'
+bad "Go file without header fails" main.go Go 'package main'
 
 # The header must start on the first line, or right after the shebang.
-dir=$(new_repo misplaced)
+dir=$(new_repo)
 { echo '#!/bin/bash'; echo; hash_header 2024; } | put "$dir" run.sh
 { echo; hash_header 2024; } | put "$dir" job.yml
 { echo; go_header 2024; } | put "$dir" main.go
-expect "header after a blank line fails" 1 "job.yml: SPDX-FileCopyrightText on line 2, want line 1
-main.go: SPDX-FileCopyrightText on line 3, want line 2
-run.sh: SPDX-FileCopyrightText on line 3, want line 2
+expect "header after a blank line fails" 1 "job.yml: header differs from the # template
+main.go: header differs from the Go template
+run.sh: header differs from the # template
 $(fail_summary 3 3 0)" "$dir"
 
 # Year forms other than YYYY and YYYY-YYYY fail.
 for year in '2024, 2026' '2024 - 2026' '24' '2026-' '(2026)'; do
-	dir=$(new_repo "year-$RANDOM")
-	{ hash_header "$year"; echo 'key: value'; } | put "$dir" config.yaml
-	expect "year form \"$year\" fails" 1 "config.yaml: copyright year \"$year\" is not YYYY or YYYY-YYYY
-$(fail_summary 1 1 0)" "$dir"
+	bad "year form \"$year\" fails" config.yaml '#' "$(hash_header "$year")"
 done
 
-# The Apache URL must be indented by four spaces, as in the Apache notice.
-dir=$(new_repo url-hash)
-{ hash_header 2026 | sed 's|^#     http|# http|'; echo 'key: value'; } | put "$dir" config.yaml
-expect "unindented URL fails (#)" 1 'config.yaml:8: want "#     http://www.apache.org/licenses/LICENSE-2.0", got "# http://www.apache.org/licenses/LICENSE-2.0"
-'"$(fail_summary 1 1 0)" "$dir"
-
-dir=$(new_repo url-go)
-{ go_header 2026 | sed 's|^ \*     http| * http|'; echo 'package main'; } | put "$dir" main.go
-expect "unindented URL fails (Go)" 1 'main.go:9: want " *     http://www.apache.org/licenses/LICENSE-2.0", got " * http://www.apache.org/licenses/LICENSE-2.0"
-'"$(fail_summary 1 1 0)" "$dir"
-
-# The copyright line must name the copyright holder exactly.
-dir=$(new_repo holder)
-{ hash_header 2026 | sed '1s|NVIDIA CORPORATION & AFFILIATES|NVIDIA Corporation|'; echo 'key: value'; } | put "$dir" config.yaml
-expect "wrong copyright holder fails" 1 'config.yaml:1: want "# SPDX-FileCopyrightText: Copyright (c) YYYY NVIDIA CORPORATION & AFFILIATES. All rights reserved.", got "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA Corporation. All rights reserved."
-'"$(fail_summary 1 1 0)" "$dir"
-
-# Go files use the block form: "/*" first, " * " on every header line and " */"
-# last. The "#" form, "/**" and a missing " */" each fail.
-dir=$(new_repo go-hash-prefix)
-{ go_header 2026 | sed '2s|^ \* |# |'; echo 'package main'; } | put "$dir" main.go
-expect "Go header with a \"#\" copyright line fails" 1 'main.go:2: want " * SPDX-FileCopyrightText: Copyright (c) YYYY NVIDIA CORPORATION & AFFILIATES. All rights reserved.", got "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
-'"$(fail_summary 1 1 0)" "$dir"
-
-dir=$(new_repo go-opener)
-{ go_header 2026 | sed '1s|^/\*$|/**|'; echo 'package main'; } | put "$dir" main.go
-expect "Go header opened with /** fails" 1 'main.go:1: want "/*", got "/**"
-'"$(fail_summary 1 1 0)" "$dir"
-
-dir=$(new_repo go-closer)
-{ go_header 2026 | sed '$d'; echo 'package main'; } | put "$dir" main.go
-expect "Go header without \" */\" fails" 1 'main.go:16: want " */", got "package main"
-'"$(fail_summary 1 1 0)" "$dir"
+# Any other change to the text fails: the Apache URL must be indented by four
+# spaces, the copyright holder must match, and Go files use the block form,
+# "/*" first, " * " on every header line and " */" last.
+bad "unindented URL fails (#)" config.yaml '#' "$(hash_header 2026 | sed 's|^#     http|# http|')"
+bad "unindented URL fails (Go)" main.go Go "$(go_header 2026 | sed 's|^ \*     http| * http|')"
+bad "wrong copyright holder fails" config.yaml '#' "$(hash_header 2026 | sed '1s|NVIDIA CORPORATION & AFFILIATES|NVIDIA Corporation|')"
+bad "Go header with a \"#\" copyright line fails" main.go Go "$(go_header 2026 | sed '2s|^ \* |# |')"
+bad "Go header opened with /** fails" main.go Go "$(go_header 2026 | sed '1s|^/\*$|/**|')"
+bad "Go header without \" */\" fails" main.go Go "$(go_header 2026 | sed '$d'; echo 'package main')"
 
 # A tracked file deleted from the work tree has nothing to check.
-dir=$(new_repo deleted)
+dir=$(new_repo)
 { hash_header 2026; echo 'key: value'; } | put "$dir" config.yaml
 echo 'key: value' | put "$dir" gone.yaml
 rm "$dir/gone.yaml"
@@ -199,13 +175,13 @@ expect "tracked file deleted from the work tree is skipped" 0 "OK: 1 files check
 
 # A file type with no rule of its own is covered, staged or not: values.yaml
 # is outside the excluded chart templates and tests, and new.toml is untracked.
-dir=$(new_repo new-files)
+dir=$(new_repo)
 echo 'replicas: 1' | put "$dir" charts/demo/values.yaml
 mkdir -p "$dir/tools"
 echo 'key = "value"' >"$dir/tools/new.toml"
 echo 'kind: {{ .Values.kind }}' | put "$dir" charts/demo/templates/deployment.yaml
-expect "non-excluded new files fail" 1 "charts/demo/values.yaml: missing SPDX header
-tools/new.toml: missing SPDX header
+expect "non-excluded new files fail" 1 "charts/demo/values.yaml: header differs from the # template
+tools/new.toml: header differs from the # template
 $(fail_summary 2 2 1)" "$dir"
 
 # A directory that is not a git work tree, or one with nothing to check, is an
@@ -214,7 +190,7 @@ dir="$work/not-a-repo"
 mkdir -p "$dir"
 expect "not a git work tree is an error" 2 "verify-boilerplate: $dir is not a git work tree" "$dir"
 
-dir=$(new_repo empty)
+dir=$(new_repo)
 expect "empty repository is an error" 2 "verify-boilerplate: no files to check in $dir" "$dir"
 
 # This repository passes.
