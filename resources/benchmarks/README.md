@@ -203,7 +203,7 @@ KAI's line numbers are KAI v0.19.0 and Kueue's are Kueue v0.20.2; "tasks doc" is
 
 KAI's fix for required levels, `f348ba24`, is in no release. It changes where KAI stops looking for a common domain when all candidate nodes share a domain below the required level (`pkg/scheduler/plugins/topology/common.go:55` at `f348ba24`). Here the allocate action offers a job every node in the cluster (`pkg/scheduler/actions/allocate/allocate.go:88`), which spans both zones, so v0.19.0 places `c2` and `c4` as KAI with the fix would: in one domain at the required level. There is no v0.19.0 finding.
 
-On the test bed, in one run per scheduler, every check passed. Both schedulers put `c1` and `c2` on the two nodes of `rack2`, and `c3` and `c4` in `block1`: KAI over 5 racks, 2 of its pods on the occupier's nodes in `rack1`, and Kueue over 3 empty racks. Each check fails when its job is not asked for topology. With only that job's annotations dropped, one run per job and scheduler:
+On the test bed, in three runs per scheduler, every check passed and every run placed the jobs the same way. Both schedulers put `c1` and `c2` on the two nodes of `rack2`, and `c3` and `c4` in `block1`: KAI over 5 racks, 2 of its pods on the occupier's nodes in `rack1`, and Kueue over 3 empty racks. Each check fails when its job is not asked for topology. With only that job's annotations dropped, one run per job and scheduler:
 
 | Job | KAI, topology dropped | Kueue, topology dropped |
 |---|---|---|
@@ -218,22 +218,22 @@ Every one of those pods ran on an occupier node, as the setup intends. KAI's `c1
 CheckPod/c1-one-rack: pods on 7 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack113" "rack17" "rack49" "rack73" "rack89" "rack9"]
 ```
 
-On Kueue these checks show topology-aware packing, but not that the requested level was the one used. Once Kueue has picked a domain for an explicit request, it walks down the levels below it, putting the pods in as few domains as it can at each one (`pkg/cache/scheduler/tas_flavor_snapshot.go:1532-1543`). Read from the code, an 8-pod job asking for a block or a zone would still land in one empty rack. Kueue's `c3`, which asked for a block, filled `rack2` and `rack3` and put the rest in `rack4`, the fewest racks it could. KAI does tell the levels apart: inside the domain it picks, it bin-packs, so its `c3` put 2 pods on the occupier's nodes in `rack1`.
+On Kueue these checks show topology-aware packing, but not that the requested level was the one used. Once Kueue has picked a domain for an explicit request, it walks down the levels below it, putting the pods in as few domains as it can at each one (`pkg/cache/scheduler/tas_flavor_snapshot.go:1532-1543`). Read from the code, an 8-pod job asking for a block or a zone would still land in one empty rack, and the test bed shows it: with `-var c1_preferred=cloud.provider.com/topology-zone`, Kueue still put `c1` in `rack2` and passed, while KAI spread it over 6 racks of `zone1` and failed `c1-one-rack`. Kueue's `c3`, which asked for a block, filled `rack2` and `rack3` and put the rest in `rack4`, the fewest racks it could. KAI does tell the levels apart: inside the domain it picks, it bin-packs, so its `c3` put 2 pods on the occupier's nodes in `rack1`.
 
 [`run-report.yaml`](topology-placement/workflows/run-report.yaml) then waits for the occupier to finish and runs two jobs on the empty cluster. Their placement is recorded and never checked, but each job must still finish, or the run fails:
 
 - `u-unconstrained`, 20 x 2 GPUs, without a topology annotation. On KAI it is placed blind. On Kueue it is still placed by TAS: a job without an annotation in a ClusterQueue whose flavors are all TAS flavors gets an implied, unconstrained topology request (`pkg/scheduler/flavorassigner/tas_flavorassigner.go:256-265`), which Kueue's own test expects to scatter pods over the fullest hosts even when they would fit one rack (`pkg/cache/scheduler/tas_cache_test.go:1520`). On an empty cluster every host has the same room, and the ties fall in topology order.
 - `o-oversized`, 512 x 2 GPUs preferring a rack, KAI's scale test job (`test/e2e/scale/kwok_test.go:225-232`, `kwok_workload_scenarios.go:45`). It is 1024 GPUs, exactly one zone: it fits no rack or block, so a scheduler that falls back one level at a time fills one zone.
 
-In one smoke run per scheduler, KAI placed `u-unconstrained` on 5 nodes, 4 pods each, in 5 racks of 5 blocks across both zones, and Kueue on 5 nodes in 3 racks of `block1`. Both placed `o-oversized` on all 128 nodes of `zone1`, 4 pods each.
+In each of three runs per scheduler, KAI placed `u-unconstrained` on 5 nodes, 4 pods each, in 5 racks of 5 blocks across both zones, and Kueue on 5 nodes in 3 racks of `block1` (8, 8 and 4 pods). Both placed `o-oversized` on all 128 nodes of `zone1`, 4 pods each.
 
-The 10 seconds after the occupier finishes, like those between the checked jobs, are a margin over a real lag, not a wait for an event. Kueue frees a job's room only once the Job has its `Complete` condition (`pkg/controller/jobframework/reconciler.go:553-560`, `pkg/controller/jobs/job/job_controller.go:418-426`), some time after its last pod has succeeded, which is all the run waits for. No checked result depends on the margin: even while a finished job is still counted, every block keeps room for a 20-pod job and more than 100 racks stay empty. The report-only spreads on Kueue can: without the margin, `u-unconstrained` went onto the occupier's 20 nodes, one pod each. A Kueue `u-unconstrained` spread on those nodes means the margin was too short, not how Kueue places an unconstrained job.
+The 10 seconds after the occupier finishes, like those between the checked jobs, are a margin over a real lag, not a wait for an event. Kueue frees a job's room only once the Job has its `Complete` condition (`pkg/controller/jobframework/reconciler.go:553-560`, `pkg/controller/jobs/job/job_controller.go:418-426`), some time after its last pod has succeeded, which is all the run waits for. No checked result depends on the margin: even while a finished job is still counted, every block keeps room for a 20-pod job and more than 100 racks stay empty. The report-only spreads on Kueue can: without the margin, `u-unconstrained` went onto the occupier's 20 nodes, one pod each. A Kueue `u-unconstrained` spread of one pod on each of the occupier's nodes means the margin was too short, not how Kueue places an unconstrained job.
 
 Their spread is read from the cluster after the run, or from `timeline.csv`'s `node` column with each node's labels. For example, the zone, block and rack of each `u-unconstrained` pod, with a pod count per triple:
 
 ```bash
 kubectl get pods -l job-name=u-unconstrained -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' \
-  | xargs -n1 kubectl get node --no-headers -o \
+  | xargs -r -n1 kubectl get node --no-headers -o \
       'custom-columns=ZONE:.metadata.labels.cloud\.provider\.com/topology-zone,BLOCK:.metadata.labels.cloud\.provider\.com/topology-block,RACK:.metadata.labels.cloud\.provider\.com/topology-rack' \
   | sort | uniq -c
 ```
