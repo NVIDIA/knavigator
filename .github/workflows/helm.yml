@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Lints, schema-validates, and unit-tests the Helm charts under charts/ in a
 # single job.
 #
@@ -7,9 +22,15 @@
 # Kubernetes schemas in strict mode, and helm unittest runs the suites in each
 # chart's tests/ directory.
 #
-# kubeconform is a release binary pinned by version and by the SHA-256 of the
-# downloaded archive. Bump the version and its checksum together by hand;
-# Dependabot does not track them.
+# The workflow has no paths filter: the full job runs on every push to main
+# and pull-request/N, so the helm check always reports and can be a required
+# status check. A workflow that a paths filter skips never reports, and a
+# required check that never reports blocks the pull request. The job takes
+# seconds, so it is not worth skipping when no chart changed.
+#
+# kubeconform and helm-unittest are release archives pinned by version and by
+# the SHA-256 of the downloaded archive. Bump each version and its checksum
+# together by hand; Dependabot does not track them.
 
 name: Helm
 
@@ -18,11 +39,17 @@ on:
     branches:
       - main
       - "pull-request/[0-9]+"
-    paths:
-      - 'charts/**'
-      - '.github/ct.yaml'
-      - '.github/workflows/helm.yml'
   workflow_dispatch:
+
+# A newer push to a pull-request/N branch supersedes the run still going for
+# it, so cancel that run. Every other run (pushes to main and manual runs) gets
+# a group of its own, keyed on the run ID, so it neither cancels nor is
+# cancelled by another run. A shared group would not be enough even with
+# cancel-in-progress off: GitHub keeps one pending run per group and cancels
+# the older pending one, so a burst of main pushes could skip commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/pull-request/') }}
 
 permissions:
   contents: read
@@ -63,7 +90,26 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" kubeconform
 
       - name: Install helm-unittest
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.2.1
+        env:
+          # Bumped by hand together with HELM_UNITTEST_SHA256 (linux amd64 archive).
+          HELM_UNITTEST_VERSION: '1.2.1'
+          HELM_UNITTEST_SHA256: '48e86ecc1467b009630e5954375e5d8494139f73b466df5fe8c04fa45b634939'
+        # The archive holds the plugin manifest and the binary, so unpacking it
+        # into Helm's plugin directory installs the plugin. `helm plugin install`
+        # with the repository URL would instead clone the repository and have
+        # its install hook download the binary, checked only against a checksum
+        # file from the same release.
+        run: |
+          set -euo pipefail
+          archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
+          curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
+          echo "${HELM_UNITTEST_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check -
+          plugin_dir="$(helm env HELM_PLUGINS)/unittest"
+          mkdir -p "${plugin_dir}"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${plugin_dir}" plugin.yaml untt-linux-amd64
+          helm plugin list
 
       - name: Run ct lint
         run: ct lint --config .github/ct.yaml
