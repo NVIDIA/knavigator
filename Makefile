@@ -60,6 +60,14 @@ vet:
 lint:
 	$(LINTER_BIN) run ./...
 
+# Fails if a file lacks the canonical SPDX header; the exclusion list is in
+# the script. The script's own tests run first, so a broken check cannot
+# pass unnoticed.
+.PHONY: verify-boilerplate
+verify-boilerplate:
+	hack/verify-boilerplate_test.sh
+	hack/verify-boilerplate.sh
+
 .PHONY: mod
 mod:
 	go mod tidy
