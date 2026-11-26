@@ -1,0 +1,41 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: check-kueue
+description: check what Kueue did to the job that lost each pair, once, after the hold
+tasks:
+# Kueue never creates a pod for a Job it has not admitted, and preempts by suspending the Job
+# (Kueue v0.20.2 pkg/controller/jobs/job/job_controller.go:170-172), so these checks read the Job.
+# Pair 1's first job was preempted; the second jobs of pairs 4 and 7 were never admitted.
+- id: pair1-first
+  type: CheckObj
+  params:
+    refTaskId: first-1
+    state:
+      spec:
+        suspend: ${pair1_first_suspend:-true}
+- id: pair4-second
+  type: CheckObj
+  params:
+    refTaskId: second-4
+    state:
+      spec:
+        suspend: ${pair4_second_suspend:-true}
+- id: pair7-second
+  type: CheckObj
+  params:
+    refTaskId: second-7
+    state:
+      spec:
+        suspend: ${pair7_second_suspend:-true}

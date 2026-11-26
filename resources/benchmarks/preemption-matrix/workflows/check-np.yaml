@@ -1,0 +1,44 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: check-np
+description: check pairs 2, 3, 5, 6 and 8 the same way on every scheduler, once, after the hold
+tasks:
+# No timeout, so each check reads the pods once. Pair 2 preempts: its second job runs. Pairs 3, 5, 6
+# and 8 do not, so the first job still runs.
+- id: pair2-second
+  type: CheckPod
+  params:
+    refTaskId: second-2
+    status: ${pair2_second_status:-Running}
+- id: pair3-first
+  type: CheckPod
+  params:
+    refTaskId: first-3
+    status: ${pair3_first_status:-Running}
+- id: pair5-first
+  type: CheckPod
+  params:
+    refTaskId: first-5
+    status: ${pair5_first_status:-Running}
+- id: pair6-first
+  type: CheckPod
+  params:
+    refTaskId: first-6
+    status: ${pair6_first_status:-Running}
+- id: pair8-first
+  type: CheckPod
+  params:
+    refTaskId: first-8
+    status: ${pair8_first_status:-Running}

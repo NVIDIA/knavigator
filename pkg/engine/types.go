@@ -116,6 +116,16 @@ type ObjInfo struct {
 	Class string
 	// Trace is the "traceDigest" parameter the object was submitted with, as SubmitTrace sets it
 	Trace string
+	// Existing[j][i] is true when the object named Names[j] with GVR[i] was already
+	// present, so SubmitObj with canExist did not create it. Cleanup skips those
+	// objects. A nil slice at either level means every object was created.
+	Existing [][]bool
+}
+
+// PreExisting reports whether the object named Names[j] with GVR[i] was already
+// present before the task that recorded this info ran.
+func (info *ObjInfo) PreExisting(j, i int) bool {
+	return j < len(info.Existing) && i < len(info.Existing[j]) && info.Existing[j][i]
 }
 
 // NewObjInfo creates new ObjInfo

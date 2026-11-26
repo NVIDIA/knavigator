@@ -132,7 +132,8 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 	}
 
 	submitted := time.Now()
-	for _, arr := range objs {
+	var existing [][]bool
+	for j, arr := range objs {
 		for i, obj := range arr {
 			crd := &unstructured.Unstructured{
 				Object: map[string]interface{}{
@@ -147,6 +148,13 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 				_, err := task.client.Resource(regObjParams.gvr[i]).Namespace(obj.Metadata.Namespace).Get(ctx, obj.Metadata.Name, metav1.GetOptions{})
 				if err == nil {
 					log.V(4).Infof("Object %s/%s already exist", obj.Kind, obj.Metadata.Name)
+					if existing == nil {
+						existing = make([][]bool, len(objs))
+					}
+					if existing[j] == nil {
+						existing[j] = make([]bool, len(arr))
+					}
+					existing[j][i] = true
 					continue
 				}
 			}
@@ -160,6 +168,7 @@ func (task *SubmitObjTask) Exec(ctx context.Context) error {
 
 	info := NewObjInfo(names, objs[0][0].Metadata.Namespace, regObjParams.gvr, podCount, podRegexp...)
 	info.Submitted = submitted
+	info.Existing = existing
 	info.Class, _ = task.Params["class"].(string)
 	info.Trace, _ = task.Params["traceDigest"].(string)
 	return task.accessor.SetObjInfo(task.taskID, info)

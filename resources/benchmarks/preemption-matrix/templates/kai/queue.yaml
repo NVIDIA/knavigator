@@ -1,0 +1,37 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# A KAI queue whose GPU quota and limit are both the gpu param; -1 means unlimited. CPU and memory stay
+# unlimited: a finite CPU or memory quota would put a non-preemptible job over quota on that resource.
+apiVersion: scheduling.run.ai/v2
+kind: Queue
+metadata:
+  name: "{{.name}}"
+spec:
+  {{- if .parentQueue }}
+  parentQueue: "{{.parentQueue}}"
+  {{- end }}
+  resources:
+    cpu:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
+    gpu:
+      quota: {{.gpu}}
+      limit: {{.gpu}}
+      overQuotaWeight: 1
+    memory:
+      quota: -1
+      limit: -1
+      overQuotaWeight: 1
