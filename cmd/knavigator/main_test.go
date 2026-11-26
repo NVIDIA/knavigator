@@ -157,6 +157,16 @@ func TestValidateTopologyLabels(t *testing.T) {
 		`'results.topology-labels' must list label keys such as example.com/block: "example.com/a=b"`)
 }
 
+func TestValidateImageNamespaces(t *testing.T) {
+	args := func(namespaces, results string) *Args {
+		return &Args{workflow: "w.yml", speedup: 1, results: results, imageNS: namespaces}
+	}
+	require.NoError(t, validate(args("kueue-system, kai-scheduler", "out")))
+	require.EqualError(t, validate(args("kueue-system", "")), "'results.image-namespaces' requires 'results'")
+	require.ErrorContains(t, validate(args("kueue-system,Kueue", "out")),
+		`'results.image-namespaces' must list namespace names: "Kueue"`)
+}
+
 // The manifest lists the workflows in run order, a repeated one again, each with the digest of
 // every template its RegisterObj tasks read, so a changed template changes the manifest.
 func TestWorkflowsOf(t *testing.T) {

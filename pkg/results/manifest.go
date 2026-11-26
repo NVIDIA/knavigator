@@ -43,6 +43,10 @@ type RunInfo struct {
 	Workflows []Workflow
 	// Vars are the -var values the workflows used.
 	Vars map[string]string
+	// ImageNamespaces are the namespaces whose pods' images manifest.json records, besides the
+	// control-plane pods. They are separate from HarnessOptions.RestartNamespaces, so a test can
+	// restart the scheduler and still record its images.
+	ImageNamespaces []string
 }
 
 // Workflow is one workflow of the run, with the digests of the files it read.
@@ -123,10 +127,9 @@ const kwokNodeAnnotation = "kwok.x-k8s.io/node"
 
 // profileRun is the run's entry under its profile.
 type profileRun struct {
-	// Start and End are when the recorder started and stopped, in UTC. Start is on the API server's
-	// clock, or on the host's when Start cannot measure it. End is no earlier than the last time
-	// recorded, and pod times are on the API server's clock, so End can be on a different clock than
-	// Start. results.json measures from the first pod or job, which can be later than Start.
+	// Start and End are when the recorder started and when it wrote manifest.json, in UTC on the
+	// host's clock, as the Suite writes them. results.json measures from the first pod or job, on
+	// the API server's clock.
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
 	// Cluster is the provider named by the nodes' spec.providerID, such as kind; left out unless
@@ -155,11 +158,11 @@ type workload struct {
 }
 
 // manifest describes the run for manifest.json. Finish passes what it read at the end of the run,
-// so manifest.json and results.json describe the same nodes, window and harness readings. It reads
+// so manifest.json and results.json describe the same nodes and harness readings. It reads
 // the API server's version itself, and leaves it out with a warning when it cannot, since a
 // missing version must not lose the run. Finish calls it before writing any file, so its one
 // error, a working directory that runID cannot read, leaves no file behind.
-func (r *Recorder) manifest(ctx context.Context, dir string, end time.Time, nodes []corev1.Node, gpus map[string]float64, harness Harness, images map[string]string, speedup float64, bsldFloor time.Duration) (manifest, error) {
+func (r *Recorder) manifest(ctx context.Context, dir string, nodes []corev1.Node, gpus map[string]float64, harness Harness, images map[string]string, speedup float64, bsldFloor time.Duration) (manifest, error) {
 	id, err := runID(dir)
 	if err != nil {
 		return manifest{}, err
@@ -192,8 +195,8 @@ func (r *Recorder) manifest(ctx context.Context, dir string, end time.Time, node
 		Tools:     tools,
 		Fleet:     fleetOf(nodes, gpus, keys),
 		Profiles: map[string]profileRun{profile: {
-			Start:             r.start.UTC(),
-			End:               end.UTC(),
+			Start:             r.hostStart.UTC(),
+			End:               time.Now().UTC(),
 			Cluster:           providerOf(nodes),
 			Images:            nonNil(images),
 			ClockOffsetStartS: harness.ClockOffsetStartSec,

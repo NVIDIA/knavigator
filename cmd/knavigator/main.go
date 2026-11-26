@@ -63,6 +63,7 @@ type Args struct {
 	baseline     string
 	profile      string
 	topologyKeys string
+	imageNS      string
 }
 
 func mainInternal() error {
@@ -90,6 +91,7 @@ func mainInternal() error {
 	flag.BoolVar(&args.leftovers, "results.allow-leftovers", false, "start even while GPU pods from before the run are active: log them, record the GPUs of those bound to a node as harness.leftover_gpus and subtract them from capacity for the whole run; utilization reads high if they finish during it, and low if an unbound one is placed during it")
 	flag.StringVar(&args.rackLabel, "results.rack-label", "", "node label that names each node's rack; fills gpu_fragmentation_rack in the results (requires 'results')")
 	flag.StringVar(&args.profile, "results.profile", "", fmt.Sprintf("scheduler setup the run measures, as a lowercase DNS label; names the run's entry in manifest.json, which reads %q without it (requires 'results')", results.UnknownProfile))
+	flag.StringVar(&args.imageNS, "results.image-namespaces", "", "comma-separated namespaces, such as the scheduler's, whose pods' images manifest.json records, besides the control-plane pods (requires 'results')")
 	flag.StringVar(&args.topologyKeys, "results.topology-labels", "", "comma-separated node label keys of topology levels, such as example.com/block; manifest.json counts the distinct values of each, and of 'results.rack-label', over the GPU nodes (requires 'results')")
 	flag.StringVar(&args.baseline, "aggregate.baseline", "", "glob of -results directories to compare against; adds each metric's difference from them and its 95% interval (requires 'aggregate')")
 
@@ -163,10 +165,11 @@ func mainInternal() error {
 		}
 		rec.SetRackLabel(args.rackLabel)
 		rec.SetRunInfo(results.RunInfo{
-			Profile:        args.profile,
-			TopologyLabels: splitList(args.topologyKeys),
-			Workflows:      workflowsOf(workflows),
-			Vars:           args.vars,
+			Profile:         args.profile,
+			TopologyLabels:  splitList(args.topologyKeys),
+			ImageNamespaces: splitList(args.imageNS),
+			Workflows:       workflowsOf(workflows),
+			Vars:            args.vars,
 		})
 		if len(args.pushURL) != 0 {
 			if len(args.pushRun) == 0 {
@@ -401,6 +404,17 @@ func validate(args *Args) error {
 		for _, key := range splitList(args.topologyKeys) {
 			if errs := validation.IsQualifiedName(key); len(errs) != 0 {
 				return fmt.Errorf("'results.topology-labels' must list label keys such as example.com/block: %q: %s", key, errs[0])
+			}
+		}
+	}
+
+	if len(args.imageNS) != 0 {
+		if len(args.results) == 0 {
+			return fmt.Errorf("'results.image-namespaces' requires 'results'")
+		}
+		for _, ns := range splitList(args.imageNS) {
+			if errs := validation.IsDNS1123Label(ns); len(errs) != 0 {
+				return fmt.Errorf("'results.image-namespaces' must list namespace names: %q: %s", ns, errs[0])
 			}
 		}
 	}

@@ -137,13 +137,11 @@ func (h *harnessStart) skew() time.Duration {
 	return time.Duration(c.mid() * float64(time.Second))
 }
 
-// finish reads the restart counts and the clock offset again, and returns the images the watched
-// pods run, for manifest.json. The images come from the same pod list as the restart counts, so
-// manifest.json pins the containers whose restarts the run checked.
-func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) (Harness, map[string]string, error) {
+// finish reads the restart counts and the clock offset again.
+func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) (Harness, error) {
 	pods, err := watchedPods(ctx, client, h.namespaces)
 	if err != nil {
-		return Harness{}, nil, err
+		return Harness{}, err
 	}
 	after := restartCounts(pods)
 	end := readClock(ctx, client)
@@ -157,7 +155,7 @@ func (h *harnessStart) finish(ctx context.Context, client kubernetes.Interface) 
 	sort.Slice(out.ControlPlaneRestarts, func(i, j int) bool {
 		return out.ControlPlaneRestarts[i].Container < out.ControlPlaneRestarts[j].Container
 	})
-	return out, imagesOf(pods), nil
+	return out, nil
 }
 
 // check fails a run during which a watched container restarted or the API server clock moved
@@ -212,8 +210,8 @@ func checkLeftovers(ctx context.Context, client kubernetes.Interface, allow bool
 	return gpus, byNode, nil
 }
 
-// watchedPods lists the control-plane pods and every pod in namespaces. These are the pods whose
-// container restarts fail the run, and whose images manifest.json records.
+// watchedPods lists the control-plane pods and every pod in namespaces: the pods whose container
+// restarts fail the run, or the pods whose images manifest.json records.
 func watchedPods(ctx context.Context, client kubernetes.Interface, namespaces []string) ([]corev1.Pod, error) {
 	var out []corev1.Pod
 	add := func(namespace, selector string) error {

@@ -1273,17 +1273,22 @@ func TestImagesOf(t *testing.T) {
 }
 
 // manifest.json lists the images of the control-plane pods and of the pods in
-// -results.restart-namespaces, and of no pod in another namespace.
-func TestManifestImagesCoverWatchedPods(t *testing.T) {
+// RunInfo.ImageNamespaces, and of no pod in another namespace, whatever the restart check watches.
+func TestManifestImagesCoverImageNamespaces(t *testing.T) {
 	fastPoll(t)
 	client := fake.NewSimpleClientset(
 		imagePod("kube-system", "kube-scheduler-n1", controlPlane(), [2]string{"scheduler:1", "sha256:11"}),
 		imagePod("kube-system", "kube-proxy-x1", nil, [2]string{"proxy:1", "sha256:22"}),
 		imagePod("kueue-system", "manager", nil, [2]string{"kueue:1", "sha256:33"}),
 		imagePod("other", "app-0", nil, [2]string{"app:1", "sha256:44"}),
+		imagePod("restarts", "agent", nil, [2]string{"agent:1", "sha256:55"}),
 	)
-	rec, err := Start(context.Background(), client, HarnessOptions{RestartNamespaces: []string{"kueue-system"}})
+	rec, err := Start(context.Background(), client, HarnessOptions{RestartNamespaces: []string{"restarts"}})
 	require.NoError(t, err)
+	rec.SetRunInfo(RunInfo{ImageNamespaces: []string{"kueue-system"}})
+	// The scheduler restarts in place, as in a recovery test; outside the restart check, that does
+	// not fail the run.
+	setRestarts(t, client, "kueue-system", "manager", 1)
 
 	dir := t.TempDir()
 	require.NoError(t, rec.Finish(context.Background(), dir, time.Minute, nil, 1, 0, DefaultBSLDFloor))

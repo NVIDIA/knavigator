@@ -148,10 +148,9 @@ func TestFinishWritesManifest(t *testing.T) {
 	require.Equal(t, map[string]string{"registry.k8s.io/kube-scheduler:v1.37.0": "sha256:5f1e"}, run.Images)
 	require.Zero(t, run.WatchErrors)
 
-	// The window is on the API server's clock, which runs 1000s behind the host's.
-	api := time.Now().Add(-1000 * time.Second)
-	require.WithinDuration(t, api, run.Start, 5*time.Second)
-	require.WithinDuration(t, api, run.End, 5*time.Second)
+	// The window is on the host's clock, as in the Suite, though the API server's runs 1000s behind.
+	require.WithinDuration(t, time.Now(), run.Start, 5*time.Second)
+	require.WithinDuration(t, time.Now(), run.End, 5*time.Second)
 	require.False(t, run.End.Before(run.Start))
 	require.Equal(t, time.UTC, run.Start.Location())
 
@@ -209,7 +208,7 @@ func TestManifestRecordsResultsSettings(t *testing.T) {
 }
 
 // speedup is written at 1 and at 60, while results.json writes it only above 1, and start and end
-// stay real API server times at any speedup.
+// stay real host times at any speedup.
 func TestManifestRecordsSpeedup(t *testing.T) {
 	fastPoll(t)
 	for _, speedup := range []float64{1, 60} {

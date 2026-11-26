@@ -74,6 +74,8 @@ type Recorder struct {
 	info RunInfo
 	// watch counts the informers' watch errors and relists, for manifest.json.
 	watch watchErrors
+	// hostStart is when Start was called, on the host's clock, for manifest.json.
+	hostStart time.Time
 }
 
 // Start begins watching pods and returns once the watch cache has synced. It refuses to start while
@@ -81,6 +83,7 @@ type Recorder struct {
 // control-plane container, or of any container in opts.RestartNamespaces, during the run fails it,
 // and so do start and end clock measurements 2s or more apart.
 func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions) (*Recorder, error) {
+	hostStart := time.Now()
 	harness, err := startHarness(ctx, client, opts)
 	if err != nil {
 		return nil, err
@@ -101,6 +104,7 @@ func Start(ctx context.Context, client kubernetes.Interface, opts HarnessOptions
 
 		eventsBefore: make(map[types.UID]int32),
 		harness:      harness,
+		hostStart:    hostStart,
 	}
 
 	informer, err := r.watch.informer(client, &corev1.Pod{}, &cache.ListWatch{
@@ -421,7 +425,11 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		case <-time.After(pollInterval):
 		}
 	}
-	harness, images, err := r.harness.finish(ctx, r.client)
+	harness, err := r.harness.finish(ctx, r.client)
+	if err != nil {
+		return err
+	}
+	imagePods, err := watchedPods(ctx, r.client, r.info.ImageNamespaces)
 	if err != nil {
 		return err
 	}
@@ -466,7 +474,7 @@ func (r *Recorder) Finish(ctx context.Context, dir string, timeout time.Duration
 		summary.Pods, summary.PodsUnscheduled, summary.JobsStarted, summary.Jobs,
 		summary.MakespanSec, 100*summary.GPUUtilization, summary.JobWaitSec.P95)
 
-	m, err := r.manifest(ctx, dir, end, nodeList, nodes, harness, images, speedup, bsldFloor)
+	m, err := r.manifest(ctx, dir, nodeList, nodes, harness, imagesOf(imagePods), speedup, bsldFloor)
 	if err != nil {
 		return err
 	}
