@@ -402,6 +402,17 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 				domainPod("job-1", "", v1.PodPending),
 			},
 		},
+		{
+			// Skipping a pod whose node cannot be read would leave one rack and pass.
+			name:   "a node that cannot be read fails the check",
+			params: map[string]interface{}{"status": "Running", "nodeLabelDomains": maxRacks(1)},
+			pods: []*v1.Pod{
+				domainPod("job-0", "n1", v1.PodRunning),
+				domainPod("job-1", "n9", v1.PodRunning),
+			},
+			errCheck: `CheckPod/check: failed to get node 'n9' for pod 'job-1': nodes "n9" not found`,
+			errWatch: `CheckPod/check: failed to get node 'n9' for pod 'job-1': nodes "n9" not found`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -431,8 +442,10 @@ func TestCheckPodNodeLabelDomains(t *testing.T) {
 }
 
 // TestCheckPodNodeLabelDomainsWatchJudgesAllPods starts the watch while one pod
-// has no node, then places it in a second rack: the spread is judged once every
-// pod is accounted for, over all of them, so the late pod turns the check red.
+// is Pending with no node, then runs it in a second rack: the spread is judged
+// once every pod is accounted for, over all of them, so the late pod turns the
+// check red. With status Running the status filter holds the late pod back;
+// TestCheckPodNodeLabelDomainsWatchWaitsForNode covers the no-node wait.
 func TestCheckPodNodeLabelDomainsWatchJudgesAllPods(t *testing.T) {
 	pods := []*v1.Pod{
 		domainPod("job-0", "n1", v1.PodRunning),
@@ -454,4 +467,29 @@ func TestCheckPodNodeLabelDomainsWatchJudgesAllPods(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EqualError(t, <-done, `CheckPod/check: pods on 2 distinct values of cloud.provider.com/topology-rack, at most 1 allowed: ["rack1" "rack2"]`)
+}
+
+// TestCheckPodNodeLabelDomainsWatchWaitsForNode has no status, so only the
+// no-node wait holds job-1 back: the watch starts while job-1 has no node and
+// passes once job-1 is bound, still Pending, to a node of the same rack.
+func TestCheckPodNodeLabelDomainsWatchWaitsForNode(t *testing.T) {
+	pods := []*v1.Pod{
+		domainPod("job-0", "n1", v1.PodRunning),
+		domainPod("job-1", "", v1.PodPending),
+	}
+	params := map[string]interface{}{
+		"timeout":          "5s",
+		"nodeLabelDomains": map[string]interface{}{"key": rackLabel, "max": 1},
+	}
+	task, client := newDomainCheck(t, params, pods)
+
+	done := make(chan error, 1)
+	go func() { done <- task.Exec(context.Background()) }()
+
+	time.Sleep(200 * time.Millisecond)
+	bound := domainPod("job-1", "n2", v1.PodPending)
+	_, err := client.CoreV1().Pods("default").Update(context.Background(), bound, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	require.NoError(t, <-done)
 }
