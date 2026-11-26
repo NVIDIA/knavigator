@@ -63,10 +63,9 @@ exclude=(
 	# iTerm2-Color-Schemes, whose comment marker is "!".
 	'.xresources'
 
-	# Pending: open pull requests change these files. Remove each entry, and
-	# add or align the header, once its pull request merges.
-	'.github/workflows/helm.yml'   # NVIDIA/knavigator#227
-	'.github/workflows/stale.yaml' # NVIDIA/knavigator#226
+	# Pending: an open pull request changes this file. Remove the entry, and
+	# add or align the header, once the pull request merges.
+	'.github/workflows/helm.yml' # NVIDIA/knavigator#227
 )
 
 go_template=$(cat <<'TEMPLATE'
