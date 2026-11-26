@@ -15,9 +15,10 @@
 # limitations under the License.
 
 # Checks that every file in the repository starts with the canonical header:
-# the two SPDX lines followed by the Apache-2.0 notice, as in this file. Go
-# files carry it as a /* ... */ block; every other file as "#" comments, after
-# the shebang line if there is one. The copyright year is YYYY or YYYY-YYYY.
+# the two SPDX lines followed by the Apache-2.0 notice. A file's first lines,
+# with the copyright year masked as YYYY, must equal the template for its
+# comment style: go_template below for Go files, hash_template for every other
+# file, after the shebang line if there is one. The year is YYYY or YYYY-YYYY.
 #
 # Every tracked file is checked, and so is every untracked file that git does
 # not ignore, so a new file fails before it is staged. Files that cannot or
@@ -68,25 +69,29 @@ exclude=(
 	'.github/workflows/stale.yaml' # NVIDIA/knavigator#226
 )
 
-copyright_re='^(# | \* )SPDX-FileCopyrightText: Copyright \(c\) (.*) NVIDIA CORPORATION & AFFILIATES\. All rights reserved\.$'
-year_re='^[0-9]{4}(-[0-9]{4})?$'
-
-# The Apache-2.0 notice after the copyright line, without comment markers.
-notice=(
-	'SPDX-License-Identifier: Apache-2.0'
-	''
-	'Licensed under the Apache License, Version 2.0 (the "License");'
-	'you may not use this file except in compliance with the License.'
-	'You may obtain a copy of the License at'
-	''
-	'    http://www.apache.org/licenses/LICENSE-2.0'
-	''
-	'Unless required by applicable law or agreed to in writing, software'
-	'distributed under the License is distributed on an "AS IS" BASIS,'
-	'WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.'
-	'See the License for the specific language governing permissions and'
-	'limitations under the License.'
+go_template=$(cat <<'TEMPLATE'
+/*
+ * SPDX-FileCopyrightText: Copyright (c) YYYY NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+TEMPLATE
 )
+# The same lines as "#" comments, so the two styles cannot drift apart.
+hash_template=$(sed -e '1d' -e '$d' -e 's/^ \*/#/' <<<"$go_template")
+go_lines=$(wc -l <<<"$go_template")
+hash_lines=$(wc -l <<<"$hash_template")
 
 is_excluded() {
 	local pattern
@@ -97,67 +102,20 @@ is_excluded() {
 	return 1
 }
 
-# check_file PATH prints one line naming the first problem in PATH's header
-# and returns 1, or returns 0 if the header is canonical.
+# check_file PATH compares the first lines of PATH, the year masked, with the
+# template for its comment style, and names that template if they differ.
 check_file() {
-	local path=$1 prefix='# ' blank='#' line year want got i k n=0
-	local -a head=()
-
-	# The header is at most 16 lines, after at most one shebang line.
-	while ((${#head[@]} < 17)) && { IFS= read -r line || [[ -n $line ]]; }; do
-		head+=("$line")
-	done <"$root/$path"
-
-	# n is the index of the copyright line: after "/*" in Go files, after the
-	# shebang line in the others.
-	if [[ $path == *.go ]]; then
-		prefix=' * ' blank=' *' n=1
-	elif [[ ${head[0]-} == '#!'* ]]; then
-		n=1
+	local style='#' want=$hash_template lines=$hash_lines first='' start=1 got
+	if [[ $1 == *.go ]]; then
+		style=Go want=$go_template lines=$go_lines
+	elif IFS= read -r first <"$root/$1" && [[ $first == '#!'* ]]; then
+		start=2
 	fi
-
-	got=${head[n]-}
-	if [[ $got != *SPDX-FileCopyrightText* ]]; then
-		for ((k = 0; k < ${#head[@]}; k++)); do
-			if [[ ${head[k]} == *SPDX-FileCopyrightText* ]]; then
-				echo "$path: SPDX-FileCopyrightText on line $((k + 1)), want line $((n + 1))"
-				return 1
-			fi
-		done
-		echo "$path: missing SPDX header"
+	got=$(sed -E -n "$start,$((start + lines - 1)){s/(Copyright \(c\) )[0-9]{4}(-[0-9]{4})? NVIDIA/\1YYYY NVIDIA/;p;}" "$root/$1")
+	if [[ $got != "$want" ]]; then
+		echo "$1: header differs from the $style template"
 		return 1
 	fi
-	if [[ $path == *.go && ${head[0]} != '/*' ]]; then
-		echo "$path:1: want \"/*\", got \"${head[0]}\""
-		return 1
-	fi
-	if [[ ! $got =~ $copyright_re || ${BASH_REMATCH[1]} != "$prefix" ]]; then
-		want="${prefix}SPDX-FileCopyrightText: Copyright (c) YYYY NVIDIA CORPORATION & AFFILIATES. All rights reserved."
-		echo "$path:$((n + 1)): want \"$want\", got \"$got\""
-		return 1
-	fi
-	year=${BASH_REMATCH[2]}
-	if [[ ! $year =~ $year_re ]]; then
-		echo "$path: copyright year \"$year\" is not YYYY or YYYY-YYYY"
-		return 1
-	fi
-
-	for i in "${!notice[@]}"; do
-		n=$((n + 1))
-		want=$prefix${notice[i]}
-		[[ -z ${notice[i]} ]] && want=$blank
-		got=${head[n]-}
-		if [[ $got != "$want" ]]; then
-			echo "$path:$((n + 1)): want \"$want\", got \"$got\""
-			return 1
-		fi
-	done
-
-	if [[ $path == *.go && ${head[n + 1]-} != ' */' ]]; then
-		echo "$path:$((n + 2)): want \" */\", got \"${head[n + 1]-}\""
-		return 1
-	fi
-	return 0
 }
 
 if ! files=$(git -C "$root" -c core.quotePath=false ls-files --cached --others --exclude-standard 2>/dev/null); then
