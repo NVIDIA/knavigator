@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Documentation - New Documentation Request
+name: New documentation
 description: Request additions to knavigator documentation
 title: "[DOC]: "
-labels: ["doc"]
+labels: ["documentation"]
 
 body:
   - type: markdown
@@ -49,15 +49,15 @@ body:
     attributes:
       label: Where have you looked?
       placeholder: |
-       https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template/blob/main/README.md
+       https://github.com/NVIDIA/knavigator/tree/main/docs
 
   - type: checkboxes
     id: terms
     attributes:
       label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/NVIDIA-GitHub-Management/PLC-OSS-Template/blob/main/CODE_OF_CONDUCT.md)
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/NVIDIA/knavigator/blob/main/CODE_OF_CONDUCT.md)
       options:
         - label: I agree to follow knavigator's Code of Conduct
           required: true
-        - label: I have searched the project's documentation and have found no duplicates for this bug report
+        - label: I have searched the project's documentation and have found no duplicates for this request
           required: true
