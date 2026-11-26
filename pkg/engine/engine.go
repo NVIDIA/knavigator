@@ -309,7 +309,9 @@ func (eng *Eng) Reset(ctx context.Context) error {
 	}
 }
 
-// DeleteAllObjects deletes all objects
+// DeleteAllObjects deletes the objects this run created. An object that
+// SubmitObj with canExist found already present was not created by the run,
+// so it is left in place.
 func (eng *Eng) DeleteAllObjects(ctx context.Context) {
 	deletePolicy := metav1.DeletePropagationBackground
 	deletions := metav1.DeleteOptions{
@@ -318,8 +320,12 @@ func (eng *Eng) DeleteAllObjects(ctx context.Context) {
 
 	for _, objInfo := range eng.objInfoMap {
 		ns := objInfo.Namespace
-		for _, name := range objInfo.Names {
+		for j, name := range objInfo.Names {
 			for i := range objInfo.GVR {
+				if objInfo.PreExisting(j, i) {
+					log.V(4).Infof("Keeping pre-existing object %s %s", objInfo.GVR[i].String(), name)
+					continue
+				}
 				err := eng.dynamicClient.Resource(objInfo.GVR[i]).Namespace(ns).Delete(ctx, name, deletions)
 				if err != nil {
 					log.Infof("Warning: cannot delete object %s: %v", name, err)

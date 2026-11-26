@@ -1,0 +1,144 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-checked
+description: run the four checked jobs one after another, each checked to run in one domain at its level
+tasks:
+# Each job asks for one rack or one block, preferred or required, and fits one: an empty rack holds 8
+# of its 2-GPU pods, every block holds 58. A job is submitted only once the one before it has finished,
+# so every job finds the same free room, and nothing preempts or reclaims: the watch counts each pod
+# once and must see no replacement. -var c<N>_max sets the number of domains allowed, and an empty
+# -var c1_preferred=, c2_required=, c3_preferred= or c4_required= drops that job's topology annotations.
+# The 10-second sleeps let the scheduler release a finished job before the next one arrives.
+- id: c1
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: c1-preferred-rack
+      replicas: 8
+      gpu: 2
+      ttl: 30s
+      preferred: ${c1_preferred:-cloud.provider.com/topology-rack}
+- id: c1-one-rack
+  type: CheckPod
+  params:
+    refTaskId: c1
+    status: Running
+    nodeLabelDomains:
+      key: cloud.provider.com/topology-rack
+      max: ${c1_max:-1}
+    timeout: 2m
+- id: c1-done
+  type: CheckPod
+  params:
+    refTaskId: c1
+    status: Succeeded
+    timeout: 2m
+- id: c1-settle
+  type: Sleep
+  params:
+    timeout: 10s
+- id: c2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: c2-required-rack
+      replicas: 8
+      gpu: 2
+      ttl: 30s
+      required: ${c2_required:-cloud.provider.com/topology-rack}
+- id: c2-one-rack
+  type: CheckPod
+  params:
+    refTaskId: c2
+    status: Running
+    nodeLabelDomains:
+      key: cloud.provider.com/topology-rack
+      max: ${c2_max:-1}
+    timeout: 2m
+- id: c2-done
+  type: CheckPod
+  params:
+    refTaskId: c2
+    status: Succeeded
+    timeout: 2m
+- id: c2-settle
+  type: Sleep
+  params:
+    timeout: 10s
+- id: c3
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: c3-preferred-block
+      replicas: 20
+      gpu: 2
+      ttl: 30s
+      preferred: ${c3_preferred:-cloud.provider.com/topology-block}
+- id: c3-one-block
+  type: CheckPod
+  params:
+    refTaskId: c3
+    status: Running
+    nodeLabelDomains:
+      key: cloud.provider.com/topology-block
+      max: ${c3_max:-1}
+    timeout: 2m
+- id: c3-done
+  type: CheckPod
+  params:
+    refTaskId: c3
+    status: Succeeded
+    timeout: 2m
+- id: c3-settle
+  type: Sleep
+  params:
+    timeout: 10s
+- id: c4
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: c4-required-block
+      replicas: 20
+      gpu: 2
+      ttl: 30s
+      required: ${c4_required:-cloud.provider.com/topology-block}
+- id: c4-one-block
+  type: CheckPod
+  params:
+    refTaskId: c4
+    status: Running
+    nodeLabelDomains:
+      key: cloud.provider.com/topology-block
+      max: ${c4_max:-1}
+    timeout: 2m
+# Checked once, right after the last job's placement: the occupier still runs, so it ran while every
+# checked job was placed.
+- id: occupier-held
+  type: CheckPod
+  params:
+    refTaskId: occupier
+    status: Running
+    nodeLabels:
+      knavigator.nvidia.com/occupier: "true"
+- id: c4-done
+  type: CheckPod
+  params:
+    refTaskId: c4
+    status: Succeeded
+    timeout: 2m

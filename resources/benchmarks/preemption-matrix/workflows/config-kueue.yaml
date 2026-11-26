@@ -1,0 +1,115 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-kueue
+description: register the pair job and create one 1-GPU ClusterQueue and LocalQueue per pair
+tasks:
+- id: register-cluster-queue
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/preemption-matrix/templates/kueue/cluster-queue.yaml"
+- id: register-local-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/local-queue.yaml"
+- id: register-resource-flavor
+  type: RegisterObj
+  params:
+    template: "resources/templates/kueue/resource-flavor.yaml"
+# A name format makes SubmitObj record each job's name; the checks find a pair's Job and pod by it.
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/preemption-matrix/templates/kueue/job.yaml"
+    nameFormat: "pair{{.pair}}-{{.role}}"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
+    podCount: 1
+# The flavor and queue names are this benchmark's own, because canExist never updates an object that
+# is already there.
+- id: create-resource-flavor
+  type: SubmitObj
+  params:
+    refTaskId: register-resource-flavor
+    canExist: true
+    params:
+      name: preemption-matrix
+      nodeLabels:
+        nvidia.com/gpu.count: "8"
+# Kueue runs pairs 1, 4 and 7, the ones where both jobs are preemptible in KAI's terms: Kueue has no
+# per-job preemptibility. Each pair's ClusterQueue has a nominal quota of 1 GPU, with CPU and memory
+# to spare, and no cohort, so a pair's second job fits only if it preempts the first.
+# withinClusterQueue defaults to LowerPriority: a job preempts one of strictly lower priority.
+- id: cluster-queue-1
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: preemption-matrix-1
+      flavor: preemption-matrix
+      cpu: 1
+      memory: 1Gi
+      gpu: 1
+      withinClusterQueue: ${within_cluster_queue:-LowerPriority}
+- id: local-queue-1
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: preemption-matrix-1
+      namespace: default
+      clusterQueue: preemption-matrix-1
+- id: cluster-queue-4
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: preemption-matrix-4
+      flavor: preemption-matrix
+      cpu: 1
+      memory: 1Gi
+      gpu: 1
+      withinClusterQueue: ${within_cluster_queue:-LowerPriority}
+- id: local-queue-4
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: preemption-matrix-4
+      namespace: default
+      clusterQueue: preemption-matrix-4
+- id: cluster-queue-7
+  type: SubmitObj
+  params:
+    refTaskId: register-cluster-queue
+    canExist: true
+    params:
+      name: preemption-matrix-7
+      flavor: preemption-matrix
+      cpu: 1
+      memory: 1Gi
+      gpu: 1
+      withinClusterQueue: ${within_cluster_queue:-LowerPriority}
+- id: local-queue-7
+  type: SubmitObj
+  params:
+    refTaskId: register-local-queue
+    canExist: true
+    params:
+      name: preemption-matrix-7
+      namespace: default
+      clusterQueue: preemption-matrix-7

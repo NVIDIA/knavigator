@@ -1,0 +1,58 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-kai
+description: create KAI's three-level Topology and a queue, and register the job
+tasks:
+- id: register-topology
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/topology-placement/templates/kai/topology.yaml"
+- id: register-queue
+  type: RegisterObj
+  params:
+    template: "resources/templates/kai/queue.yaml"
+# A name format makes SubmitObj record each job's name; the checks find a job's pods by it.
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/topology-placement/templates/kai/job.yaml"
+    nameFormat: "{{.job}}"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
+    podCount: "{{.replicas}}"
+# The job template names this Topology. The Topology and queue names are this benchmark's own, because
+# canExist never updates an object that is already there.
+- id: topology
+  type: SubmitObj
+  params:
+    refTaskId: register-topology
+    canExist: true
+    params:
+      name: topology-placement
+# No quota or limit: every job fits the queue, so only the nodes' free GPUs decide where it goes.
+- id: parent-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    canExist: true
+    params:
+      name: topology-placement
+- id: queue
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    canExist: true
+    params:
+      name: topology-placement-jobs
+      parentQueue: topology-placement

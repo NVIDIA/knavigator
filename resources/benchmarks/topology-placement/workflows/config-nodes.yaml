@@ -1,0 +1,45 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-nodes
+description: 256 virtual GPU nodes with 8 GPUs each, in 2 zones of 8 blocks of 8 racks of 2 nodes
+tasks:
+- id: configure
+  type: Configure
+  params:
+    nodes:
+    - type: dgxa100.80g
+      count: 256
+      # The chart numbers racks from 1 and puts nodes 2r-1 and 2r in rack r. The zone and block
+      # come from the rack: racks 1-8 are block1, racks 1-64 are zone1. Every value is unique
+      # across the cluster (rack1 to rack128, block1 to block16), so a check that counts the
+      # distinct values of one label counts domains, not names repeated under different parents.
+      racks: 128
+      labels:
+        nvidia.com/gpu.count: "8"
+        cloud.provider.com/topology-zone: "zone{{ add1 (div (sub .rack 1) 64) }}"
+        cloud.provider.com/topology-block: "block{{ add1 (div (sub .rack 1) 8) }}"
+        cloud.provider.com/topology-rack: "rack{{ .rack }}"
+        # The first rack of every block (racks 1, 9, ..., 121), 32 nodes, is where the occupier
+        # job runs, so that a scheduler blind to topology spreads a job over several racks.
+        knavigator.nvidia.com/occupier: "{{ if eq (mod (sub .rack 1) 8) 0 }}true{{ else }}false{{ end }}"
+      # Keeps every pod without the toleration off the virtual nodes, such as the KAI scheduler
+      # pod the operator creates again on resume, which KWOK would otherwise fake as Running.
+      taints:
+      - key: kwok.x-k8s.io/node
+        value: fake
+        effect: NoSchedule
+      # Empty by default, so the chart sets no InternalIP; run scripts pass NODE_ADDRESS.
+      address: "${node_address:-}"
+    timeout: 5m

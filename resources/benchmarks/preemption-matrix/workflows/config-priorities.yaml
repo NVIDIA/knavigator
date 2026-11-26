@@ -1,0 +1,38 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-priorities
+description: the four priority classes of the preemption pairs
+tasks:
+# The classes must exist before any job: KAI gives a pod whose PriorityClass is missing its default
+# class instead. Values follow KAI v0.19.0's preempt test (test/e2e/suites/preempt/preempt_specs.go:50-75):
+# preemptible below KAI's threshold of 100, non-preemptible from it, high = low + 1. -var sets another
+# value, for a run that must turn a pair red. A PriorityClass value cannot change, so run on a fresh cluster.
+- id: priorities
+  type: Configure
+  params:
+    priorityClasses:
+    - name: pm-low-p
+      value: ${priority_low_p:-40}
+      op: create
+    - name: pm-high-p
+      value: ${priority_high_p:-41}
+      op: create
+    - name: pm-low-np
+      value: ${priority_low_np:-140}
+      op: create
+    - name: pm-high-np
+      value: ${priority_high_np:-141}
+      op: create
+    timeout: 1m

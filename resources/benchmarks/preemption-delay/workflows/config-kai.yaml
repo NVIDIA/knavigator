@@ -1,0 +1,61 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: config-kai
+description: register the pair job and create a parent KAI queue with one 1-GPU queue per pair
+tasks:
+- id: register-queue
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/preemption-delay/templates/kai/queue.yaml"
+# A name format makes SubmitObj record each job's name; the checks find a pair's pod by it.
+- id: register
+  type: RegisterObj
+  params:
+    template: "resources/benchmarks/preemption-delay/templates/kai/job.yaml"
+    nameFormat: "{{.pair}}-{{.role}}"
+    podNameFormat: "{{._NAME_}}-[a-z0-9]+"
+    podCount: 1
+# No GPU quota or limit on the parent: KAI checks quota and limit on every ancestor. The queue names
+# are this benchmark's own, because canExist never updates a queue that is already there.
+- id: parent-queue
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    canExist: true
+    params:
+      name: preemption-delay
+      gpu: -1
+# GPU quota = limit = 1 per pair, so a pair's second job fits only if it preempts the first. KAI's
+# allocate action ignores the delay (it sets no FilterWithinPreemptionDelay,
+# pkg/scheduler/actions/allocate/allocate.go:50-54), so the limit, not the delay, is what keeps the
+# delayed second job off a free GPU.
+- id: queue-delayed
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    canExist: true
+    params:
+      name: preemption-delay-delayed
+      parentQueue: preemption-delay
+      gpu: 1
+- id: queue-control
+  type: SubmitObj
+  params:
+    refTaskId: register-queue
+    canExist: true
+    params:
+      name: preemption-delay-control
+      parentQueue: preemption-delay
+      gpu: 1

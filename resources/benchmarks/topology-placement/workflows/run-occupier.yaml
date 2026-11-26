@@ -1,0 +1,41 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-occupier
+description: fill the first rack of every block, leaving room for one 2-GPU pod per node there
+tasks:
+# 32 pods of 6 GPUs on the 32 nodes labelled occupier=true, both nodes of racks 1, 9, ..., 121. Two
+# pods do not fit one 8-GPU node, so each node gets one and keeps 2 GPUs free. Those racks hold two of
+# the checked jobs' 2-GPU pods and every other rack holds eight, so a scheduler that bin-packs without
+# topology, or Kueue placing a job without a topology annotation host by host, puts a job's first pods
+# on the occupier's nodes, one per node, across racks and blocks. The occupier runs for 6 minutes, past
+# the last checked job; run-checked.yaml checks that it still runs then.
+- id: occupier
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      job: occupier
+      replicas: 32
+      gpu: 6
+      ttl: 6m
+      occupier: true
+- id: occupier-running
+  type: CheckPod
+  params:
+    refTaskId: occupier
+    status: Running
+    nodeLabels:
+      knavigator.nvidia.com/occupier: "true"
+    timeout: 3m

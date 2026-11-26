@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -43,7 +44,7 @@ type CheckPodTask struct {
 	BaseTask
 	checkPodTaskParams
 
-	client   *kubernetes.Clientset
+	client   kubernetes.Interface
 	accessor ObjInfoAccessor
 }
 
@@ -52,6 +53,15 @@ type checkPodTaskParams struct {
 	Status     string            `yaml:"status"`
 	NodeLabels map[string]string `yaml:"nodeLabels"`
 	Timeout    time.Duration     `yaml:"timeout"`
+
+	NodeLabelDomains *nodeLabelDomains `yaml:"nodeLabelDomains"`
+}
+
+// nodeLabelDomains limits the matched pods to at most Max distinct values of
+// the node label Key, so Max 1 means all pods share one domain, such as a rack.
+type nodeLabelDomains struct {
+	Key string `yaml:"key"`
+	Max int    `yaml:"max"`
 }
 
 // newCheckPodTask initializes and returns CheckPodTask
@@ -90,8 +100,22 @@ func (task *CheckPodTask) validate(params map[string]interface{}) error {
 		return fmt.Errorf("%s: missing parameter 'refTaskId'", task.ID())
 	}
 
-	if len(task.Status) == 0 && len(task.NodeLabels) == 0 {
-		return fmt.Errorf("%s: missing parameters 'status' and/or 'nodeLabels'", task.ID())
+	if len(task.Status) == 0 && len(task.NodeLabels) == 0 && task.NodeLabelDomains == nil {
+		return fmt.Errorf("%s: missing parameters 'status', 'nodeLabels' and/or 'nodeLabelDomains'", task.ID())
+	}
+
+	if d := task.NodeLabelDomains; d != nil {
+		if len(d.Key) == 0 {
+			return fmt.Errorf("%s: parameter 'nodeLabelDomains.key' must be set", task.ID())
+		}
+		if d.Max < 1 {
+			return fmt.Errorf("%s: parameter 'nodeLabelDomains.max' must be at least 1, got %d", task.ID(), d.Max)
+		}
+		// Without status, nodeLabelDomains counts a pod that is bound but not yet
+		// running, and nodeLabels skips such a pod, so its labels would go unchecked.
+		if len(task.Status) == 0 && len(task.NodeLabels) != 0 {
+			return fmt.Errorf("%s: parameters 'nodeLabels' and 'nodeLabelDomains' together need 'status', such as Running: nodeLabels checks only running pods", task.ID())
+		}
 	}
 
 	return nil
@@ -126,6 +150,7 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 	}
 
 	var count int
+	podNodes := make(map[string]string)
 	for i := range list.Items {
 		pod := &list.Items[i]
 		for _, r := range re {
@@ -134,12 +159,19 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 				count++
 
 				status := string(pod.Status.Phase)
-				if status != task.Status {
+				if !task.statusMatches(status) {
 					return fmt.Errorf("%s: pod %s, status %s, expected %s", task.ID(), pod.Name, status, task.Status)
 				}
 
 				if err := task.verifyLabels(ctx, pod); err != nil {
 					return err
+				}
+
+				if task.NodeLabelDomains != nil {
+					if len(pod.Spec.NodeName) == 0 {
+						return fmt.Errorf("%s: pod '%s' has no node, so nodeLabelDomains cannot place it", task.ID(), pod.Name)
+					}
+					podNodes[pod.Name] = pod.Spec.NodeName
 				}
 			}
 		}
@@ -149,6 +181,61 @@ func (task *CheckPodTask) checkPods(ctx context.Context, info *ObjInfo) error {
 		return fmt.Errorf("%s: verified %d pods, expected %d", task.ID(), count, info.PodCount)
 	}
 
+	return task.verifyDomains(ctx, podNodes)
+}
+
+// statusMatches reports whether a pod phase satisfies 'status'. Without 'status',
+// a nodeLabelDomains check accepts every phase: it judges where pods run, not how.
+func (task *CheckPodTask) statusMatches(phase string) bool {
+	if len(task.Status) == 0 && task.NodeLabelDomains != nil {
+		return true
+	}
+	return phase == task.Status
+}
+
+// verifyDomains fails when the nodes of the given pods (pod name to node name)
+// take more than nodeLabelDomains.max distinct values of nodeLabelDomains.key.
+// A node without the label fails the check rather than count as a value or be skipped.
+func (task *CheckPodTask) verifyDomains(ctx context.Context, podNodes map[string]string) error {
+	d := task.NodeLabelDomains
+	if d == nil {
+		return nil
+	}
+
+	pods := make([]string, 0, len(podNodes))
+	for pod := range podNodes {
+		pods = append(pods, pod)
+	}
+	sort.Strings(pods)
+
+	nodeValues := make(map[string]string)
+	domains := make(map[string]bool)
+	for _, pod := range pods {
+		nodeName := podNodes[pod]
+		val, ok := nodeValues[nodeName]
+		if !ok {
+			node, err := task.client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("%s: failed to get node '%s' for pod '%s': %v", task.ID(), nodeName, pod, err)
+			}
+			if val, ok = node.Labels[d.Key]; !ok {
+				return fmt.Errorf("%s: node '%s' of pod '%s' has no label '%s'", task.ID(), nodeName, pod, d.Key)
+			}
+			nodeValues[nodeName] = val
+		}
+		domains[val] = true
+	}
+
+	if len(domains) > d.Max {
+		values := make([]string, 0, len(domains))
+		for val := range domains {
+			values = append(values, val)
+		}
+		sort.Strings(values)
+		return fmt.Errorf("%s: pods on %d distinct values of %s, at most %d allowed: %q", task.ID(), len(domains), d.Key, d.Max, values)
+	}
+
+	log.V(4).Infof("Verified %d pods on %d distinct values of %s", len(pods), len(domains), d.Key)
 	return nil
 }
 
@@ -245,18 +332,33 @@ func (task *CheckPodTask) verifyPod(ctx context.Context, re []*regexp.Regexp, po
 			}
 			status := string(pod.Status.Phase)
 			log.V(4).Infof("Informer event for pod %s with status %s", pod.Name, status)
-			if status != task.Status {
+			if !task.statusMatches(status) {
 				return
 			}
 			if err := task.verifyLabels(ctx, pod); err != nil {
 				errs <- err
 				return
 			}
-			if sz := podMap.Set(pod.Name, true); sz == count {
+			// A pod without a node has no domain yet: wait for it to be placed.
+			if task.NodeLabelDomains != nil && len(pod.Spec.NodeName) == 0 {
+				return
+			}
+			if sz := podMap.Set(pod.Name, pod.Spec.NodeName); sz == count {
 				log.Infof("Accounted for all pods")
-				errs <- nil
+				errs <- task.verifyDomains(ctx, podNodes(podMap))
 				return
 			}
 		}
 	}
+}
+
+// podNodes returns the pod name to node name pairs that verifyPod stored in podMap.
+func podNodes(podMap *utils.SyncMap) map[string]string {
+	nodes := make(map[string]string)
+	for _, key := range podMap.Keys() {
+		if val, ok := podMap.Get(key); ok {
+			nodes[key.(string)], _ = val.(string)
+		}
+	}
+	return nodes
 }
