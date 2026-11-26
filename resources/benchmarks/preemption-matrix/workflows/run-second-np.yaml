@@ -1,0 +1,74 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-second-np
+description: submit the second job of pairs 2, 3, 5, 6 and 8, where at least one job is non-preemptible
+tasks:
+# The second job runs for 3 minutes, well past the hold, so a pair that preempts still shows its
+# second job Running at the check.
+- id: second-2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 2
+      role: second
+      priorityClassName: pm-high-np
+      replicas: 1
+      gpu: 1
+      ttl: 3m
+- id: second-3
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 3
+      role: second
+      priorityClassName: pm-high-np
+      replicas: 1
+      gpu: 1
+      ttl: 3m
+- id: second-5
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 5
+      role: second
+      priorityClassName: pm-low-np
+      replicas: 1
+      gpu: 1
+      ttl: 3m
+- id: second-6
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 6
+      role: second
+      priorityClassName: pm-low-p
+      replicas: 1
+      gpu: 1
+      ttl: 3m
+- id: second-8
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 8
+      role: second
+      priorityClassName: pm-low-np
+      replicas: 1
+      gpu: 1
+      ttl: 3m

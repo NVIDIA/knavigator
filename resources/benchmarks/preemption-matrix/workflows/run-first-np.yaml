@@ -1,0 +1,105 @@
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: run-first-np
+description: submit the first job of pairs 2, 3, 5, 6 and 8, where at least one job is non-preemptible, then wait until each runs
+tasks:
+# The first job runs for 5 minutes, well past the check after the second job's hold, so a pair that
+# does not preempt still shows its first job Running.
+- id: first-2
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 2
+      role: first
+      priorityClassName: pm-low-p
+      replicas: 1
+      gpu: 1
+      ttl: 5m
+- id: first-3
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 3
+      role: first
+      priorityClassName: pm-low-np
+      replicas: 1
+      gpu: 1
+      ttl: 5m
+- id: first-5
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 5
+      role: first
+      priorityClassName: pm-high-np
+      replicas: 1
+      gpu: 1
+      ttl: 5m
+- id: first-6
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 6
+      role: first
+      priorityClassName: pm-high-np
+      replicas: 1
+      gpu: 1
+      ttl: 5m
+- id: first-8
+  type: SubmitObj
+  params:
+    refTaskId: register
+    params:
+      pair: 8
+      role: first
+      priorityClassName: pm-low-np
+      replicas: 1
+      gpu: 1
+      ttl: 5m
+# Each first job must be Running before any second job arrives.
+- id: first-2-running
+  type: CheckPod
+  params:
+    refTaskId: first-2
+    status: Running
+    timeout: 3m
+- id: first-3-running
+  type: CheckPod
+  params:
+    refTaskId: first-3
+    status: Running
+    timeout: 3m
+- id: first-5-running
+  type: CheckPod
+  params:
+    refTaskId: first-5
+    status: Running
+    timeout: 3m
+- id: first-6-running
+  type: CheckPod
+  params:
+    refTaskId: first-6
+    status: Running
+    timeout: 3m
+- id: first-8-running
+  type: CheckPod
+  params:
+    refTaskId: first-8
+    status: Running
+    timeout: 3m
